@@ -7,24 +7,32 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Dependency directories
-node_modules
-dist
-dist-ssr
-dev-dist
-.pnpm-store
+# Dependency directories and generated build output
+node_modules/
+dist/
+dist-ssr/
+dev-dist/
+build/
+coverage/
+.vite/
+.pnpm-store/
+*.tsbuildinfo
 
-# Environment and local settings
-*.local
+# Environment and local settings. Only the documented, non-secret template is tracked.
 .env
+.env.*
+!.env.example
+*.local
 
-# mkcert certificates
-dev-key.pem
-dev.pem
-localhost*.pem
-localhost*-key.pem
-mkcert+1-key.pem
-mkcert+1.pem
+# Local HTTPS certificates and keys
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+cert/
+certs/
 
 # Editor directories and files
 .vscode/*
@@ -37,4 +45,5 @@ mkcert+1.pem
 *.sln
 *.sw?
 
+# Generated Dojo client configuration
 src/config/build.js
