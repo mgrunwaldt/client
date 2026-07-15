@@ -1,7 +1,8 @@
-import { Connector } from "@starknet-react/core";
 import { ControllerConnector } from "@cartridge/connector";
 import { ControllerOptions } from "@cartridge/controller";
+import { Connector } from "@starknet-react/core";
 import { constants } from "starknet";
+
 import { manifest } from "./manifest";
 
 const { VITE_PUBLIC_DEPLOY_TYPE } = import.meta.env;
@@ -64,6 +65,8 @@ const options: ControllerOptions = {
   policies,
   namespace: "universe",
   slot: "full-starter-react",
+  // Mount the controller iframe only when the player opens it.
+  lazyload: true,
 };
 
 const cartridgeConnector = new ControllerConnector(

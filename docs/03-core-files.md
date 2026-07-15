@@ -93,18 +93,13 @@ export const schema: SchemaType = {
 import { createDojoConfig } from "@dojoengine/core";
 import { manifest } from "../config/manifest";
 
-// Environment variables for secure configuration
-const {
-  VITE_PUBLIC_NODE_URL,
-  VITE_PUBLIC_TORII,
-  VITE_PUBLIC_MASTER_ADDRESS,
-  VITE_PUBLIC_MASTER_PRIVATE_KEY,
-} = import.meta.env;
+// Public browser configuration
+const { VITE_PUBLIC_NODE_URL, VITE_PUBLIC_TORII, VITE_PUBLIC_MASTER_ADDRESS } =
+  import.meta.env;
 
 export const dojoConfig = createDojoConfig({
   manifest, // Contract deployment info
   masterAddress: VITE_PUBLIC_MASTER_ADDRESS || "", // Master account for transactions
-  masterPrivateKey: VITE_PUBLIC_MASTER_PRIVATE_KEY || "", // Master account private key
   rpcUrl: VITE_PUBLIC_NODE_URL || "", // Starknet RPC endpoint
   toriiUrl: VITE_PUBLIC_TORII || "", // Torii GraphQL indexer URL
 });
@@ -127,7 +122,7 @@ VITE_PUBLIC_TORII=https://api.cartridge.gg/x/full-starter-react/torii
 VITE_PUBLIC_MASTER_ADDRESS=0x...
 ```
 
-Do not define `VITE_PUBLIC_MASTER_PRIVATE_KEY`. Vite embeds every `VITE_`
+Do not define browser-side private-key configuration. Vite embeds every `VITE_`
 variable into browser code. Development transactions must use a burner/session
 account or another approved signer boundary, never a privileged private key in
 the client bundle.

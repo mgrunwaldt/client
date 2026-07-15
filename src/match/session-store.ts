@@ -1,4 +1,5 @@
 import { create } from "zustand";
+
 import {
   BackendFieldState,
   BackendMatch,
@@ -45,7 +46,9 @@ interface MatchSessionActions {
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   showTransitionLoader: (payload: Partial<MatchTransitionLoaderState>) => void;
-  updateTransitionLoader: (payload: Partial<MatchTransitionLoaderState>) => void;
+  updateTransitionLoader: (
+    payload: Partial<MatchTransitionLoaderState>,
+  ) => void;
   hideTransitionLoader: () => void;
   setCreatedMatch: (payload: {
     match: BackendMatch;
@@ -107,7 +110,9 @@ function mergeTimelineEvents(
   });
 }
 
-function playbackStatusFromResponse(response: BackendMatchResponse): MatchPlaybackStatus {
+function playbackStatusFromResponse(
+  response: BackendMatchResponse,
+): MatchPlaybackStatus {
   if (response.pending_action) {
     return "timeline_playing";
   }
@@ -164,7 +169,8 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       myTeam: state.myTeam,
       opponentTeam: state.opponentTeam,
       pendingAction: response.pending_action,
-      fieldState: response.pending_action?.field_state || response.field_state || null,
+      fieldState:
+        response.pending_action?.field_state || response.field_state || null,
       timelineEvents: mergeTimelineEvents([], response.events || []),
       playbackMinute: response.prev_time,
       playbackStatus: playbackStatusFromResponse(response),
@@ -177,8 +183,12 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       myTeam: state.myTeam,
       opponentTeam: state.opponentTeam,
       pendingAction: response.pending_action,
-      fieldState: response.pending_action?.field_state || response.field_state || null,
-      timelineEvents: mergeTimelineEvents(state.timelineEvents, response.events || []),
+      fieldState:
+        response.pending_action?.field_state || response.field_state || null,
+      timelineEvents: mergeTimelineEvents(
+        state.timelineEvents,
+        response.events || [],
+      ),
       playbackMinute: response.prev_time,
       playbackStatus: playbackStatusFromResponse(response),
       loading: false,
@@ -201,7 +211,9 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
         fieldState,
         timelineEvents,
         playbackMinute: shouldPlayTimeline ? 0 : state.playbackMinute,
-        playbackStatus: shouldPlayTimeline ? "timeline_playing" : state.playbackStatus,
+        playbackStatus: shouldPlayTimeline
+          ? "timeline_playing"
+          : state.playbackStatus,
         loading: false,
         error: null,
       };

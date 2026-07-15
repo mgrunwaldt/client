@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 
 import background from "/backgrounds/glitch-bg.webp";
+
 import { GlitchText } from "../ui/glitch-text";
 
 interface LoadingScreenProps {
@@ -8,7 +9,10 @@ interface LoadingScreenProps {
   progress?: number;
 }
 
-export default function LoadingScreen({ isLoading = true, progress = 0 }: LoadingScreenProps) {
+export default function LoadingScreen({
+  isLoading = true,
+  progress = 0,
+}: LoadingScreenProps) {
   if (!isLoading) return null;
 
   return (
@@ -31,7 +35,9 @@ export default function LoadingScreen({ isLoading = true, progress = 0 }: Loadin
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="mt-2 text-center text-sm text-white/80">{Math.round(progress)}%</p>
+          <p className="mt-2 text-center text-sm text-white/80">
+            {Math.round(progress)}%
+          </p>
         </div>
       )}
     </div>

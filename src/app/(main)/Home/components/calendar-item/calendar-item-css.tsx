@@ -15,9 +15,9 @@ export default function CalendarItemCSS({
     <div
       className={cn(
         "calendar-item-container",
-        "flex justify-center items-center w-full h-full",
+        "flex h-full w-full items-center justify-center",
         variant === "blue" ? "bg-overgoal-blue" : "bg-overgoal-purple",
-        className
+        className,
       )}
     >
       <div className="relative z-10">{children}</div>

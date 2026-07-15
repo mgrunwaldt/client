@@ -4,19 +4,20 @@
   to create unique character variations
 */
 
-import * as THREE from "three";
-import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  useGLTF,
-  useAnimations,
-  useTexture,
   Outlines,
+  useAnimations,
+  useGLTF,
+  useTexture,
 } from "@react-three/drei";
+import { useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
 import { GLTF } from "three-stdlib";
+
 import {
+  getActionMap,
   mapAccesoriesTexture,
   mapTeamTexture,
-  getActionMap,
 } from "../../utils/mapTeamTexture";
 
 const getAnim = (bodyType: number): number => {
@@ -328,8 +329,8 @@ export default function ChangeableModels({
   //2
 
   useEffect(() => {
-    let key = getAnim(playerData?.body_type ?? 1);
-    let actionConfig = getActionMap(key);
+    const key = getAnim(playerData?.body_type ?? 1);
+    const actionConfig = getActionMap(key);
     const actionName = actionConfig?.name ?? "Idle";
     const action = actions[actionName];
 
@@ -440,7 +441,7 @@ export default function ChangeableModels({
     }
 
     return material;
-  }, [hairTexture, characterConfig.accessoryColor]);
+  }, [hairTexture]);
 
   // const acceColor =
   //   playerData?.visor_color === 0
@@ -459,14 +460,14 @@ export default function ChangeableModels({
     }
 
     return material;
-  }, [accesoriesTexture, characterConfig.accessoryColor]);
+  }, [accesoriesTexture, hairTexture]);
 
   // Get all mesh nodes from the selected model (all models now have same structure)
   const bodyNode = useMemo(() => {
     const node =
       selectedModel.nodes[bodyNodeName as keyof typeof selectedModel.nodes];
     return node as unknown as THREE.SkinnedMesh;
-  }, [selectedModel.nodes, bodyNodeName]);
+  }, [bodyNodeName, selectedModel]);
 
   const eyebrowsNode = useMemo(() => {
     return selectedModel.nodes.Eyebrows;
@@ -613,7 +614,3 @@ export default function ChangeableModels({
 useGLTF.preload("/models/Male/new-text/new_model.glb");
 useGLTF.preload("/models/Male/new-text/new_model_2.glb");
 useGLTF.preload("/models/Male/new-text/new_model_3.glb");
-
-// Export utility functions for external use
-export { generateRandomConfig, playerDataToCharacterConfig };
-export type { CharacterConfig, PlayerData };

@@ -1,6 +1,7 @@
-import { Card } from "../../../components/ui/card";
-import { Button } from "../../../components/ui/button";
 import { Link, useParams } from "react-router";
+
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 
 export default function SeasonClubScreen() {
   const { seasonId, clubId } = useParams<{
@@ -81,7 +82,7 @@ export default function SeasonClubScreen() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="container mx-auto max-w-6xl px-4 py-8">
         <div className="mt-8">
           <div className="mb-6">
             <Link to={`/season/${seasonId}`}>
@@ -90,14 +91,14 @@ export default function SeasonClubScreen() {
               </Button>
             </Link>
             <h1 className="text-3xl font-bold text-white">{club.name}</h1>
-            <p className="text-slate-300 mt-2">
+            <p className="mt-2 text-slate-300">
               {club.league} • Founded {club.founded}
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">
+          <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">
                 Club Info
               </h3>
               <div className="space-y-2">
@@ -118,14 +119,14 @@ export default function SeasonClubScreen() {
               </div>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">
                 League Standings
               </h3>
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-slate-400">Position</span>
-                  <span className="text-white font-bold">{club.position}</span>
+                  <span className="font-bold text-white">{club.position}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-400">Points</span>
@@ -138,8 +139,8 @@ export default function SeasonClubScreen() {
               </div>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">
                 Season Stats
               </h3>
               <div className="grid grid-cols-3 gap-2 text-center">
@@ -162,7 +163,7 @@ export default function SeasonClubScreen() {
                   <div className="text-sm text-slate-400">Losses</div>
                 </div>
               </div>
-              <div className="mt-4 pt-4 border-t border-slate-600">
+              <div className="mt-4 border-t border-slate-600 pt-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-slate-400">Goals</span>
                   <span className="text-white">
@@ -175,19 +176,19 @@ export default function SeasonClubScreen() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             {/* Squad */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">Squad</h2>
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">Squad</h2>
               <div className="space-y-3">
                 {players.map((player) => (
                   <Link key={player.id} to={`/profile/${player.id}`}>
-                    <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-700/50 transition-colors cursor-pointer">
+                    <div className="flex cursor-pointer items-center justify-between rounded-lg p-3 transition-colors hover:bg-slate-700/50">
                       <div>
-                        <div className="text-white font-medium">
+                        <div className="font-medium text-white">
                           {player.name}
                         </div>
-                        <div className="text-slate-400 text-sm">
+                        <div className="text-sm text-slate-400">
                           {player.position}
                         </div>
                       </div>
@@ -203,25 +204,25 @@ export default function SeasonClubScreen() {
             </Card>
 
             {/* Recent Matches */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 Recent Matches
               </h2>
               <div className="space-y-3">
                 {recentMatches.map((match) => (
                   <div
                     key={match.id}
-                    className="p-3 rounded-lg bg-slate-700/30"
+                    className="rounded-lg bg-slate-700/30 p-3"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-slate-300 text-sm">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-sm text-slate-300">
                         {match.date}
                       </span>
-                      <span className="text-white font-bold">
+                      <span className="font-bold text-white">
                         {match.result}
                       </span>
                     </div>
-                    <div className="text-white text-sm">
+                    <div className="text-sm text-white">
                       {match.home ? "vs" : "@"} {match.opponent}
                     </div>
                   </div>

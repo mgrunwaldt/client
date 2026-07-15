@@ -111,8 +111,7 @@ export interface BackendMatchResponse {
   decision_result?: BackendDecisionResult;
 }
 
-const BACKEND_BASE_URL =
-  import.meta.env.VITE_MATCH_BACKEND_URL || "/api";
+const BACKEND_BASE_URL = import.meta.env.VITE_MATCH_BACKEND_URL || "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BACKEND_BASE_URL}${path}`, {
@@ -153,7 +152,9 @@ export async function createBackendMatch(body: {
   });
 }
 
-export async function startBackendMatch(matchId: string): Promise<BackendMatchResponse> {
+export async function startBackendMatch(
+  matchId: string,
+): Promise<BackendMatchResponse> {
   return request("/startMatch", {
     method: "POST",
     body: JSON.stringify({ match_id: matchId }),

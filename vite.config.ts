@@ -1,9 +1,9 @@
 import react from "@vitejs/plugin-react";
+import fs from "fs";
+import path from "path";
 import { defineConfig, loadEnv } from "vite";
 import topLevelAwait from "vite-plugin-top-level-await";
 import wasm from "vite-plugin-wasm";
-import fs from "fs";
-import path from "path";
 
 function localHttpsConfig(env: Record<string, string>) {
   if (env.VITE_LOCAL_HTTPS !== "true") return undefined;
@@ -33,15 +33,54 @@ function localHttpsConfig(env: Record<string, string>) {
   }
 }
 
+function vendorChunk(id: string) {
+  const moduleId = id.replaceAll("\\", "/");
+  if (!moduleId.includes("/node_modules/")) return undefined;
+
+  if (/\/(?:react|react-dom|scheduler)@/.test(moduleId)) {
+    return "vendor-react";
+  }
+  if (moduleId.includes("/react-router@")) return "vendor-router";
+  if (moduleId.includes("/starknet@")) return "vendor-starknet";
+  if (moduleId.includes("/@starknet-react+")) return "vendor-starknet-react";
+  if (moduleId.includes("/@cartridge+")) return "vendor-cartridge";
+  const dojoPackage = moduleId.match(/\/@dojoengine\+([^@/]+)@/);
+  if (dojoPackage) return `vendor-dojo-${dojoPackage[1]}`;
+  if (moduleId.includes("/effect@")) return "vendor-effect";
+  if (moduleId.includes("/three@") && moduleId.includes("/three.core.js")) {
+    return "vendor-three-core";
+  }
+  if (moduleId.includes("/three@") && moduleId.includes("/three.module.js")) {
+    return "vendor-three-webgl";
+  }
+  if (moduleId.includes("/three-stdlib@")) return "vendor-three-stdlib";
+  if (moduleId.includes("/@react-three+fiber@")) return "vendor-r3f";
+  if (moduleId.includes("/react-reconciler@")) return "vendor-reconciler";
+  if (moduleId.includes("/@react-three+drei@")) return "vendor-drei";
+  if (moduleId.includes("/@react-three+rapier@")) return "vendor-r3f-rapier";
+  if (moduleId.includes("/@dimforge+rapier3d@")) return "vendor-rapier";
+
+  return undefined;
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const https = localHttpsConfig(env);
 
   return {
     plugins: [react(), wasm(), topLevelAwait()],
+    build: {
+      manifest: true,
+      rollupOptions: {
+        output: {
+          manualChunks: vendorChunk,
+        },
+      },
+    },
     resolve: {
       dedupe: ["three"],
       alias: {
+        "@dimforge/rapier3d-compat": path.resolve("src/compat/rapier3d.ts"),
         three: path.resolve("node_modules/three"),
       },
     },

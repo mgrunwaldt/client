@@ -1,10 +1,11 @@
-import type { PropsWithChildren } from "react";
-import { sepolia, mainnet } from "@starknet-react/chains";
+import { mainnet, sepolia } from "@starknet-react/chains";
 import {
   jsonRpcProvider,
   StarknetConfig,
   starkscan,
 } from "@starknet-react/core";
+import type { PropsWithChildren } from "react";
+
 import cartridgeConnector from "../config/cartridgeConnector";
 
 export default function StarknetProvider({ children }: PropsWithChildren) {

@@ -1,6 +1,6 @@
 // hooks/useStarknetConnect.ts
-import { useConnect, useAccount, useDisconnect } from "@starknet-react/core";
-import { useState, useCallback } from "react";
+import { useAccount, useConnect, useDisconnect } from "@starknet-react/core";
+import { useCallback, useState } from "react";
 
 export function useStarknetConnect() {
   const { connect, connectors } = useConnect();

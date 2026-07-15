@@ -1,7 +1,8 @@
-import { Button } from "./button";
 import { Link } from "react-router";
+
 import { getIcon } from "../../utils/iconMap";
 import { cn } from "../../utils/utils";
+import { Button } from "./button";
 
 interface HomeMenuItemProps {
   borderColor?: string;
@@ -36,9 +37,7 @@ export function HomeMenuItem({
 
   return (
     <div
-      className={`lifestyle-container
-             ${containerSize} ${position === "left" ? "ml-auto" : "mr-auto"} w-full h-full flex flex-col gap-1 items-center justify-center p-2
-        ${clipClass} ${className}`}
+      className={`lifestyle-container ${containerSize} ${position === "left" ? "ml-auto" : "mr-auto"} flex h-full w-full flex-col items-center justify-center gap-1 p-2 ${clipClass} ${className}`}
       style={
         {
           "--lifestyle-border-color": borderColor,
@@ -46,17 +45,33 @@ export function HomeMenuItem({
         } as React.CSSProperties
       }
     >
-      <div className="lifestyle-inner-container w-full h-full">
+      <div className="lifestyle-inner-container h-full w-full">
         <Link to={disabled ? "" : href}>
-          <Button disabled={disabled} className="lifestyle-inner-container w-full h-full p-4 flex flex-col gap-2 items-center  justify-center">
-            <div className={cn("flex flex-col gap-2 items-center justify-center ", position === "left" ? "-rotate-10" : "rotate-10")}>
+          <Button
+            disabled={disabled}
+            className="lifestyle-inner-container flex h-full w-full flex-col items-center justify-center gap-2 p-4"
+          >
+            <div
+              className={cn(
+                "flex flex-col items-center justify-center gap-2",
+                position === "left" ? "-rotate-10" : "rotate-10",
+              )}
+            >
               <img
                 loading="lazy"
                 src={getIcon(icon as keyof typeof getIcon)}
                 alt={title}
-                className={cn("w-6  h-6 -rotate-2", position === "left" ? "-rotate-2" : "-rotate-2")}
+                className={cn(
+                  "h-6 w-6 -rotate-2",
+                  position === "left" ? "-rotate-2" : "-rotate-2",
+                )}
               />
-              <p className={cn("text-white uppercase orbitron-medium rotate-2 text-[7px]", position === "left" ? "rotate-2" : "-rotate-2")}>
+              <p
+                className={cn(
+                  "orbitron-medium rotate-2 text-[7px] text-white uppercase",
+                  position === "left" ? "rotate-2" : "-rotate-2",
+                )}
+              >
                 {title}
               </p>
             </div>

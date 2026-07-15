@@ -1,4 +1,5 @@
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+
 import { cn } from "../../utils/utils";
 
 interface StaminaBarProps {
@@ -43,7 +44,7 @@ export function StaminaBar({ value, className }: StaminaBarProps) {
     >
       {/* Filled bar */}
       <div
-        className="absolute left-0 top-0 flex h-full items-center overflow-hidden transition-all duration-300 ease-out"
+        className="absolute top-0 left-0 flex h-full items-center overflow-hidden transition-all duration-300 ease-out"
         style={{ width: filledWidth }}
       >
         {allSegments.map((segment) => (
@@ -53,13 +54,13 @@ export function StaminaBar({ value, className }: StaminaBarProps) {
               segment.type === "start"
                 ? "/stamina/bar-start.svg"
                 : segment.type === "mid"
-                ? "/stamina/bar-mid.svg"
-                : "/stamina/bar-start.svg"
+                  ? "/stamina/bar-mid.svg"
+                  : "/stamina/bar-start.svg"
             }
             alt={`stamina ${segment.type}`}
             className={cn(
               "h-full w-auto shrink-0",
-              segment.type === "end" && "scale-x-[-1]"
+              segment.type === "end" && "scale-x-[-1]",
             )}
           />
         ))}

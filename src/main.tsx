@@ -1,17 +1,17 @@
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
+import "./styles/globals.css";
 
 // Dojo & Starknet
 import { init } from "@dojoengine/sdk";
 import { DojoSdkProvider } from "@dojoengine/sdk/react";
-import { dojoConfig } from "./dojo/dojoConfig";
-import type { SchemaType } from "./dojo/bindings";
-import { setupWorld } from "./dojo/contracts.gen";
-import StarknetProvider from "./dojo/starknet-provider";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
 
 // App Entry
 import App from "./app/app";
-import "./styles/globals.css";
+import type { SchemaType } from "./dojo/bindings";
+import { setupWorld } from "./dojo/contracts.gen";
+import { dojoConfig } from "./dojo/dojoConfig";
+import StarknetProvider from "./dojo/starknet-provider";
 
 // Init Dojo with error handling
 async function main() {

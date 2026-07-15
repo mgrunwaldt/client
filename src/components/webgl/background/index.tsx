@@ -1,10 +1,11 @@
 import { useTexture } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
-import { useUniforms } from "../../../hooks/use-uniforms";
-import { useShader } from "../../../hooks/use-shader";
 import * as THREE from "three";
-import vertexShader from "./background-glitch.vert?raw";
+
+import { useShader } from "../../../hooks/use-shader";
+import { useUniforms } from "../../../hooks/use-uniforms";
 import fragmentShader from "./background-glitch.frag?raw";
+import vertexShader from "./background-glitch.vert?raw";
 
 interface BackgroundUniforms extends Record<string, THREE.IUniform> {
   uTexture: { value: THREE.Texture | null };

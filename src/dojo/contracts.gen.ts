@@ -1,4 +1,4 @@
-import { DojoProvider, DojoCall } from "@dojoengine/core";
+import { DojoCall, DojoProvider } from "@dojoengine/core";
 import { Account, AccountInterface, BigNumberish } from "starknet";
 
 export function setupWorld(provider: DojoProvider) {

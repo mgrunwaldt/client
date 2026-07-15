@@ -1,6 +1,7 @@
-import { Card } from "../../../components/ui/card";
-import { Button } from "../../../components/ui/button";
 import { Link, useParams } from "react-router";
+
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 
 export default function PlayerStatsScreen() {
   const { playerId } = useParams<{ playerId: string }>();
@@ -33,7 +34,7 @@ export default function PlayerStatsScreen() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="container mx-auto max-w-6xl px-4 py-8">
         <div className="mt-8">
           <div className="mb-6">
             <Link to="/home">
@@ -44,13 +45,13 @@ export default function PlayerStatsScreen() {
             <h1 className="text-3xl font-bold text-white">
               {playerStats.name} - Statistics
             </h1>
-            <p className="text-slate-300 mt-2">{playerStats.position}</p>
+            <p className="mt-2 text-slate-300">{playerStats.position}</p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          <div className="mb-8 grid grid-cols-1 gap-8 lg:grid-cols-2">
             {/* Season Stats */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 Current Season
               </h2>
               <div className="grid grid-cols-2 gap-4">
@@ -82,8 +83,8 @@ export default function PlayerStatsScreen() {
             </Card>
 
             {/* Detailed Stats */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 Detailed Statistics
               </h2>
               <div className="space-y-3">
@@ -134,11 +135,11 @@ export default function PlayerStatsScreen() {
           </div>
 
           {/* Career Stats */}
-          <Card className="bg-slate-800/50 border-slate-700 p-6">
-            <h2 className="text-2xl font-semibold text-white mb-4">
+          <Card className="border-slate-700 bg-slate-800/50 p-6">
+            <h2 className="mb-4 text-2xl font-semibold text-white">
               Career Statistics
             </h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
               <div className="text-center">
                 <div className="text-3xl font-bold text-white">
                   {playerStats.careerStats.matchesPlayed}

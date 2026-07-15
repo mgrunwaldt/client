@@ -139,7 +139,6 @@ Centralizes all Dojo-related settings and network endpoints:
 export const dojoConfig = createDojoConfig({
   manifest,
   masterAddress: VITE_PUBLIC_MASTER_ADDRESS,
-  masterPrivateKey: VITE_PUBLIC_MASTER_PRIVATE_KEY,
   rpcUrl: VITE_PUBLIC_NODE_URL || "https://api.cartridge.gg/x/starknet/sepolia",
   toriiUrl: VITE_PUBLIC_TORII || "https://api.cartridge.gg/x/myproject/torii",
 });

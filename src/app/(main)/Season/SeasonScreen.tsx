@@ -1,6 +1,7 @@
-import { Card } from "../../../components/ui/card";
-import { Button } from "../../../components/ui/button";
 import { Link, useParams } from "react-router";
+
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
 
 export default function SeasonScreen() {
   const { seasonId } = useParams<{ seasonId: string }>();
@@ -61,7 +62,7 @@ export default function SeasonScreen() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="container mx-auto max-w-6xl px-4 py-8">
         <div className="mt-8">
           <div className="mb-6">
             <Link to="/seasons">
@@ -70,12 +71,12 @@ export default function SeasonScreen() {
               </Button>
             </Link>
             <h1 className="text-3xl font-bold text-white">{season.name}</h1>
-            <p className="text-slate-300 mt-2">{season.description}</p>
+            <p className="mt-2 text-slate-300">{season.description}</p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-2">
+          <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-2 text-lg font-semibold text-white">
                 Season Progress
               </h3>
               <div className="space-y-2">
@@ -85,9 +86,9 @@ export default function SeasonScreen() {
                     {season.currentWeek}/{season.totalWeeks}
                   </span>
                 </div>
-                <div className="w-full bg-slate-700 rounded-full h-2">
+                <div className="h-2 w-full rounded-full bg-slate-700">
                   <div
-                    className="bg-blue-600 h-2 rounded-full"
+                    className="h-2 rounded-full bg-blue-600"
                     style={{
                       width: `${(season.currentWeek / season.totalWeeks) * 100}%`,
                     }}
@@ -96,8 +97,8 @@ export default function SeasonScreen() {
               </div>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-2">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-2 text-lg font-semibold text-white">
                 Statistics
               </h3>
               <div className="space-y-2">
@@ -114,10 +115,10 @@ export default function SeasonScreen() {
               </div>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-2">Status</h3>
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-2 text-lg font-semibold text-white">Status</h3>
               <span
-                className={`px-3 py-1 rounded-full text-white text-sm font-medium ${
+                className={`rounded-full px-3 py-1 text-sm font-medium text-white ${
                   season.status === "active" ? "bg-green-600" : "bg-blue-600"
                 }`}
               >
@@ -126,10 +127,10 @@ export default function SeasonScreen() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             {/* League Table */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 League Table
               </h2>
               <div className="space-y-2">
@@ -138,12 +139,12 @@ export default function SeasonScreen() {
                     key={club.id}
                     to={`/season-club/${seasonId}/${club.id}`}
                   >
-                    <div className="flex items-center justify-between p-3 rounded-lg hover:bg-slate-700/50 transition-colors cursor-pointer">
+                    <div className="flex cursor-pointer items-center justify-between rounded-lg p-3 transition-colors hover:bg-slate-700/50">
                       <div className="flex items-center space-x-4">
-                        <span className="text-slate-400 font-bold w-6">
+                        <span className="w-6 font-bold text-slate-400">
                           {index + 1}
                         </span>
-                        <span className="text-white font-medium">
+                        <span className="font-medium text-white">
                           {club.name}
                         </span>
                       </div>
@@ -162,25 +163,25 @@ export default function SeasonScreen() {
             </Card>
 
             {/* Recent Matches */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 Recent Matches
               </h2>
               <div className="space-y-3">
                 {recentMatches.map((match) => (
                   <div
                     key={match.id}
-                    className="p-3 rounded-lg bg-slate-700/30"
+                    className="rounded-lg bg-slate-700/30 p-3"
                   >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-slate-300 text-sm">
+                    <div className="mb-2 flex items-center justify-between">
+                      <span className="text-sm text-slate-300">
                         {match.date}
                       </span>
-                      <span className="text-white font-bold">
+                      <span className="font-bold text-white">
                         {match.score}
                       </span>
                     </div>
-                    <div className="text-white text-sm">
+                    <div className="text-sm text-white">
                       {match.homeTeam} vs {match.awayTeam}
                     </div>
                   </div>

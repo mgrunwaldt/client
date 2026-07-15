@@ -1,9 +1,10 @@
-import { Button } from "../ui/button";
-import { useStarknetConnect } from "../../dojo/hooks/useStarknetConnect";
-import { useEffect, useRef } from "react";
-import { useCreatePlayer } from "../../dojo/hooks/useCreatePlayer";
 import { useAccount } from "@starknet-react/core";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
+
+import { useCreatePlayer } from "../../dojo/hooks/useCreatePlayer";
+import { useStarknetConnect } from "../../dojo/hooks/useStarknetConnect";
+import { Button } from "../ui/button";
 
 interface LoginButtonProps {
   className?: string;
@@ -81,7 +82,15 @@ function LoginButton({
       // Cleanup timeout if component unmounts or effect re-runs
       return () => clearTimeout(timeoutId);
     }
-  }, [isConnected, hasAccount, isInitializing, autoInitializePlayer]); // Safe dependencies
+  }, [
+    autoInitializePlayer,
+    hasAccount,
+    initializePlayer,
+    isConnected,
+    isInitializing,
+    navigate,
+    onLoginError,
+  ]);
 
   // Show different button states based on current status
   const getButtonContent = () => {
@@ -101,7 +110,6 @@ function LoginButton({
     hasAccount,
     isInitializing,
     autoInitializePlayer,
-    hasAttemptedInit: hasAttemptedInit.current,
   });
 
   return (

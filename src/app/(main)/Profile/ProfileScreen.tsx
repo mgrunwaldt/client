@@ -1,7 +1,8 @@
-import { Card } from "../../../components/ui/card";
-import { Button } from "../../../components/ui/button";
-import { Progress } from "../../../components/ui/progress";
 import { Link, useParams } from "react-router";
+
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { Progress } from "../../../components/ui/progress";
 
 export default function ProfileScreen() {
   const { playerId } = useParams<{ playerId: string }>();
@@ -81,7 +82,7 @@ export default function ProfileScreen() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="container mx-auto max-w-6xl px-4 py-8">
         <div className="mt-8">
           <div className="mb-6">
             <Link to="/home">
@@ -92,7 +93,7 @@ export default function ProfileScreen() {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="text-4xl font-bold text-white">{player.name}</h1>
-                <p className="text-slate-300 mt-2">
+                <p className="mt-2 text-slate-300">
                   {player.position} • {player.club}
                 </p>
               </div>
@@ -109,9 +110,9 @@ export default function ProfileScreen() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">
+          <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">
                 Player Info
               </h3>
               <div className="space-y-2">
@@ -138,8 +139,8 @@ export default function ProfileScreen() {
               </div>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">
                 Career Stats
               </h3>
               <div className="grid grid-cols-2 gap-4">
@@ -170,8 +171,8 @@ export default function ProfileScreen() {
               </div>
             </Card>
 
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h3 className="mb-4 text-lg font-semibold text-white">
                 Experience Progress
               </h3>
               <div className="space-y-2">
@@ -193,16 +194,16 @@ export default function ProfileScreen() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             {/* Skills */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">Skills</h2>
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">Skills</h2>
               <div className="space-y-4">
                 {Object.entries(player.skills).map(([skill, value]) => (
                   <div key={skill} className="space-y-2">
                     <div className="flex justify-between">
                       <span className="text-slate-300 capitalize">{skill}</span>
-                      <span className="text-white font-bold">{value}</span>
+                      <span className="font-bold text-white">{value}</span>
                     </div>
                     <Progress value={value} className="h-2" />
                   </div>
@@ -211,23 +212,23 @@ export default function ProfileScreen() {
             </Card>
 
             {/* Achievements */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 Achievements
               </h2>
-              <div className="space-y-3 max-h-96 overflow-y-auto">
+              <div className="max-h-96 space-y-3 overflow-y-auto">
                 {achievements.map((achievement) => (
                   <div
                     key={achievement.id}
-                    className={`p-3 rounded-lg border ${
+                    className={`rounded-lg border p-3 ${
                       achievement.unlocked
-                        ? "bg-green-900/20 border-green-700"
-                        : "bg-slate-700/20 border-slate-600"
+                        ? "border-green-700 bg-green-900/20"
+                        : "border-slate-600 bg-slate-700/20"
                     }`}
                   >
                     <div className="flex items-center space-x-3">
                       <div
-                        className={`w-4 h-4 rounded-full ${
+                        className={`h-4 w-4 rounded-full ${
                           achievement.unlocked ? "bg-green-400" : "bg-slate-500"
                         }`}
                       />
@@ -260,28 +261,28 @@ export default function ProfileScreen() {
           </div>
 
           {/* Recent Matches */}
-          <Card className="bg-slate-800/50 border-slate-700 p-6 mt-8">
-            <h2 className="text-2xl font-semibold text-white mb-4">
+          <Card className="mt-8 border-slate-700 bg-slate-800/50 p-6">
+            <h2 className="mb-4 text-2xl font-semibold text-white">
               Recent Matches
             </h2>
             <div className="space-y-3">
               {recentMatches.map((match) => (
                 <div
                   key={match.id}
-                  className="flex items-center justify-between p-4 rounded-lg bg-slate-700/30"
+                  className="flex items-center justify-between rounded-lg bg-slate-700/30 p-4"
                 >
                   <div className="flex items-center space-x-4">
                     <div className="text-center">
-                      <div className="text-white font-bold">{match.result}</div>
-                      <div className="text-slate-400 text-sm">{match.date}</div>
+                      <div className="font-bold text-white">{match.result}</div>
+                      <div className="text-sm text-slate-400">{match.date}</div>
                     </div>
                     <div className="text-white">vs {match.opponent}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-yellow-400 text-sm">
+                    <div className="text-sm text-yellow-400">
                       {match.goals} Goals
                     </div>
-                    <div className="text-blue-400 text-sm">
+                    <div className="text-sm text-blue-400">
                       {match.assists} Assists
                     </div>
                   </div>
