@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useNavigate, useParams } from "react-router";
 import { LiveHeader } from "./components/LiveHeader";
 import { EventFeed } from "./components/EventFeed";
 import { MatchControls } from "./components/MatchControls";
+import { useMatchSessionStore } from "../../../match/session-store";
+import { fetchBackendMatch } from "../../../lib/backend-match";
+import "../../(game)/field-assets";
 
-// --- Types ---
 type MatchEvent = {
   id: string;
   minute: number;
@@ -16,123 +19,183 @@ type MatchEvent = {
     | "opponent-chance";
 };
 
-type EffortLevel = "low" | "medium" | "high";
-type Playstyle = "defense" | "balanced" | "offensive";
-
-// --- Mock Data Generators ---
-const EVENTS_POOL = [
-  "Dojo United moving the ball nicely...",
-  "Cartridge City with a strong tackle!",
-  "Long ball forward...",
-  "Great interception by the defender.",
-  "The crowd is going wild!",
-  "Steady possession in the midfield.",
-  "Looking for an opening...",
-];
-
-const CHANCE_EVENTS = [
-  "Dojo United have a great chance!",
-  "Cartridge City breaking through the defense!",
-  "He shoots...!",
-  "One on one with the keeper!",
-];
-
-const GOAL_EVENTS = [
-  "GOAL! What a finish!",
-  "It's in the back of the net! GOAL!",
-  "Unstoppable strike! GOAL!",
-];
+function mapBackendEventType(event: {
+  team: string;
+  my_team_scored: boolean;
+  opponent_team_scored: boolean;
+  player_participates: boolean;
+}): MatchEvent["type"] {
+  if (event.my_team_scored) return "team-goal";
+  if (event.opponent_team_scored) return "opponent-goal";
+  if (event.player_participates && event.team === "MY_TEAM") return "team-chance";
+  if (event.player_participates && event.team === "OPPONENT_TEAM") return "opponent-chance";
+  return "normal";
+}
 
 export default function MatchScreen() {
-  // Game State
-  const [time, setTime] = useState(0);
-  const [homeScore, setHomeScore] = useState(0);
-  const [awayScore, setAwayScore] = useState(0);
-  const [events, setEvents] = useState<MatchEvent[]>([]);
+  const navigate = useNavigate();
+  const params = useParams();
+  const match = useMatchSessionStore((state) => state.match);
+  const myTeam = useMatchSessionStore((state) => state.myTeam);
+  const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
+  const timelineEvents = useMatchSessionStore((state) => state.timelineEvents);
+  const pendingAction = useMatchSessionStore((state) => state.pendingAction);
+  const playbackMinute = useMatchSessionStore((state) => state.playbackMinute);
+  const playbackStatus = useMatchSessionStore((state) => state.playbackStatus);
+  const effort = useMatchSessionStore((state) => state.effort);
+  const playstyle = useMatchSessionStore((state) => state.playstyle);
+  const setEffort = useMatchSessionStore((state) => state.setEffort);
+  const setPlaystyle = useMatchSessionStore((state) => state.setPlaystyle);
+  const setPlaybackMinute = useMatchSessionStore((state) => state.setPlaybackMinute);
+  const setPlaybackStatus = useMatchSessionStore((state) => state.setPlaybackStatus);
+  const hydrateMatchSession = useMatchSessionStore((state) => state.hydrateMatchSession);
+  const setLoading = useMatchSessionStore((state) => state.setLoading);
+  const setError = useMatchSessionStore((state) => state.setError);
+  const updateTransitionLoader = useMatchSessionStore((state) => state.updateTransitionLoader);
+  const hideTransitionLoader = useMatchSessionStore((state) => state.hideTransitionLoader);
+  const fieldTransitionTimeout = useRef<number | null>(null);
 
-  // User Controls State
-  const [effort, setEffort] = useState<EffortLevel>("medium");
-  const [playstyle, setPlaystyle] = useState<Playstyle>("balanced");
+  const targetMinute = pendingAction?.minute || match?.current_time || 0;
 
-  // Simulation Loop
   useEffect(() => {
-    if (time >= 90) return;
+    const matchId = params.matchId;
+    if (!matchId || (match?.id && match.id === matchId)) {
+      return;
+    }
 
-    const interval = setInterval(() => {
-      setTime((prev) => {
-        if (prev >= 90) {
-          clearInterval(interval);
-          return 90;
-        }
-        return prev + 1;
-      });
+    let cancelled = false;
 
-      // Simulation Logic (Simulate random events)
-      const random = Math.random();
-
-      let newEvent: MatchEvent | null = null;
-      const eventBase = {
-        id: Math.random().toString(36).substr(2, 9),
-        minute: time + 1,
-      };
-
-      if (random < 0.3) {
-        // Normal Event
-        newEvent = {
-          ...eventBase,
-          text: EVENTS_POOL[Math.floor(Math.random() * EVENTS_POOL.length)],
-          type: "normal",
-        };
-      } else if (random > 0.9 && random < 0.95) {
-        // Chance
-        const whoChance = Math.random() > 0.5 ? "home" : "away";
-        newEvent = {
-          ...eventBase,
-          text: CHANCE_EVENTS[Math.floor(Math.random() * CHANCE_EVENTS.length)],
-          type: whoChance === "home" ? "team-chance" : "opponent-chance",
-        };
-      } else if (random >= 0.97) {
-        // Goal
-        // Determine who scored based on rudimentary "momentum" (random for now)
-        const whoScored = Math.random() > 0.5 ? "home" : "away";
-        if (whoScored === "home") setHomeScore((s) => s + 1);
-        else setAwayScore((s) => s + 1);
-
-        newEvent = {
-          ...eventBase,
-          text: GOAL_EVENTS[Math.floor(Math.random() * GOAL_EVENTS.length)],
-          type: whoScored === "home" ? "team-goal" : "opponent-goal",
-        };
+    const loadMatch = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetchBackendMatch(matchId);
+        if (cancelled) return;
+        hydrateMatchSession({
+          match: response.match,
+          myTeam: response.my_team,
+          opponentTeam: response.opponent_team,
+          timelineEvents: response.timeline,
+        });
+      } catch (error) {
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Failed to load match.";
+        setError(message);
+        setLoading(false);
       }
+    };
 
-      if (newEvent) {
-        setEvents((prev) => [...prev, newEvent!]);
+    void loadMatch();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateMatchSession, match?.id, params.matchId, setError, setLoading]);
+
+  useEffect(() => {
+    if (!match?.id || !params.matchId || match.id !== params.matchId) {
+      return;
+    }
+
+    updateTransitionLoader({
+      progress: 100,
+      subtitle: "Live feed ready.",
+    });
+
+    const timeout = window.setTimeout(() => {
+      hideTransitionLoader();
+    }, 220);
+
+    return () => window.clearTimeout(timeout);
+  }, [hideTransitionLoader, match?.id, params.matchId, updateTransitionLoader]);
+
+  useEffect(() => {
+    if (!match?.id || !params.matchId || match.id !== params.matchId) {
+      return;
+    }
+
+    if (playbackStatus !== "timeline_playing") {
+      return;
+    }
+
+    if (playbackMinute >= targetMinute) {
+      if (pendingAction) {
+        setPlaybackStatus("timeline_ready_for_field");
+      } else {
+        setPlaybackStatus("idle");
       }
-    }, 1000); // 1 second = 1 minute
+      return;
+    }
 
-    return () => clearInterval(interval);
-  }, [time]);
+    const interval = window.setInterval(() => {
+      setPlaybackMinute(
+        Math.min(targetMinute, useMatchSessionStore.getState().playbackMinute + 1),
+      );
+    }, 1000);
+
+    return () => window.clearInterval(interval);
+  }, [
+    match?.id,
+    params.matchId,
+    pendingAction,
+    playbackMinute,
+    playbackStatus,
+    setPlaybackMinute,
+    setPlaybackStatus,
+    targetMinute,
+  ]);
+
+  useEffect(() => {
+    if (playbackStatus !== "timeline_ready_for_field") {
+      return;
+    }
+
+    fieldTransitionTimeout.current = window.setTimeout(() => {
+      setPlaybackStatus("field_ready");
+      navigate("/game");
+    }, 2000);
+
+    return () => {
+      if (fieldTransitionTimeout.current) {
+        window.clearTimeout(fieldTransitionTimeout.current);
+      }
+    };
+  }, [navigate, playbackStatus, setPlaybackStatus]);
+
+  const visibleBackendEvents = useMemo(
+    () => timelineEvents.filter((event) => event.minute <= playbackMinute),
+    [playbackMinute, timelineEvents],
+  );
+
+  const visibleEvents = useMemo<MatchEvent[]>(
+    () =>
+      visibleBackendEvents.map((event) => ({
+        id: `${event.match_id}_${event.event_id}`,
+        minute: event.minute,
+        text: event.description,
+        type: mapBackendEventType(event),
+      })),
+    [visibleBackendEvents],
+  );
+
+  const lastScoreEvent = visibleBackendEvents[visibleBackendEvents.length - 1];
+  const homeScore = lastScoreEvent?.my_team_score ?? 0;
+  const awayScore = lastScoreEvent?.opponent_team_score ?? 0;
 
   return (
     <div className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white">
-      {/* Background Overlay */}
-
       <div className="z-10 flex h-full w-full max-w-4xl flex-col items-center justify-between gap-4 pb-4">
-        {/* Header */}
         <div className="flex min-h-0 w-full shrink flex-col items-center justify-center rounded-2xl">
           <LiveHeader
-            homeTeamName="Dojo United"
-            awayTeamName="Cartridge City"
+            homeTeamName={myTeam?.name || "Dojo United"}
+            awayTeamName={opponentTeam?.name || "Cartridge City"}
             homeScore={homeScore}
             awayScore={awayScore}
-            time={time}
+            time={playbackMinute}
           />
-          <EventFeed events={events} />
+          <EventFeed events={visibleEvents} />
         </div>
 
-        {/* Event Feed - Takes available space */}
-
-        {/* Controls - Pinned to bottom naturally via flex */}
         <div className="w-full shrink-0">
           <MatchControls
             effort={effort}

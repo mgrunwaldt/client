@@ -45,6 +45,14 @@ export default defineConfig(({ command }) => {
       ...(isDev && {
         host: true,
         cors: true,
+        proxy: {
+          "/api": {
+            target: process.env.VITE_MATCH_BACKEND_PROXY_TARGET || "http://localhost:3000",
+            changeOrigin: true,
+            secure: false,
+            rewrite: (path) => path.replace(/^\/api/, ""),
+          },
+        },
       }),
     },
     define: {

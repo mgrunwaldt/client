@@ -1,4 +1,4 @@
-import { Routes, Route, BrowserRouter } from "react-router";
+import { Routes, Route, BrowserRouter, useLocation } from "react-router";
 
 // Import layout components
 import { AuthenticatedLayout } from "../components/layout/AuthenticatedLayout";
@@ -51,16 +51,34 @@ import {
   postLoginScreen,
 } from "../routes";
 import GameScene from "./(game)/GameScene";
+import MatchTransitionLoader from "../match/MatchTransitionLoader";
+
+function PersistentGameSceneHost() {
+  const location = useLocation();
+  const pathname = location.pathname;
+  const shouldMount =
+    pathname === "/game" ||
+    pathname.startsWith("/match/") ||
+    pathname.startsWith("/pre-match/");
+
+  if (!shouldMount) {
+    return null;
+  }
+
+  return <GameScene active={pathname === "/game"} />;
+}
 
 function App() {
   return (
     <BrowserRouter>
+      <MatchTransitionLoader />
+      <PersistentGameSceneHost />
       <Routes>
         {/* Unauthenticated routes */}
         <Route path={login} element={<LoginScreen />} />
         <Route path={claim} element={<ClaimScreen />} />
         <Route path={postLoginScreen} element={<PostLoginScreen />} />
-        <Route path={"/game"} element={<GameScene />} />
+        <Route path={"/game"} element={<div className="h-dvh w-full bg-black" />} />
 
 
         {/* All authenticated routes under AuthenticatedLayout */}
