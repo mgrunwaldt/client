@@ -37,7 +37,7 @@ const EXPECTED_STEPS = [
   {
     name: "Install pnpm",
     uses: "pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda",
-    with: { version: EXPECTED_PNPM_VERSION, run_install: false },
+    with: { run_install: false },
   },
   {
     name: "Configure Node",

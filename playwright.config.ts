@@ -9,6 +9,9 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL: "http://127.0.0.1:4173",
+    launchOptions: {
+      args: ["--enable-unsafe-swiftshader"],
+    },
     trace: "retain-on-failure",
   },
   webServer: {
