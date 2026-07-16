@@ -106,7 +106,7 @@ export function verifyCiPolicy({
   );
   verifyExact(
     packageJson.engines,
-    { node: EXPECTED_NODE_VERSION, pnpm: EXPECTED_PNPM_VERSION },
+    { node: "22.x", pnpm: EXPECTED_PNPM_VERSION },
     "Package engines",
   );
   verifyExact(
