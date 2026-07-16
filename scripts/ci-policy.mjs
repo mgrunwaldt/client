@@ -140,11 +140,7 @@ export function verifyCiPolicy({
     "Required package scripts",
   );
   verifyExact(nvmrc.trim(), EXPECTED_NODE_VERSION, ".nvmrc");
-  verifyExact(
-    npmrc.trim(),
-    "engine-strict=true\nuse-node-version=22.14.0",
-    ".npmrc",
-  );
+  verifyExact(npmrc.trim(), "engine-strict=true", ".npmrc");
   verifyExact(runtime.node, `v${EXPECTED_NODE_VERSION}`, "Runtime Node");
   if (!runtime.pnpmUserAgent?.startsWith(`pnpm/${EXPECTED_PNPM_VERSION} `)) {
     throw new Error("Runtime pnpm does not match the required CI policy");

@@ -118,10 +118,10 @@ at build time; changing them after `pnpm build` does not update the bundle.
 
 ## Quality Gates
 
-The client runs on exactly Node.js 22.14.0. Local tools use `.nvmrc`; pnpm also
-resolves that runtime from `.npmrc`. The `Client Quality` GitHub Actions
-workflow uses exact Node.js 22.14.0 and pnpm 10.24.0 versions. Its stable job
-check is `client-quality`.
+The client runs on exactly Node.js 22.14.0. Local version managers use `.nvmrc`,
+and `package.json` enforces the same runtime through `engines`. The `Client
+Quality` GitHub Actions workflow uses exact Node.js 22.14.0 and pnpm 10.24.0
+versions. Its stable job check is `client-quality`.
 
 ```bash
 pnpm install --frozen-lockfile

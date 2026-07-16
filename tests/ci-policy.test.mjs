@@ -114,7 +114,7 @@ describe("CI policy contract", () => {
       candidate.nvmrc = "22";
     });
     expectRejected((candidate) => {
-      candidate.npmrc = "engine-strict=false\nuse-node-version=22.14.0\n";
+      candidate.npmrc = "engine-strict=false\n";
     });
     expectRejected((candidate) => {
       candidate.runtime.node = "v23.10.0";
