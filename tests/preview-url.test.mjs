@@ -20,4 +20,11 @@ describe("extractVitePreviewUrl", () => {
     output += "0.1:\u001b[1m51234\u001b[22m/\u001b[39m";
     expect(extractVitePreviewUrl(output)).toBe("http://127.0.0.1:51234");
   });
+
+  it("waits for the complete port and terminating slash", () => {
+    let output = "Local: http://127.0.0.1:512";
+    expect(extractVitePreviewUrl(output)).toBeNull();
+    output += "34/";
+    expect(extractVitePreviewUrl(output)).toBe("http://127.0.0.1:51234");
+  });
 });
