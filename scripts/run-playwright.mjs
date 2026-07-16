@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { extractVitePreviewUrl } from "./preview-url.mjs";
 
 const viteBinary = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),
@@ -175,6 +176,7 @@ async function createPnpmShimDirectory() {
 function waitForPreviewUrl(preview) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let output = "";
     const timeout = setTimeout(() => {
       finish(reject, new Error("Timed out waiting for Vite preview URL"));
     }, 30_000);
@@ -188,8 +190,9 @@ function waitForPreviewUrl(preview) {
       callback(value);
     };
     const inspect = (chunk) => {
-      const url = chunk.toString().match(/http:\/\/127\.0\.0\.1:\d+\/?/u)?.[0];
-      if (url) finish(resolve, url.replace(/\/$/u, ""));
+      output = `${output}${chunk}`.slice(-4_096);
+      const url = extractVitePreviewUrl(output);
+      if (url) finish(resolve, url);
     };
     const onError = (error) => finish(reject, error);
     const onClose = (code, signal) =>
