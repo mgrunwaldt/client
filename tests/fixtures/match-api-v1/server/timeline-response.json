@@ -1,0 +1,7 @@
+{
+  "timeline": [
+    { "match_id": "match-fixture-1", "event_id": 7, "action": "OPEN_PLAY", "minute": 44, "team": "MY_TEAM", "description": "The pass is cut out.", "my_team_score": 1, "opponent_team_score": 0, "my_team_scored": false, "opponent_team_scored": false, "player_participates": true, "halftime": false, "match_end": false, "meta": { "outcome_type": "DEFENDER_INTERCEPT" } },
+    { "match_id": "match-fixture-1", "event_id": 8, "action": "HALFTIME", "minute": 45, "team": "NEUTRAL", "description": "Half-time.", "my_team_score": 1, "opponent_team_score": 0, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": true, "match_end": false, "meta": null },
+    { "match_id": "match-fixture-1", "event_id": 9, "action": "RESUME_MATCH", "minute": 46, "team": "NEUTRAL", "description": "Second half begins.", "my_team_score": 1, "opponent_team_score": 0, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": false, "meta": null }
+  ]
+}

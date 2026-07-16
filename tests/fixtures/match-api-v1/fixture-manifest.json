@@ -1,0 +1,41 @@
+{
+  "source": {
+    "repository": "https://github.com/overgoal/match_server",
+    "revision": "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7",
+    "contract_path": "contracts/match-api/v1",
+    "description": "Test-only mirror of the M0-I4 canonical Match API v1 fixtures. Runtime modules must not import this directory."
+  },
+  "sha256": {
+    "invalid/player-kick-request.json": "d306ab90c56381ee0445b597114028de8edd0add69e570edf2e957f1f2c89da2",
+    "invalid/server-dribble-result-missing-resolution.json": "5e5df973a8ed4788508c89012b2df7ae967844669929ddb5f4d39fd4b22bb83b",
+    "invalid/server-error-response.json": "4641b42c0370e8814657ab5db1b9df9d567644009e48f60f85fd05768c8ca672",
+    "manifest.json": "debe74f27adbc602056b685a00c041f450ff877a1d579d88e4b29f6a6c169730",
+    "openapi.json": "285e0297f69745fba5ca21fe73829472c8fa55911f616d7242be0645862e3de8",
+    "player-client/create-match-request.json": "f079e3bc5f51bf61f64637ac8ef3f2f51666699df513590a4b4b2cb96f26480e",
+    "player-client/dribble-run-request.json": "4be4a83b854a9941c2396a357fcb4ebebb4e5cd6a3ad569293359904948b0147",
+    "player-client/dribble-start-request.json": "3928028e2b77b7b7cca3f5dde3c6026d446495e32aaf9d3de948bb297947d76e",
+    "player-client/kick-decision-request.json": "44fc1e108e820c3970f06f9ac65f555efcff5cbf823c3a9070587b2aa928d111",
+    "player-client/match-command-request.json": "1a5c257e2b6a7518996758627293e2c0d1d4714433f7fc5258be6916652e9813",
+    "player-client/random-event-request.json": "57d92219959cdc07724b0b6b366cd7ca89fee5b4bb75b85b3ff3d6bb01519434",
+    "player-client/simulate-foul-request.json": "5ecb29abd69f71fe0846501ce1ec2f04d5f4571573d39710eeaf7d4473f95365",
+    "scenes/argument-opponent.json": "a7ec1b1abb067e35cbfcd6d728ea139ca6bf2aaf79e72d532103bd8d1d03a9d1",
+    "scenes/argument-teammate.json": "26c900a6d9c5379e25b6908da26cdb33b95398071f5a301effbebdeb50b7baa4",
+    "scenes/bathroom.json": "afcab3a997365707d3bbe306087dadff2c8ce033875d30d3a2d9a81f57b5d6cc",
+    "scenes/brawl.json": "6a6a98fe295fa3a16ccc50dafe1831ac35aee250fc41d5488fd256e1e6ebd46a",
+    "scenes/corner.json": "4a42b0d75397c4ac08db84070ffdfe9b3b8cb19ba9f719f899f42f96f82011a3",
+    "scenes/dribble.json": "51b8a8997c0efa4575cc230d2c126cbda60d66b51ba8a0cb685733f0ded44467",
+    "scenes/free-kick.json": "eb19e00a2eb025469b76c3d11150e78e8158aecf665536b5880261488e8d70b3",
+    "scenes/jumper.json": "60b18cee320076f21f6ffc486d19dabbc5cee383c31e315cc79ea2345abff158",
+    "scenes/open-play.json": "494884a06512747ed7f5cbe0951c5d3687f9f6facafc175eed55567bbfebdbb1",
+    "scenes/penalty.json": "4e1e291f10d48753ec43e8dc36a22e5bf7444731a00f18f74ef2d508938bce76",
+    "server/create-match-response.json": "8138e5fbf86eee0b771c67b8b79240823902abae698b2c1379bab588b947b985",
+    "server/dribble-failed-response.json": "ea23503ff5418413e2e12a241e187c945b1cdbcab345e5015de2d2630e1d6e8d",
+    "server/dribble-success-response.json": "2aa75f233f430a074db99bd5377a6ef5452fefacb33755b57466b2effa367516",
+    "server/error-response.json": "5bc4b8c7037dfb1de9b29b8c0309ede21eba226a50478366a7b5e96cbbd7bf05",
+    "server/fulltime-response.json": "83d0753762580da3b0e03e0c1b10e0634e78776be7b56675781921de82c55409",
+    "server/halftime-response.json": "d427436ca6b9cb3679d72189830f8151277316d14df67f9cee058b594516cd25",
+    "server/match-snapshot-response.json": "053c1333b85ba62831236df239c028f090a0ec60104604fc69283369ca4878ec",
+    "server/timeline-response.json": "c798afd59579457928049533f19e196226e3b1a7f50b5600613210de812aa91a",
+    "server/waiting-open-play-response.json": "cdbe0be0fce3665e2b91cd116470838dc316f45543bbdab8409e76cb2d609ff7"
+  }
+}

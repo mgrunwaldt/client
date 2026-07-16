@@ -1,0 +1,12 @@
+{
+  "source": {
+    "repository": "https://github.com/overgoal/match_server",
+    "revision": "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7",
+    "packet_path": "self-pass-follow-up-response.json",
+    "description": "Frozen M0 self-pass follow-up response packet for client hydration only."
+  },
+  "sha256": {
+    "README.md": "601039a069d6d4c773e56a70b26dba6174f87285fe356b59a395fffcfe945609",
+    "self-pass-follow-up-response.json": "e15f346d910d6320d9953a65d58443602ada74b5141259817d332d9f98f399e9"
+  }
+}

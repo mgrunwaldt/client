@@ -9,9 +9,12 @@
     "dev:http": "VITE_LOCAL_HTTPS=false vite",
     "typecheck": "tsc -b",
     "test": "pnpm test:unit",
-    "test:unit": "vitest run tests/app-config.smoke.test.ts",
+    "test:unit": "vitest run tests",
+    "test:fixtures": "node scripts/verify-match-api-v1-fixtures.mjs",
     "test:policy": "vitest run tests/ci-policy.test.mjs",
-    "test:browser": "env -u NO_COLOR playwright test",
+    "test:browser": "env -u NO_COLOR node scripts/run-playwright.mjs",
+    "test:browser:stale-port": "env -u NO_COLOR node scripts/verify-playwright-stale-port.mjs",
+    "test:browser:signal": "env -u NO_COLOR node scripts/verify-playwright-signal-cleanup.mjs",
     "bundle:verify": "node scripts/verify-bundle.mjs",
     "build": "pnpm typecheck && vite build && pnpm bundle:verify",
     "ci:verify": "node scripts/verify-ci-policy.mjs",
@@ -70,11 +73,6 @@
     "zod": "^4.1.12",
     "zustand": "^5.0.8"
   },
-  "overrides": {
-    "@dojoengine/torii-wasm": "^1.6.5-alpha.2",
-    "@dojoengine/sdk": "^1.6.0",
-    "three": "0.179.1"
-  },
   "pnpm": {
     "overrides": {
       "@react-three/drei@10.7.6>camera-controls": "3.1.0"
@@ -89,6 +87,8 @@
     "@types/react-dom": "^19.2.2",
     "@types/uuid": "^11.0.0",
     "@vitejs/plugin-react": "^5.1.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "autoprefixer": "^10.4.21",
     "baseline-browser-mapping": "2.10.43",
     "caniuse-lite": "1.0.30001805",
@@ -110,7 +110,7 @@
     "yaml": "2.9.0"
   },
   "engines": {
-    "node": "22.14.0",
+    "node": "22.x",
     "pnpm": "10.24.0"
   },
   "packageManager": "pnpm@10.24.0+sha512.01ff8ae71b4419903b65c60fb2dc9d34cf8bb6e06d03bde112ef38f7a34d6904c424ba66bea5cdcf12890230bf39f9580473140ed9c946fef328b6e5238a345a"

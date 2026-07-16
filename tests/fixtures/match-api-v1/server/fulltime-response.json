@@ -1,0 +1,14 @@
+{
+  "minute": 90,
+  "status": "FINISHED",
+  "prev_time": 73,
+  "pending_action": null,
+  "field_state": null,
+  "action": null,
+  "action_team": null,
+  "events": [{ "match_id": "match-fixture-1", "event_id": 17, "action": "MATCH_END", "minute": 90, "team": "NEUTRAL", "description": "Match finished.", "my_team_score": 2, "opponent_team_score": 1, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": true, "meta": null }],
+  "match": {
+    "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
+    "current_time": 90, "prev_time": 0, "match_status": "FINISHED", "event_counter": 17, "pending_action": null
+  }
+}

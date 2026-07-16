@@ -105,3 +105,46 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
   );
   expect(unexpectedDiagnostics).toEqual([]);
 });
+
+test("uses a mobile viewport and dispatches touch input", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile-chromium");
+  await page.goto("/login");
+
+  expect(page.viewportSize()).toEqual({ height: 727, width: 393 });
+  const touchCapabilities = (await page.evaluate(
+    `({
+      coarsePointer: window.matchMedia("(pointer: coarse)").matches,
+      maxTouchPoints: navigator.maxTouchPoints
+    })`,
+  )) as { coarsePointer: boolean; maxTouchPoints: number };
+  expect(touchCapabilities).toEqual({ coarsePointer: true, maxTouchPoints: 1 });
+
+  await page.evaluate(`(() => {
+    document.body.dataset.lastPointerType = "";
+    document.body.addEventListener("pointerdown", (event) => {
+      document.body.dataset.lastPointerType = event.pointerType;
+    }, { once: true });
+  })()`);
+  await page.locator("body").tap({ position: { x: 8, y: 8 } });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-last-pointer-type",
+    "touch",
+  );
+});
+
+test("holds an active browser worker for the runner signal-cleanup proof", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    process.env.OVERGOAL_RUNNER_SIGNAL_PROOF !== "1" ||
+      testInfo.project.name !== "chromium",
+  );
+  await page.goto("/login");
+  await expect(
+    page.getByRole("button", { name: "Connect Controller" }),
+  ).toBeVisible();
+  console.log("OVERGOAL_BROWSER_READY");
+  await page.waitForTimeout(60_000);
+});

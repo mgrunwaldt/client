@@ -122,9 +122,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
 
-  const data = await response.json();
+  const data: unknown = await response.json();
   if (!response.ok) {
-    throw new Error(data?.error || `Backend request failed: ${path}`);
+    const error =
+      typeof data === "object" && data !== null && "error" in data
+        ? data.error
+        : null;
+    throw new Error(
+      typeof error === "string" ? error : `Backend request failed: ${path}`,
+    );
   }
 
   return data as T;

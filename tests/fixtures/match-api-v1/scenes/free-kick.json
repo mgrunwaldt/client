@@ -1,0 +1,14 @@
+{
+  "id": "action-free-kick-1", "minute": 28, "action_type": "FREE_KICK", "scene_type": "FREE_KICK", "action_team": "MY_TEAM", "source": "SIMULATION",
+  "title": "Free Kick", "description": "Your Legend wins a dangerous free kick.", "field_state_id": "field-free-kick-1",
+  "available_choices": [{ "id": "KICK", "label": "Kick", "description": "Aim the delivery or direct attempt.", "input_schema": { "required": ["choice", "end_x", "end_y", "contact_x", "contact_y", "power", "curve", "selection_quality", "seed"], "optional": ["intent_hint", "target_zone"] } }],
+  "context": { "seed": 28001, "distance_to_goal": 20, "side_of_pitch": "LEFT", "pressure": 55, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null },
+  "origin": null, "contract_version": 2,
+  "field_state": {
+    "id": "field-free-kick-1", "match_id": "match-fixture-1", "minute": 28, "action_type": "FREE_KICK", "scene_family": "FREE_KICK",
+    "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 34, "y": 27, "is_legend": true, "has_ball": true }],
+    "opponent_positions": [{ "id": "team_2_CB_3", "role": "WALL", "x": 34, "y": 18 }],
+    "legend_player_id": "team_1_ST_10", "carrier_player_id": "team_1_ST_10", "distance_to_goal": 20, "ball_x": 34, "ball_y": 24.6,
+    "context": { "seed": 28001, "distance_to_goal": 20, "side_of_pitch": "LEFT", "pressure": 55, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null }
+  }
+}
