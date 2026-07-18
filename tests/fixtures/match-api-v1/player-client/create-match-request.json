@@ -1,0 +1,7 @@
+{
+  "my_team_id": "team_1",
+  "opponent_team_id": "team_2",
+  "player_profile": { "stamina": 82, "energy": 82, "shoot": 81, "dribble": 78, "speed": 79, "passing": 76, "heading": 69, "defense": 55, "intelligence": 76 },
+  "ruleset": { "rebound_play_enabled": true },
+  "seed": "season-2026:fixture-42:attempt-1"
+}

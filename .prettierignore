@@ -1,3 +1,6 @@
 # Ignore artifacts:
 build
 coverage
+
+# Byte-for-byte mirror of the published Match API v1 fixtures.
+tests/fixtures/match-api-v1

@@ -1,13 +1,14 @@
-import { SettingsIcon } from "lucide-react";
-import CyberContainer from "./cyber-container";
-import { Button } from "../../../../components/ui/button";
-import { HomeMenuItem } from "../../../../components/ui/lifestyle-container";
-import RivalMarquee from "./rival-marquee";
-import { Link } from "react-router";
+import { lookupAddresses } from "@cartridge/controller";
 import { useAccount } from "@starknet-react/core";
+import { SettingsIcon } from "lucide-react";
 import { useState } from "react";
 import { useEffect } from "react";
-import { lookupAddresses } from "@cartridge/controller";
+import { Link } from "react-router";
+
+import { Button } from "../../../../components/ui/button";
+import { HomeMenuItem } from "../../../../components/ui/lifestyle-container";
+import CyberContainer from "./cyber-container";
+import RivalMarquee from "./rival-marquee";
 
 export default function MenuNav() {
   const { account } = useAccount();

@@ -5,36 +5,40 @@
  * Usage: node scripts/generate-player-inserts.js > players-insert.sql
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Read the players.json file
-const playersPath = path.join(__dirname, '../public/players.json');
-const playersData = JSON.parse(fs.readFileSync(playersPath, 'utf8'));
+const playersPath = path.join(__dirname, "../public/players.json");
+const playersData = JSON.parse(fs.readFileSync(playersPath, "utf8"));
 
-console.log('-- Generated player INSERT statements from players.json');
-console.log('-- Total players:', playersData.length);
-console.log('-- Generated on:', new Date().toISOString());
-console.log('');
+console.log("-- Generated player INSERT statements from players.json");
+console.log("-- Total players:", playersData.length);
+console.log("-- Generated on:", new Date().toISOString());
+console.log("");
 
-console.log('INSERT INTO public.players (');
-console.log('    link_id, player_name, player_description, player_category,');
-console.log('    fame, charisma, stamina, strength, agility, intelligence, energy, speed, leadership, pass, shoot, freekick,');
-console.log('    universe_currency, body_type, skin_color, beard_type, hair_type, hair_color, visor_type, visor_color, team_id,');
-console.log('    json_created_at, json_last_updated_at, json_last_login_at');
-console.log(') VALUES');
+console.log("INSERT INTO public.players (");
+console.log("    link_id, player_name, player_description, player_category,");
+console.log(
+  "    fame, charisma, stamina, strength, agility, intelligence, energy, speed, leadership, pass, shoot, freekick,",
+);
+console.log(
+  "    universe_currency, body_type, skin_color, beard_type, hair_type, hair_color, visor_type, visor_color, team_id,",
+);
+console.log("    json_created_at, json_last_updated_at, json_last_login_at");
+console.log(") VALUES");
 
 // Generate INSERT statements
 playersData.forEach((player, index) => {
   const isLast = index === playersData.length - 1;
-  
+
   // Escape single quotes in strings
-  const escapeSql = (str) => str ? str.replace(/'/g, "''") : '';
-  
+  const escapeSql = (str) => (str ? str.replace(/'/g, "''") : "");
+
   const values = [
     `'${player.linkID}'`,
     `'${escapeSql(player.player_name)}'`,
@@ -63,12 +67,12 @@ playersData.forEach((player, index) => {
     player.team_id,
     player.created_at,
     player.last_updated_at,
-    player.last_login_at
+    player.last_login_at,
   ];
-  
-  const line = `(${values.join(', ')})${isLast ? ';' : ','}`;
+
+  const line = `(${values.join(", ")})${isLast ? ";" : ","}`;
   console.log(line);
 });
 
-console.log('');
-console.log('-- Players inserted successfully!');
+console.log("");
+console.log("-- Players inserted successfully!");

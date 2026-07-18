@@ -1,17 +1,24 @@
-import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Preload, useProgress } from "@react-three/drei";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import Lights from "./components/lights";
-import { PlayerData } from "../models/ChangeableModels";
+import { Canvas } from "@react-three/fiber";
+import {
+  type ComponentProps,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import useAppStore from "../../zustand/store";
 import ChangeableModel1 from "../models/ChangeableModel1";
 import ChangeableModel2 from "../models/ChangeableModel2";
 import ChangeableModel3 from "../models/ChangeableModel3";
+import type { PlayerData } from "../models/shared-types";
 import BackgroundPlane from "./background";
-import useAppStore from "../../zustand/store";
+import Lights from "./components/lights";
 
 interface SceneContentProps {
   player: PlayerData | null;
-  orbitControlsSettings: any;
+  orbitControlsSettings: ComponentProps<typeof OrbitControls>;
   onLoadComplete?: () => void;
 }
 

@@ -1,37 +1,21 @@
-import { useEffect, useState } from "react";
-import TeamsList from "./components/teams-list";
-import CyberContainer from "../Home/components/cyber-container";
-import SeasonTeamItem from "./components/team-item";
-import teamsData from "./components/teams.json";
+import playersData from "../../../../data/players.json";
 import { BackButton } from "../../../components/ui/back-button";
 import { Countdown } from "../../../components/ui/countdown";
-import { SEASON_COUNTDOWN_TARGET_DATE } from "../Home/constants";
 import useAppStore from "../../../zustand/store";
-import playersData from "../../../../data/players.json";
+import CyberContainer from "../Home/components/cyber-container";
+import { SEASON_COUNTDOWN_TARGET_DATE } from "../Home/constants";
+import SeasonTeamItem from "./components/team-item";
+import teamsData from "./components/teams.json";
+import TeamsList from "./components/teams-list";
 
 export default function SeasonsScreen() {
   const { claimedPlayerLinkId } = useAppStore();
-  const [playerTeam, setPlayerTeam] = useState(teamsData[0]); // Default to first team
-
-  useEffect(() => {
-    if (claimedPlayerLinkId) {
-      // Find the player using the linkID
-      const claimedPlayer = playersData.find(
-        (player) => player.linkID === claimedPlayerLinkId,
-      );
-      
-      if (claimedPlayer && claimedPlayer.team_id) {
-        // Find the team using the player's team_id
-        const team = teamsData.find(
-          (team) => team.id === claimedPlayer.team_id,
-        );
-        
-        if (team) {
-          setPlayerTeam(team);
-        }
-      }
-    }
-  }, [claimedPlayerLinkId]);
+  const claimedPlayer = playersData.find(
+    (player) => player.linkID === claimedPlayerLinkId,
+  );
+  const playerTeam =
+    teamsData.find((team) => team.id === claimedPlayer?.team_id) ??
+    teamsData[0];
 
   return (
     <>

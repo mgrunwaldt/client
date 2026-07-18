@@ -1,0 +1,229 @@
+{
+  "minute": 12,
+  "status": "WAITING_FOR_DECISION",
+  "prev_time": 12,
+  "pending_action": {
+    "id": "action-open-self-pass-follow-up-1",
+    "minute": 12,
+    "action_type": "OPEN_PLAY",
+    "scene_type": "OPEN_PLAY",
+    "action_team": "MY_TEAM",
+    "source": "FOLLOW_UP",
+    "title": "Open Play",
+    "description": "Your Legend receives the ball in open play.",
+    "field_state_id": "field-open-self-pass-follow-up-1",
+    "available_choices": [
+      {
+        "id": "KICK",
+        "label": "Kick",
+        "description": "Aim the ball.",
+        "input_schema": { "required": ["choice"] }
+      },
+      {
+        "id": "DRIBBLE",
+        "label": "Dribble",
+        "description": "Launch the dribble scene.",
+        "input_schema": { "required": ["choice"] }
+      }
+    ],
+    "context": {
+      "seed": 12001,
+      "distance_to_goal": 18,
+      "side_of_pitch": "RIGHT",
+      "pressure": 53,
+      "attack_phase": "TRANSITION",
+      "numerical_advantage": 0,
+      "quality_band": "PROGRESSIVE",
+      "previous_outcome": "BETTER",
+      "possession_state": "PASS_RECEIVED",
+      "carrier_player_id": "team_1_RB_2"
+    },
+    "origin": {
+      "previous_action_id": "action-open-1",
+      "previous_outcome": "KICK_TO_BETTER_OPEN_PLAY"
+    },
+    "contract_version": 2,
+    "field_state": {
+      "id": "field-open-self-pass-follow-up-1",
+      "match_id": "match-fixture-1",
+      "minute": 12,
+      "action_type": "OPEN_PLAY",
+      "scene_family": "OPEN_PLAY",
+      "my_team_positions": [
+        {
+          "id": "team_1_RB_2",
+          "role": "RB",
+          "x": 72,
+          "y": 39,
+          "is_legend": true,
+          "has_ball": true
+        }
+      ],
+      "opponent_positions": [
+        { "id": "team_2_CB_3", "role": "CB", "x": 65, "y": 28 }
+      ],
+      "legend_player_id": "team_1_RB_2",
+      "carrier_player_id": "team_1_RB_2",
+      "distance_to_goal": 18,
+      "ball_x": 72,
+      "ball_y": 36.2,
+      "context": {
+        "seed": 12001,
+        "distance_to_goal": 18,
+        "side_of_pitch": "RIGHT",
+        "pressure": 53,
+        "attack_phase": "TRANSITION",
+        "numerical_advantage": 0,
+        "quality_band": "PROGRESSIVE",
+        "previous_outcome": "BETTER",
+        "possession_state": "PASS_RECEIVED",
+        "carrier_player_id": "team_1_RB_2"
+      }
+    }
+  },
+  "field_state": {
+    "id": "field-open-self-pass-follow-up-1",
+    "match_id": "match-fixture-1",
+    "minute": 12,
+    "action_type": "OPEN_PLAY",
+    "scene_family": "OPEN_PLAY",
+    "my_team_positions": [
+      {
+        "id": "team_1_RB_2",
+        "role": "RB",
+        "x": 72,
+        "y": 39,
+        "is_legend": true,
+        "has_ball": true
+      }
+    ],
+    "opponent_positions": [
+      { "id": "team_2_CB_3", "role": "CB", "x": 65, "y": 28 }
+    ],
+    "legend_player_id": "team_1_RB_2",
+    "carrier_player_id": "team_1_RB_2",
+    "distance_to_goal": 18,
+    "ball_x": 72,
+    "ball_y": 36.2,
+    "context": {
+      "seed": 12001,
+      "distance_to_goal": 18,
+      "side_of_pitch": "RIGHT",
+      "pressure": 53,
+      "attack_phase": "TRANSITION",
+      "numerical_advantage": 0,
+      "quality_band": "PROGRESSIVE",
+      "previous_outcome": "BETTER",
+      "possession_state": "PASS_RECEIVED",
+      "carrier_player_id": "team_1_RB_2"
+    }
+  },
+  "action": "OPEN_PLAY",
+  "action_team": "MY_TEAM",
+  "events": [
+    {
+      "match_id": "match-fixture-1",
+      "event_id": 1,
+      "action": "OPEN_PLAY",
+      "minute": 12,
+      "team": "MY_TEAM",
+      "description": "Your Legend receives the ball in open play.",
+      "my_team_score": 0,
+      "opponent_team_score": 0,
+      "my_team_scored": false,
+      "opponent_team_scored": false,
+      "player_participates": true,
+      "halftime": false,
+      "match_end": false,
+      "meta": null
+    },
+    {
+      "match_id": "match-fixture-1",
+      "event_id": 2,
+      "action": "OPEN_PLAY",
+      "minute": 12,
+      "team": "MY_TEAM",
+      "description": "Your Legend receives the ball in open play.",
+      "my_team_score": 0,
+      "opponent_team_score": 0,
+      "my_team_scored": false,
+      "opponent_team_scored": false,
+      "player_participates": true,
+      "halftime": false,
+      "match_end": false,
+      "meta": {
+        "source": "FOLLOW_UP",
+        "previous_outcome": "KICK_TO_BETTER_OPEN_PLAY"
+      }
+    }
+  ],
+  "match": {
+    "id": "match-fixture-1",
+    "my_team_id": "team_1",
+    "opponent_team_id": "team_2",
+    "my_team_score": 0,
+    "opponent_team_score": 0,
+    "current_time": 12,
+    "prev_time": 12,
+    "match_status": "WAITING_FOR_DECISION",
+    "event_counter": 2,
+    "pending_action": {
+      "id": "action-open-self-pass-follow-up-1",
+      "minute": 12,
+      "action_type": "OPEN_PLAY",
+      "scene_type": "OPEN_PLAY",
+      "action_team": "MY_TEAM",
+      "source": "FOLLOW_UP",
+      "title": "Open Play",
+      "description": "Your Legend receives the ball in open play.",
+      "field_state_id": "field-open-self-pass-follow-up-1",
+      "available_choices": [
+        {
+          "id": "KICK",
+          "label": "Kick",
+          "description": "Aim the ball.",
+          "input_schema": { "required": ["choice"] }
+        },
+        {
+          "id": "DRIBBLE",
+          "label": "Dribble",
+          "description": "Launch the dribble scene.",
+          "input_schema": { "required": ["choice"] }
+        }
+      ],
+      "context": {
+        "seed": 12001,
+        "distance_to_goal": 18,
+        "side_of_pitch": "RIGHT",
+        "pressure": 53,
+        "attack_phase": "TRANSITION",
+        "numerical_advantage": 0,
+        "quality_band": "PROGRESSIVE",
+        "previous_outcome": "BETTER",
+        "possession_state": "PASS_RECEIVED",
+        "carrier_player_id": "team_1_RB_2"
+      },
+      "origin": {
+        "previous_action_id": "action-open-1",
+        "previous_outcome": "KICK_TO_BETTER_OPEN_PLAY"
+      },
+      "contract_version": 2
+    }
+  },
+  "decision_result": {
+    "description": "Successful pass. Your teammate receives it in a better attacking position.",
+    "success": true,
+    "outcome_type": "KICK_TO_BETTER_OPEN_PLAY",
+    "energy_modifier": 0.9,
+    "flight_outcome": "TEAMMATE_CONTROL",
+    "final_point": { "x": 72, "y": 36.2, "z": 0, "t": 1 },
+    "receiver": {
+      "id": "team_1_RB_2",
+      "role": "RB",
+      "x": 72,
+      "y": 39,
+      "is_legend": true,
+      "has_ball": true
+    }
+  }
+}

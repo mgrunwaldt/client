@@ -11,7 +11,7 @@ export function useShader<T extends Record<string, THREE.IUniform>>(
   config: ShaderConfig,
   uniforms: T,
 ): THREE.ShaderMaterial & { uniforms: T } {
-  const { vertexShader, fragmentShader, glslVersion } = config;
+  const { vertexShader, fragmentShader } = config;
 
   const material = useMemo(() => {
     const mat = new THREE.ShaderMaterial({
@@ -21,10 +21,7 @@ export function useShader<T extends Record<string, THREE.IUniform>>(
     });
 
     return mat as THREE.ShaderMaterial & { uniforms: T };
-  }, [vertexShader, fragmentShader, glslVersion]);
-
-  // Update uniforms reference without recreating material
-  material.uniforms = uniforms;
+  }, [fragmentShader, uniforms, vertexShader]);
 
   return material;
 }

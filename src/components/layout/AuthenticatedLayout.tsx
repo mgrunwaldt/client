@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Outlet, useNavigate } from "react-router";
+
 import { useStarknetConnect } from "../../dojo/hooks/useStarknetConnect";
 import LoadingScreen from "../loader/LoadingScreen";
 

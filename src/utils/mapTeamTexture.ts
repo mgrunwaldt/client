@@ -11,7 +11,6 @@ export const mapTeamTexture = (team: number, skin: number) => {
   return texture;
 };
 
-
 const accesoriesTextures = {
   0: "/models/Male/new-text/Accesories_Mat_1.png",
   1: "/models/Male/new-text/Accesories_Mat_2.png",

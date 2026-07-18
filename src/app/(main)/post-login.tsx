@@ -1,7 +1,8 @@
-import { Button } from "../../components/ui/button";
-import { socialLinks } from "./Home/constants";
 import { Link } from "react-router";
+
+import { Button } from "../../components/ui/button";
 import { GlitchText } from "../../components/ui/glitch-text";
+import { socialLinks } from "./Home/constants";
 
 const discordIcon = (
   <svg

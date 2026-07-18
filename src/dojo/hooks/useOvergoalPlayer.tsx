@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
 import { useAccount } from "@starknet-react/core";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addAddressPadding } from "starknet";
-import { dojoConfig } from "../dojoConfig";
+
 import { OvergoalPlayer } from "../../lib/schema";
 import useAppStore from "../../zustand/store";
+import { dojoConfig } from "../dojoConfig";
 
 interface UseOvergoalPlayerReturn {
   isFetched: boolean;
@@ -133,7 +134,6 @@ export const useOvergoalPlayer = (): UseOvergoalPlayerReturn => {
 
       const overgoalPlayerData = await fetchOvergoalPlayerData(userAddress);
       console.log("🎮 Overgoal player data fetched:", overgoalPlayerData);
-
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
 

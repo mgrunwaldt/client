@@ -330,9 +330,8 @@
   transform: translate(-52%, -52%);
 }
 
-
 .glitch-text {
-  @apply  font-bold font-orbitron uppercase relative  text-overgoal-blue;
+  @apply font-orbitron text-overgoal-blue relative font-bold uppercase;
 }
 
 .glitch-text::before {
@@ -396,7 +395,11 @@
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 50% 18%, rgba(34, 211, 238, 0.14), transparent 38%),
+    radial-gradient(
+      circle at 50% 18%,
+      rgba(34, 211, 238, 0.14),
+      transparent 38%
+    ),
     linear-gradient(180deg, rgba(3, 14, 34, 0.14), rgba(1, 6, 19, 0.52));
   pointer-events: none;
 }
@@ -443,10 +446,8 @@
   animation: transition-loader-shimmer 2.2s ease-in-out infinite;
 }
 
-
-
 .glitch-text {
-  @apply  font-bold font-orbitron uppercase relative  text-overgoal-blue;
+  @apply font-orbitron text-overgoal-blue relative font-bold uppercase;
 }
 
 .glitch-text::before {
@@ -469,7 +470,6 @@
   height: 100%;
   color: var(--color-overgoal-magenta);
 }
-
 
 .card-name {
   position: relative;
@@ -494,7 +494,15 @@
 .calendar-item-container {
   position: relative;
   background-color: var(--container-color, var(--color-overgoal-blue));
-  clip-path: polygon(87% 0, 100% 12%, 100% 100%, 75% 100%, 12% 100%, 0 87%, 0 0);
+  clip-path: polygon(
+    87% 0,
+    100% 12%,
+    100% 100%,
+    75% 100%,
+    12% 100%,
+    0 87%,
+    0 0
+  );
 }
 
 .calendar-item-container::before {
@@ -508,7 +516,15 @@
   width: 97%;
   height: 98%;
   z-index: -1;
-  clip-path: polygon(87% 0, 100% 12%, 100% 100%, 75% 100%, 12% 100%, 0 87%, 0 0);
+  clip-path: polygon(
+    87% 0,
+    100% 12%,
+    100% 100%,
+    75% 100%,
+    12% 100%,
+    0 87%,
+    0 0
+  );
 }
 
 .calendar-item-container::after {
@@ -521,5 +537,13 @@
   width: 96%;
   height: 95%;
   z-index: -1;
-  clip-path: polygon(87% 0, 100% 12%, 100% 100%, 75% 100%, 12% 100%, 0 87%, 0 0);
+  clip-path: polygon(
+    87% 0,
+    100% 12%,
+    100% 100%,
+    75% 100%,
+    12% 100%,
+    0 87%,
+    0 0
+  );
 }

@@ -1,9 +1,8 @@
-import * as THREE from "three";
 import { useTexture } from "@react-three/drei";
 import { useMemo } from "react";
+import * as THREE from "three";
+
 import characterFrag from "./characterMaterial.frag?raw";
-
-
 
 type props = {
   baseTexture: THREE.Texture;
@@ -11,36 +10,33 @@ type props = {
 
 export const useCharacterShader = ({ baseTexture }: props) => {
   const maskTexture = useTexture(
-    "/models/Male/textures/Mask_MainBody_Mat_BaseColor.png"
+    "/models/Male/textures/Mask_MainBody_Mat_BaseColor.png",
   );
 
-  
   const material = useMemo(() => {
-
     const material = new THREE.MeshBasicMaterial({
       map: baseTexture,
       color: new THREE.Color(0xffffff),
       vertexColors: false,
-      /// @ts-ignore
+      // @ts-expect-error Three exposes skinning at runtime but omits it from this type.
       skinning: true,
     });
-  
-    material.onBeforeCompile = (shader) => {
 
-      shader.vertexShader = 'varying vec4 vWorldPosition;\n' + shader.vertexShader;
+    material.onBeforeCompile = (shader) => {
+      shader.vertexShader =
+        "varying vec4 vWorldPosition;\n" + shader.vertexShader;
       shader.vertexShader = shader.vertexShader.replace(
-        '#include <worldpos_vertex>',
+        "#include <worldpos_vertex>",
         [
-          '#include <worldpos_vertex>',
-          'vWorldPosition = modelMatrix * vec4( transformed, 1.0 );'
-        ].join( '\n' )
+          "#include <worldpos_vertex>",
+          "vWorldPosition = modelMatrix * vec4( transformed, 1.0 );",
+        ].join("\n"),
       );
 
       shader.uniforms.uBaseTexture = { value: baseTexture };
       shader.uniforms.uMaskTexture = { value: maskTexture };
       // shader.vertexShader = characterVert;
       shader.fragmentShader = characterFrag;
-    
     };
 
     // return new THREE.ShaderMaterial({

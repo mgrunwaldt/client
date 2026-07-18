@@ -2,13 +2,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
 import {
-  UniversePlayer,
-  OvergoalPlayer,
-  User,
-  Season,
   Club,
+  OvergoalPlayer,
+  Season,
   SeasonClub,
   SeasonPlayer,
+  UniversePlayer,
+  User,
 } from "../dojo/bindings";
 
 // Application state
@@ -106,7 +106,8 @@ const useAppStore = create<AppStore>()(
       setOvergoalPlayer: (overgoalPlayer) => set({ overgoalPlayer }),
       setSeasonPlayer: (seasonPlayer) => set({ seasonPlayer }),
       setClaimIsClaiming: (id: string) => set({ claimPlayerID: id }),
-      setClaimedPlayerLinkId: (claimedPlayerLinkId) => set({ claimedPlayerLinkId }),
+      setClaimedPlayerLinkId: (claimedPlayerLinkId) =>
+        set({ claimedPlayerLinkId }),
 
       getUniversePlayer: () => get().universePlayer,
       getOvergoalPlayer: () => get().overgoalPlayer,

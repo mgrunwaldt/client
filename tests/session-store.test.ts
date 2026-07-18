@@ -1,0 +1,361 @@
+import { beforeEach, describe, expect, it } from "vitest";
+
+import type {
+  BackendActionTeam,
+  BackendFieldState,
+  BackendMatch,
+  BackendMatchResponse,
+  BackendPendingAction,
+  BackendTeam,
+  BackendTimelineEvent,
+} from "../src/lib/backend-match";
+import {
+  type MatchPlaybackStatus,
+  useMatchSessionStore,
+} from "../src/match/session-store";
+import { readFixture } from "./match-api-v1-fixtures";
+
+interface SceneFixture extends BackendPendingAction {
+  scene_type: string;
+  field_state: BackendFieldState;
+  origin?: { previous_action_id: string; previous_outcome: string } | null;
+}
+
+interface CreateMatchFixture {
+  my_team: BackendTeam;
+  opponent_team: BackendTeam;
+}
+
+interface ProgressFixture extends BackendMatchResponse {
+  match: BackendMatch;
+}
+
+interface SelfPassResponse extends BackendMatchResponse {
+  pending_action: BackendPendingAction & {
+    field_state: BackendFieldState;
+    origin: {
+      previous_action_id: string;
+      previous_outcome: string;
+    };
+  };
+}
+
+function eventFor(scene: SceneFixture, eventId: number): BackendTimelineEvent {
+  return {
+    match_id: "match-fixture-1",
+    event_id: eventId,
+    action: scene.scene_type,
+    minute: scene.minute,
+    team: scene.action_team as BackendActionTeam,
+    description: scene.description,
+    my_team_score: 0,
+    opponent_team_score: 0,
+    my_team_scored: false,
+    opponent_team_scored: false,
+    player_participates: true,
+  };
+}
+
+function responseForScene(
+  scene: SceneFixture,
+  eventId: number,
+): BackendMatchResponse {
+  const match: BackendMatch = {
+    id: "match-fixture-1",
+    my_team_id: "team_1",
+    opponent_team_id: "team_2",
+    my_team_score: 0,
+    opponent_team_score: 0,
+    current_time: scene.minute,
+    match_status: "WAITING_FOR_DECISION",
+    pending_action: scene,
+  };
+
+  return {
+    minute: scene.minute,
+    status: "WAITING_FOR_DECISION",
+    prev_time: Math.max(0, scene.minute - 1),
+    pending_action: scene,
+    field_state: scene.field_state,
+    action: scene.scene_type,
+    action_team: scene.action_team as BackendActionTeam,
+    events: [eventFor(scene, eventId)],
+    match,
+  };
+}
+
+describe("match session store hydration", () => {
+  beforeEach(() => {
+    useMatchSessionStore.getState().resetMatchSession();
+  });
+
+  it("hydrates all ten canonical playable scenes with a consistent minute", async () => {
+    const sceneFiles = [
+      "argument-opponent",
+      "argument-teammate",
+      "bathroom",
+      "brawl",
+      "corner",
+      "dribble",
+      "free-kick",
+      "jumper",
+      "open-play",
+      "penalty",
+    ];
+    const scenes = await Promise.all(
+      sceneFiles.map((name) =>
+        readFixture<SceneFixture>(`scenes/${name}.json`),
+      ),
+    );
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+
+    for (const scene of scenes) {
+      useMatchSessionStore.getState().resetMatchSession();
+      const response = responseForScene(scene, scene.minute);
+      useMatchSessionStore.getState().hydrateMatchSession({
+        match: response.match,
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: response.events,
+      });
+
+      const state = useMatchSessionStore.getState();
+      expect(scene.field_state.minute, scene.scene_type).toBe(scene.minute);
+      expect(state.match?.current_time, scene.scene_type).toBe(scene.minute);
+      expect(state.pendingAction?.scene_type, scene.scene_type).toBe(
+        scene.scene_type,
+      );
+      expect(state.fieldState?.id, scene.scene_type).toBe(scene.field_state_id);
+      expect(state.playbackMinute, scene.scene_type).toBe(0);
+      expect(state.playbackStatus, scene.scene_type).toBe("timeline_playing");
+    }
+  });
+
+  it("starts every newly hydrated waiting match regardless of stale playback status", async () => {
+    const scene = await readFixture<SceneFixture>("scenes/open-play.json");
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const response = responseForScene(scene, 1);
+    const priorStatuses: MatchPlaybackStatus[] = [
+      "idle",
+      "created",
+      "timeline_playing",
+      "timeline_ready_for_field",
+      "field_ready",
+    ];
+
+    for (const priorStatus of priorStatuses) {
+      useMatchSessionStore.getState().resetMatchSession();
+      useMatchSessionStore.getState().setCreatedMatch({
+        match: { ...response.match, id: `prior-${priorStatus}` },
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+      });
+      useMatchSessionStore.getState().setPlaybackMinute(37);
+      useMatchSessionStore.getState().setPlaybackStatus(priorStatus);
+
+      useMatchSessionStore.getState().hydrateMatchSession({
+        match: { ...response.match, id: `new-${priorStatus}` },
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: response.events,
+      });
+
+      expect(useMatchSessionStore.getState(), priorStatus).toMatchObject({
+        playbackMinute: 0,
+        playbackStatus: "timeline_playing",
+        pendingAction: { id: scene.id },
+      });
+    }
+  });
+
+  it("preserves same-match non-idle playback and intentionally restarts idle", async () => {
+    const scene = await readFixture<SceneFixture>("scenes/open-play.json");
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const response = responseForScene(scene, 1);
+    const preservedStatuses: MatchPlaybackStatus[] = [
+      "created",
+      "timeline_playing",
+      "timeline_ready_for_field",
+      "field_ready",
+    ];
+
+    for (const playbackStatus of preservedStatuses) {
+      useMatchSessionStore.getState().resetMatchSession();
+      useMatchSessionStore.getState().hydrateMatchSession({
+        match: response.match,
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: response.events,
+      });
+      useMatchSessionStore.getState().setPlaybackMinute(7);
+      useMatchSessionStore.getState().setPlaybackStatus(playbackStatus);
+
+      useMatchSessionStore.getState().hydrateMatchSession({
+        match: response.match,
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: response.events,
+      });
+
+      expect(useMatchSessionStore.getState(), playbackStatus).toMatchObject({
+        playbackMinute: 7,
+        playbackStatus,
+      });
+    }
+
+    useMatchSessionStore.getState().setPlaybackMinute(7);
+    useMatchSessionStore.getState().setPlaybackStatus("idle");
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match: response.match,
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+      timelineEvents: response.events,
+    });
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      playbackMinute: 0,
+      playbackStatus: "timeline_playing",
+    });
+  });
+
+  it("treats explicit pendingAction null as authoritative and only falls back for undefined", async () => {
+    const scene = await readFixture<SceneFixture>("scenes/open-play.json");
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const response = responseForScene(scene, 1);
+
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match: response.match,
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+      timelineEvents: response.events,
+      pendingAction: null,
+    });
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      match: { pending_action: null },
+      pendingAction: null,
+      fieldState: null,
+      playbackMinute: response.match.current_time,
+      playbackStatus: "idle",
+    });
+
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match: { ...response.match, id: "undefined-fallback-match" },
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+      timelineEvents: response.events,
+      pendingAction: undefined,
+    });
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      match: { pending_action: { id: scene.id } },
+      pendingAction: { id: scene.id },
+      fieldState: { id: scene.field_state_id },
+      playbackMinute: 0,
+      playbackStatus: "timeline_playing",
+    });
+  });
+
+  it("clears active field state when the same singleton hydrates halftime and fulltime", async () => {
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const [waiting, ...lifecycle] = await Promise.all([
+      readFixture<ProgressFixture>("server/waiting-open-play-response.json"),
+      readFixture<ProgressFixture>("server/halftime-response.json"),
+      readFixture<ProgressFixture>("server/fulltime-response.json"),
+    ]);
+
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match: waiting.match,
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+      timelineEvents: waiting.events,
+      pendingAction: waiting.pending_action,
+    });
+    useMatchSessionStore.getState().setPlaybackMinute(waiting.minute);
+    useMatchSessionStore.getState().setPlaybackStatus("field_ready");
+    expect(useMatchSessionStore.getState().pendingAction).not.toBeNull();
+    expect(useMatchSessionStore.getState().fieldState).not.toBeNull();
+
+    for (const response of lifecycle) {
+      useMatchSessionStore.getState().hydrateMatchSession({
+        match: response.match,
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: response.events,
+      });
+
+      const state = useMatchSessionStore.getState();
+      expect(state.match?.match_status).toBe(response.status);
+      expect(state.match?.current_time).toBe(response.minute);
+      expect(state.pendingAction).toBeNull();
+      expect(state.fieldState).toBeNull();
+      expect(state.playbackMinute).toBe(response.minute);
+      expect(state.playbackStatus).toBe("idle");
+    }
+  });
+
+  it("applies response status and clears the pending action at lifecycle stops", async () => {
+    const waiting = await readFixture<ProgressFixture>(
+      "server/waiting-open-play-response.json",
+    );
+    const halftime = await readFixture<ProgressFixture>(
+      "server/halftime-response.json",
+    );
+
+    useMatchSessionStore.getState().setStartResponse(waiting);
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      pendingAction: { scene_type: "OPEN_PLAY" },
+      playbackMinute: 0,
+      playbackStatus: "timeline_playing",
+    });
+
+    useMatchSessionStore.getState().setActionResponse(halftime);
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      pendingAction: null,
+      fieldState: null,
+      playbackMinute: 12,
+      playbackStatus: "timeline_playing",
+    });
+  });
+
+  it("hydrates the frozen server self-pass follow-up response without rewriting it", async () => {
+    const selfPass = await readFixture<SelfPassResponse>(
+      "../reproductions/self-pass-follow-up-response.json",
+    );
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+
+    useMatchSessionStore.getState().setCreatedMatch({
+      match: selfPass.match,
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+    });
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match: selfPass.match,
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+      timelineEvents: selfPass.events,
+      pendingAction: selfPass.pending_action,
+    });
+
+    const state = useMatchSessionStore.getState();
+    expect(state.pendingAction?.id).toBe(selfPass.pending_action.id);
+    expect(state.fieldState?.id).toBe(selfPass.pending_action.field_state_id);
+    expect(state.fieldState?.carrier_player_id).toBe(
+      selfPass.pending_action.field_state.legend_player_id,
+    );
+    expect(selfPass.pending_action.origin.previous_outcome).toBe(
+      "KICK_TO_BETTER_OPEN_PLAY",
+    );
+    expect(state.timelineEvents.map((event) => event.event_id)).toEqual([1, 2]);
+    expect(state.timelineEvents.map((event) => event.minute)).toEqual([12, 12]);
+  });
+});

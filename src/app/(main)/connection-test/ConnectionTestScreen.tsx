@@ -1,9 +1,10 @@
 "use client";
 
+import { Loader2, LogOut, Wallet } from "lucide-react";
+
 import { Button } from "../../../components/ui/button";
-import { useStarknetConnect } from "../../../dojo/hooks/useStarknetConnect";
-import { Wallet, LogOut, Loader2 } from "lucide-react";
 import { useCreatePlayer } from "../../../dojo/hooks/useCreatePlayer";
+import { useStarknetConnect } from "../../../dojo/hooks/useStarknetConnect";
 
 export default function ConnectionTestScreen() {
   const { status, address, isConnecting, handleConnect, handleDisconnect } =
@@ -84,10 +85,7 @@ export default function ConnectionTestScreen() {
         </div>
 
         <div>
-          <Button onClick={() => initializePlayer()}>
-            {" "}
-            Create Player
-          </Button>
+          <Button onClick={() => initializePlayer()}> Create Player</Button>
         </div>
         <div> {txStatus} </div>
 

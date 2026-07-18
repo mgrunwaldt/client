@@ -1,29 +1,34 @@
-import { cn } from "../../../../utils/utils";
-import { HOME_MENU_ITEMS, SEASON_COUNTDOWN_TARGET_DATE } from "../constants";
-import MenuItem from "./menu-item";
-import { getIcon } from "../../../../utils/utils";
-import { Countdown } from "../../../../components/ui/countdown";
 import { useNavigate } from "react-router";
+
 import { Button } from "../../../../components/ui/button";
-import teamsData from "../../Seasons/components/teams.json";
+import { Countdown } from "../../../../components/ui/countdown";
 import {
+  type BackendTeam,
   createBackendMatch,
   defaultLegendProfile,
   fetchBackendTeams,
-  type BackendTeam,
 } from "../../../../lib/backend-match";
 import { useMatchSessionStore } from "../../../../match/session-store";
+import { cn } from "../../../../utils/utils";
+import { getIcon } from "../../../../utils/utils";
+import teamsData from "../../Seasons/components/teams.json";
+import { HOME_MENU_ITEMS, SEASON_COUNTDOWN_TARGET_DATE } from "../constants";
+import MenuItem from "./menu-item";
 
 function pickTeams(backendTeams: BackendTeam[]) {
   const preferredHomeName = "Dojo United";
   const preferredAwayName = "Cartridge City";
-  const localHomeTeam = teamsData.find((team) => team.name === preferredHomeName);
+  const localHomeTeam = teamsData.find(
+    (team) => team.name === preferredHomeName,
+  );
   const homeTeam =
     backendTeams.find((team) => team.name === localHomeTeam?.name) ||
     backendTeams.find((team) => team.name === preferredHomeName) ||
     backendTeams[0];
   const awayTeam =
-    backendTeams.find((team) => team.name === preferredAwayName && team.id !== homeTeam?.id) ||
+    backendTeams.find(
+      (team) => team.name === preferredAwayName && team.id !== homeTeam?.id,
+    ) ||
     backendTeams.find((team) => team.id !== homeTeam?.id) ||
     backendTeams[1];
 
@@ -32,7 +37,9 @@ function pickTeams(backendTeams: BackendTeam[]) {
 
 export default function MenuFooter() {
   const navigate = useNavigate();
-  const setCreatedMatch = useMatchSessionStore((state) => state.setCreatedMatch);
+  const setCreatedMatch = useMatchSessionStore(
+    (state) => state.setCreatedMatch,
+  );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
   const loading = useMatchSessionStore((state) => state.loading);
@@ -62,7 +69,8 @@ export default function MenuFooter() {
       });
       navigate(`/pre-match/${created.match.id}`);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create match.";
+      const message =
+        error instanceof Error ? error.message : "Failed to create match.";
       setError(message);
       setLoading(false);
     }
@@ -90,7 +98,11 @@ export default function MenuFooter() {
             />
           </div>
         ) : (
-          <Button className="h-full w-full" onClick={handleCreateMatch} disabled={loading}>
+          <Button
+            className="h-full w-full"
+            onClick={handleCreateMatch}
+            disabled={loading}
+          >
             <p className="airstrike-normal !text-5xl text-white uppercase">
               {loading ? "..." : "Play"}
             </p>

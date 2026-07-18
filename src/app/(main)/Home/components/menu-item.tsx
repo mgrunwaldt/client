@@ -1,7 +1,8 @@
 import React from "react";
-import { cn } from "../../../../utils/utils";
-import { Button } from "../../../../components/ui/button";
 import { Link } from "react-router";
+
+import { Button } from "../../../../components/ui/button";
+import { cn } from "../../../../utils/utils";
 
 type MenuItemProps = {
   title: string;

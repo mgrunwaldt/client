@@ -1,4 +1,5 @@
-import * as THREE from "three";
+import "./field-assets";
+
 import {
   ContactShadows,
   Html,
@@ -8,26 +9,27 @@ import {
   useProgress,
 } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { Physics } from "@react-three/rapier";
 import {
+  type MouseEvent as ReactMouseEvent,
   Suspense,
   useEffect,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Physics } from "@react-three/rapier";
 import { useNavigate } from "react-router";
-import Stadium from "../../components/models/in-game/Stadium";
+import * as THREE from "three";
+
+import playersData from "../../../data/players.json";
 import { Ball, type BallAimDraft } from "../../components/models/in-game/Ball";
 import GameModel from "../../components/models/in-game/GameModel";
-import { useMatchSessionStore } from "../../match/session-store";
+import Stadium from "../../components/models/in-game/Stadium";
 import {
-  processBackendMatchAction,
-  type BackendMatchResponse,
   type BackendFieldPlayer,
+  type BackendMatchResponse,
+  processBackendMatchAction,
 } from "../../lib/backend-match";
-import playersData from "../../../data/players.json";
-import "./field-assets";
+import { useMatchSessionStore } from "../../match/session-store";
 
 const FIELD_Y = 111;
 const BALL_Y = 111.25;
@@ -63,7 +65,8 @@ function renderWorldToField(x: number, z: number) {
   return {
     x: clamp(x / LATERAL_SCALE + 50, 0, 100),
     y: clamp(
-      (z - PLAYER_RENDER_Z_OFFSET - STADIUM_Z_CALIBRATION) / LENGTH_SCALE + VISIBLE_FIELD_CENTER_Y,
+      (z - PLAYER_RENDER_Z_OFFSET - STADIUM_Z_CALIBRATION) / LENGTH_SCALE +
+        VISIBLE_FIELD_CENTER_Y,
       0,
       100,
     ),
@@ -74,7 +77,10 @@ function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function distanceInField(a: { x: number; y: number }, b: { x: number; y: number }) {
+function distanceInField(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.hypot(dx, dy);
@@ -128,7 +134,11 @@ function inferSelectionQuality(
 ) {
   const curvePenalty = Math.min(Math.abs(curve) * 0.25, 18);
   const powerBonus = Math.max(0, 24 - Math.abs(power - 72));
-  const targetBonus = ["SHOT_ON_GOAL", "DANGEROUS_PASS", "CROSS"].includes(intentHint) ? 6 : 3;
+  const targetBonus = ["SHOT_ON_GOAL", "DANGEROUS_PASS", "CROSS"].includes(
+    intentHint,
+  )
+    ? 6
+    : 3;
   return clamp(
     Math.round(58 + powerBonus * 0.4 - curvePenalty * 0.3 + targetBonus),
     45,
@@ -163,7 +173,10 @@ function buildKickPayload(
   };
 }
 
-function distanceBetween(a: { x: number; y: number }, b: { x: number; y: number }) {
+function distanceBetween(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+) {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
@@ -212,7 +225,10 @@ function resolveControlledBallPosition(
   ) {
     return {
       x: decisionResult.receiver.x,
-      y: Math.min(100, decisionResult.receiver.y + RECEIVER_CONTROL_BALL_OFFSET_Y),
+      y: Math.min(
+        100,
+        decisionResult.receiver.y + RECEIVER_CONTROL_BALL_OFFSET_Y,
+      ),
     };
   }
 
@@ -267,8 +283,12 @@ function findDynamicCameraZ(
   let bestDistance = Number.POSITIVE_INFINITY;
   let previousZ = playerWorldPosition[2] - 800;
   let previousDelta =
-    projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], previousZ) -
-    DYNAMIC_PLAYER_SCREEN_NDC_Y;
+    projectPointAtCameraZ(
+      probe,
+      playerPoint,
+      playerWorldPosition[0],
+      previousZ,
+    ) - DYNAMIC_PLAYER_SCREEN_NDC_Y;
   let bracket: [number, number] | null = null;
 
   const updateBest = (z: number, delta: number) => {
@@ -281,7 +301,11 @@ function findDynamicCameraZ(
 
   updateBest(previousZ, previousDelta);
 
-  for (let z = playerWorldPosition[2] - 760; z <= playerWorldPosition[2] + 800; z += 40) {
+  for (
+    let z = playerWorldPosition[2] - 760;
+    z <= playerWorldPosition[2] + 800;
+    z += 40
+  ) {
     const delta =
       projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], z) -
       DYNAMIC_PLAYER_SCREEN_NDC_Y;
@@ -360,7 +384,14 @@ function FieldCameraController({
     );
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
-  }, [camera, cameraLocked, legendPlayer, legendWorldPosition, size.height, size.width]);
+  }, [
+    camera,
+    cameraLocked,
+    legendPlayer,
+    legendWorldPosition,
+    size.height,
+    size.width,
+  ]);
 
   return null;
 }
@@ -430,7 +461,7 @@ function PlayerLabel({
     <Html
       position={[worldPosition[0], FIELD_Y + 0.5, worldPosition[2]]}
       center
-      className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
+      className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold tracking-[0.18em] uppercase ${
         isTeammate ? "bg-black/65 text-[#d8ff6f]" : "bg-black/65 text-[#9fd1ff]"
       }`}
     >
@@ -452,13 +483,13 @@ function FieldLoadingOverlay({
 
   return (
     <div className="absolute inset-0 z-30 overflow-hidden bg-linear-to-b from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]">
-      <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%]" />
-      <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-cyan-200/35 border-t-0" />
+      <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-35" />
+      <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
       <div className="absolute inset-x-[30%] top-[34%] h-px bg-cyan-200/25" />
       <div className="absolute inset-x-[12%] top-[66%] h-[18%] rounded-t-[7rem] border border-cyan-200/18" />
       <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-slate-950/92 via-slate-950/70 to-transparent px-6 py-8 text-white">
-        <div className="rounded-full bg-black/45 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
+        <div className="rounded-full bg-black/45 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
           Loading Field
         </div>
         <div className="mt-3 rounded-2xl bg-black/45 px-4 py-4 backdrop-blur-sm">
@@ -478,8 +509,8 @@ function FieldLoadingOverlay({
 function FieldBackdrop() {
   return (
     <div className="absolute inset-0 overflow-hidden bg-linear-to-b from-[#0c5871] via-[#11816f] to-[#0b4a3c]">
-      <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%]" />
-      <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-cyan-200/35 border-t-0" />
+      <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-30" />
+      <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
       <div className="absolute inset-x-[18%] top-[28%] h-px bg-cyan-200/20" />
       <div className="absolute inset-x-[10%] top-[60%] h-[26%] rounded-t-[10rem] border border-cyan-200/16" />
@@ -509,10 +540,13 @@ function BackendPlayerModel({
   const modelVariant = buildModelVariant(player, isTeammate);
   const stagedFlightPath = stagedDecisionResult?.flight_path || [];
   const involvedPlayerId =
-    stagedDecisionResult?.receiver?.id || stagedDecisionResult?.interceptor?.id || null;
+    stagedDecisionResult?.receiver?.id ||
+    stagedDecisionResult?.interceptor?.id ||
+    null;
   const tracksTrajectory =
     stagedFlightPath.length > 0 &&
-    minDistanceToFlightPath(player, stagedFlightPath) <= PLAYER_TRAJECTORY_TRACK_DISTANCE;
+    minDistanceToFlightPath(player, stagedFlightPath) <=
+      PLAYER_TRAJECTORY_TRACK_DISTANCE;
   const tracksBallNow =
     distanceInField(player, ballFieldPosition) <= OPPONENT_NEAR_BALL_DISTANCE;
   const shouldTrackBall =
@@ -522,31 +556,26 @@ function BackendPlayerModel({
     !isTeammate &&
     distanceInField(player, ballFieldPosition) <= OPPONENT_NEAR_BALL_DISTANCE;
   const backendFacingTarget =
-    typeof player.facing_target_x === "number" && typeof player.facing_target_y === "number"
+    typeof player.facing_target_x === "number" &&
+    typeof player.facing_target_y === "number"
       ? { x: player.facing_target_x, y: player.facing_target_y }
       : null;
-  const rotationY = shouldTrackBall && (isResultAnimating || player.id === involvedPlayerId)
-    ? rotationTowardsFieldTarget(player, ballFieldPosition)
-    : backendFacingTarget
-      ? rotationTowardsFieldTarget(player, backendFacingTarget)
-    : isTeammate
-      ? Math.PI
-      : opponentNearBall
-        ? rotationTowardsFieldTarget(player, ballFieldPosition)
-        : player.role === "GK"
-          ? 0
-          : player.y < ballFieldPosition.y
-            ? 0
-            : Math.PI;
+  const rotationY =
+    shouldTrackBall && (isResultAnimating || player.id === involvedPlayerId)
+      ? rotationTowardsFieldTarget(player, ballFieldPosition)
+      : backendFacingTarget
+        ? rotationTowardsFieldTarget(player, backendFacingTarget)
+        : isTeammate
+          ? Math.PI
+          : opponentNearBall
+            ? rotationTowardsFieldTarget(player, ballFieldPosition)
+            : player.role === "GK"
+              ? 0
+              : player.y < ballFieldPosition.y
+                ? 0
+                : Math.PI;
   const groupRef = useRef<THREE.Group>(null);
   const currentRotationRef = useRef(rotationY);
-
-  useEffect(() => {
-    currentRotationRef.current = rotationY;
-    if (groupRef.current) {
-      groupRef.current.rotation.y = rotationY;
-    }
-  }, [player.id]);
 
   useFrame((_state, delta) => {
     const group = groupRef.current;
@@ -588,20 +617,30 @@ function BackendPlayerModel({
 
 export default function GameScene({ active = true }: { active?: boolean }) {
   const navigate = useNavigate();
-  const { active: assetsActive, progress: assetsProgress, loaded: assetsLoaded, total: assetsTotal } = useProgress();
+  const {
+    active: assetsActive,
+    progress: assetsProgress,
+    loaded: assetsLoaded,
+    total: assetsTotal,
+  } = useProgress();
   const match = useMatchSessionStore((state) => state.match);
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
-  const setActionResponse = useMatchSessionStore((state) => state.setActionResponse);
+  const setActionResponse = useMatchSessionStore(
+    (state) => state.setActionResponse,
+  );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
-  const [releasedAimDraft, setReleasedAimDraft] = useState<BallAimDraft | null>(null);
+  const [releasedAimDraft, setReleasedAimDraft] = useState<BallAimDraft | null>(
+    null,
+  );
   const [strikePoint, setStrikePoint] = useState(DEFAULT_STRIKE_POINT);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [stagedKickResult, setStagedKickResult] = useState<StagedKickResult | null>(null);
+  const [stagedKickResult, setStagedKickResult] =
+    useState<StagedKickResult | null>(null);
   const [animatedBallFieldPosition, setAnimatedBallFieldPosition] = useState<{
     x: number;
     y: number;
@@ -612,9 +651,14 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const hasImmediateFollowUpFieldState =
     Boolean(stagedKickResult?.response.pending_action?.field_state) &&
     stagedKickResult?.response.pending_action?.minute ===
-      (stagedKickResult?.response.prev_time ?? pendingAction?.minute ?? match?.current_time ?? 0);
+      (stagedKickResult?.response.prev_time ??
+        pendingAction?.minute ??
+        match?.current_time ??
+        0);
   const stagedFieldState =
-    !isResultAnimating && hasImmediateFollowUpFieldState && stagedKickResult?.response.pending_action?.field_state
+    !isResultAnimating &&
+    hasImmediateFollowUpFieldState &&
+    stagedKickResult?.response.pending_action?.field_state
       ? stagedKickResult.response.pending_action.field_state
       : null;
   const displayFieldState = stagedFieldState || fieldState;
@@ -623,7 +667,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const legendPlayer =
     myPlayers.find((player) => player.is_legend) ||
     (displayFieldState?.legend_player_id
-      ? myPlayers.find((player) => player.id === displayFieldState.legend_player_id) || null
+      ? myPlayers.find(
+          (player) => player.id === displayFieldState.legend_player_id,
+        ) || null
       : null);
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
@@ -645,7 +691,8 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     pendingAction?.action_team === "MY_TEAM" &&
     pendingAction?.scene_type !== "DRIBBLE" &&
     pendingAction?.scene_type !== undefined;
-  const showFieldLoadingOverlay = assetsActive || (assetsTotal > 0 && assetsLoaded < assetsTotal);
+  const showFieldLoadingOverlay =
+    assetsActive || (assetsTotal > 0 && assetsLoaded < assetsTotal);
 
   useEffect(() => {
     return () => {
@@ -676,7 +723,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     const flightPath = response.decision_result?.flight_path;
     if (Array.isArray(flightPath) && flightPath.length > 1) {
       const startedAt = performance.now();
-      const durationMs = Math.max(500, flightPath[flightPath.length - 1].t * 1000);
+      const durationMs = Math.max(
+        500,
+        flightPath[flightPath.length - 1].t * 1000,
+      );
       setIsResultAnimating(true);
 
       const tick = (now: number) => {
@@ -697,7 +747,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 y: response.decision_result.final_point.y,
               }
             : point;
-          const resolvedFinalPoint = resolveControlledBallPosition(response, rawFinalPoint || null);
+          const resolvedFinalPoint = resolveControlledBallPosition(
+            response,
+            rawFinalPoint || null,
+          );
           setAnimatedBallFieldPosition(resolvedFinalPoint || null);
           setIsResultAnimating(false);
         }
@@ -709,7 +762,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
 
     const start = baseBallFieldPosition;
     const end = { x: submittedPayload.end_x, y: submittedPayload.end_y };
-    const duration = Math.max(650, Math.min(1400, 420 + submittedPayload.power * 7));
+    const duration = Math.max(
+      650,
+      Math.min(1400, 420 + submittedPayload.power * 7),
+    );
     const lift = Math.max(6, Math.min(18, distanceBetween(start, end) * 0.12));
     const startedAt = performance.now();
     setIsResultAnimating(true);
@@ -719,7 +775,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       const eased = 1 - (1 - progress) * (1 - progress);
       setAnimatedBallFieldPosition({
         x: start.x + (end.x - start.x) * eased,
-        y: start.y + (end.y - start.y) * eased - Math.sin(Math.PI * eased) * lift,
+        y:
+          start.y +
+          (end.y - start.y) * eased -
+          Math.sin(Math.PI * eased) * lift,
       });
 
       if (progress < 1) {
@@ -756,7 +815,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       return;
     }
 
-    const payload = buildKickPayload(releasedAimDraft, strikePoint, ballFieldPosition);
+    const payload = buildKickPayload(
+      releasedAimDraft,
+      strikePoint,
+      ballFieldPosition,
+    );
 
     try {
       setIsSubmitting(true);
@@ -798,10 +861,15 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     stagedKickResult?.response.events?.[0]?.description ||
     "Action resolved.";
   const resultMinute =
-    stagedKickResult?.response.prev_time ?? pendingAction?.minute ?? match?.current_time ?? 0;
+    stagedKickResult?.response.prev_time ??
+    pendingAction?.minute ??
+    match?.current_time ??
+    0;
 
   return (
     <div
+      data-testid="game-field"
+      data-player-count={myPlayers.length + opponentPlayers.length}
       className={`fixed inset-0 overflow-hidden bg-[#0a4739] ${
         active ? "z-40 opacity-100" : "pointer-events-none -z-10 opacity-0"
       }`}
@@ -809,11 +877,13 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     >
       <FieldBackdrop />
       <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
-        <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
+        <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
           {pendingAction?.title || "Field"}
         </div>
         <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
-          <div className="font-bold">{myTeam?.name || "My Team"} vs {opponentTeam?.name || "Opponent"}</div>
+          <div className="font-bold">
+            {myTeam?.name || "My Team"} vs {opponentTeam?.name || "Opponent"}
+          </div>
           <div>{pendingAction?.description || "Waiting for field state."}</div>
         </div>
         {!fieldState && (
@@ -824,7 +894,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       </div>
 
       <Canvas
-        gl={{ antialias: true, alpha: true, powerPreference: "high-performance" }}
+        gl={{
+          antialias: true,
+          alpha: true,
+          powerPreference: "high-performance",
+        }}
         dpr={[1, 2]}
         style={{ touchAction: "none", background: "transparent" }}
         onCreated={({ gl }) => {
@@ -889,13 +963,16 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           </Physics>
         </Suspense>
       </Canvas>
-      <FieldLoadingOverlay visible={showFieldLoadingOverlay} progress={assetsProgress} />
+      <FieldLoadingOverlay
+        visible={showFieldLoadingOverlay}
+        progress={assetsProgress}
+      />
       {releasedAimDraft && (
         <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/18 px-4 py-6 backdrop-blur-[1px]">
           <div className="w-full max-w-sm rounded-[2rem] border border-cyan-300/45 bg-linear-to-b from-cyan-400/18 via-slate-950/88 to-[#14235c]/92 p-4 shadow-[0_0_40px_rgba(34,211,238,0.18)]">
             <div className="mb-3 flex items-center justify-between px-1">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-cyan-200/80">
+                <p className="text-[10px] font-bold tracking-[0.32em] text-cyan-200/80 uppercase">
                   Strike Point
                 </p>
                 <p className="text-sm font-semibold text-white">
@@ -921,7 +998,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               >
                 <div className="absolute inset-[10%] rounded-full border border-cyan-200/18" />
                 <div className="absolute inset-[23%] rounded-full border border-cyan-200/12" />
-                <div className="absolute left-1/2 top-[10%] h-[80%] w-px -translate-x-1/2 bg-cyan-100/12" />
+                <div className="absolute top-[10%] left-1/2 h-[80%] w-px -translate-x-1/2 bg-cyan-100/12" />
                 <div className="absolute top-1/2 left-[10%] h-px w-[80%] -translate-y-1/2 bg-cyan-100/12" />
                 <div
                   className="absolute h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-orange-400/95 shadow-[0_0_22px_rgba(251,146,60,0.65)]"
@@ -930,18 +1007,20 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                     top: `${strikePoint.y}%`,
                   }}
                 >
-                  <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-200/90" />
-                  <div className="absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
-                  <div className="absolute left-1/2 top-1/2 h-px w-10 -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
+                  <div className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-200/90" />
+                  <div className="absolute top-1/2 left-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
+                  <div className="absolute top-1/2 left-1/2 h-px w-10 -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
                 </div>
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/72">
                 <div className="rounded-2xl bg-black/22 px-3 py-2">
-                  Pull power: {Math.round(releasedAimDraft.normalizedPower * 100)}%
+                  Pull power:{" "}
+                  {Math.round(releasedAimDraft.normalizedPower * 100)}%
                 </div>
                 <div className="rounded-2xl bg-black/22 px-3 py-2">
-                  Contact: {Math.round(strikePoint.x)}, {Math.round(strikePoint.y)}
+                  Contact: {Math.round(strikePoint.x)},{" "}
+                  {Math.round(strikePoint.y)}
                 </div>
               </div>
               {submitError && (
@@ -954,7 +1033,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
             <button
               type="button"
               disabled={isSubmitting}
-              className="mt-4 w-full rounded-2xl bg-linear-to-b from-amber-300 via-orange-400 to-red-500 px-4 py-3 text-center text-2xl font-black uppercase tracking-[0.12em] text-white shadow-[0_10px_26px_rgba(249,115,22,0.42)]"
+              className="mt-4 w-full rounded-2xl bg-linear-to-b from-amber-300 via-orange-400 to-red-500 px-4 py-3 text-center text-2xl font-black tracking-[0.12em] text-white uppercase shadow-[0_10px_26px_rgba(249,115,22,0.42)]"
               onClick={handleKick}
             >
               {isSubmitting ? "Kicking..." : "Kick"}
@@ -967,19 +1046,19 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           <div className="mx-auto w-full max-w-md rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-200/75">
+                <p className="text-[10px] font-bold tracking-[0.28em] text-cyan-200/75 uppercase">
                   Scene Result
                 </p>
                 <p className="mt-1 text-sm font-semibold text-white/92">
                   {resultMinute}' · {pendingAction?.scene_type || "ACTION"}
                 </p>
               </div>
-              <div className="rounded-full bg-cyan-400/12 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-200">
+              <div className="rounded-full bg-cyan-400/12 px-3 py-1 text-[10px] font-bold tracking-[0.24em] text-cyan-200 uppercase">
                 {isResultAnimating ? "In Motion" : "Resolved"}
               </div>
             </div>
 
-            <p className="mt-3 text-base font-semibold leading-tight text-white">
+            <p className="mt-3 text-base leading-tight font-semibold text-white">
               {resultDescription}
             </p>
 
@@ -987,7 +1066,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               type="button"
               onClick={handleNextAction}
               disabled={isResultAnimating}
-              className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black uppercase tracking-[0.2em] text-cyan-100 disabled:cursor-not-allowed disabled:opacity-45"
+              className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase disabled:cursor-not-allowed disabled:opacity-45"
             >
               Next Action
             </button>

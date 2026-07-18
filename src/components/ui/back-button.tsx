@@ -1,6 +1,6 @@
-import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { ChevronLeft } from "lucide-react";
+import * as React from "react";
 import { useNavigate } from "react-router";
 
 import { cn } from "../../utils/utils";
@@ -31,7 +31,7 @@ const BackButton = React.forwardRef<HTMLButtonElement, BackButtonProps>(
     return (
       <Comp
         className={cn(
-          "bg-[url('/homepage/button_settings.svg')] bg-contain bg-center w-1/5 bg-no-repeat flex items-center justify-center",
+          "flex w-1/5 items-center justify-center bg-[url('/homepage/button_settings.svg')] bg-contain bg-center bg-no-repeat",
           className,
         )}
         ref={ref}
@@ -39,8 +39,8 @@ const BackButton = React.forwardRef<HTMLButtonElement, BackButtonProps>(
         {...props}
       >
         <div>
-          <Button className="w-full h-full text-white opacity-100">
-            <ChevronLeft className=" text-white w-6 h-6" />
+          <Button className="h-full w-full text-white opacity-100">
+            <ChevronLeft className="h-6 w-6 text-white" />
           </Button>
         </div>
       </Comp>

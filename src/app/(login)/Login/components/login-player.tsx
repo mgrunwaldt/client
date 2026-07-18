@@ -1,9 +1,10 @@
-import { Button } from "../../../../components/ui/button";
-import { useStarknetConnect } from "../../../../dojo/hooks/useStarknetConnect";
 import { useAccount } from "@starknet-react/core";
 import { Loader2, Wallet } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
+
+import { Button } from "../../../../components/ui/button";
+import { useStarknetConnect } from "../../../../dojo/hooks/useStarknetConnect";
 
 interface LoginPlayerProps {
   className?: string;
@@ -32,7 +33,7 @@ export function LoginPlayer({
     } else {
       navigate("/");
     }
-  }, [isConnected]);
+  }, [isConnected, navigate]);
 
   // Handle successful connection with useEffect to prevent infinite loops
   useEffect(() => {
@@ -48,7 +49,7 @@ export function LoginPlayer({
       navigate("/post-login-screen");
       hasCalledSuccess.current = true;
     }
-  }, [isConnected, hasAccount]);
+  }, [hasAccount, isConnected, navigate, onLoginSuccess]);
 
   // Show different button states based on current status
   const getButtonContent = () => {

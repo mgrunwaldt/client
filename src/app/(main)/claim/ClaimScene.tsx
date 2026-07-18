@@ -5,13 +5,20 @@ import {
   useGLTF,
   useProgress,
 } from "@react-three/drei";
-import { useEffect, useMemo, useState, Suspense } from "react";
-import { PlayerData } from "../../../components/models/ChangeableModels";
+import { Canvas } from "@react-three/fiber";
+import {
+  type ComponentProps,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import ChangeableModel1 from "../../../components/models/ChangeableModel1";
 import ChangeableModel2 from "../../../components/models/ChangeableModel2";
 import ChangeableModel3 from "../../../components/models/ChangeableModel3";
+import type { PlayerData } from "../../../components/models/shared-types";
 import { GlitchText } from "../../../components/ui/glitch-text";
-import { Canvas } from "@react-three/fiber";
 import { cn } from "../../../utils/utils";
 
 const getCategoyContainer = (category: string) => {
@@ -50,7 +57,7 @@ Object.values(MODEL_PATHS).forEach((path) => {
 
 interface ClaimSceneContentProps {
   player: PlayerData | null;
-  orbitControlsSettings: any;
+  orbitControlsSettings: ComponentProps<typeof OrbitControls>;
   onLoadComplete?: () => void;
 }
 

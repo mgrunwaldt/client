@@ -1,7 +1,7 @@
 import { Header } from "../../../components/header";
-import { LoginPlayer } from "../../(login)/Login/components/login-player";
 import { Card } from "../../../components/ui/card";
 import { Progress } from "../../../components/ui/progress";
+import { LoginPlayer } from "../../(login)/Login/components/login-player";
 
 export default function CareerScreen() {
   const careerStats = {
@@ -39,23 +39,23 @@ export default function CareerScreen() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800">
-      <div className="container mx-auto px-4 py-8 max-w-6xl">
+      <div className="container mx-auto max-w-6xl px-4 py-8">
         <Header />
         <LoginPlayer />
 
         <div className="mt-8">
-          <h1 className="text-3xl font-bold text-white mb-6">Career</h1>
+          <h1 className="mb-6 text-3xl font-bold text-white">Career</h1>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
             {/* Career Stats */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 Career Stats
               </h2>
               <div className="space-y-4">
-                <div className="flex justify-between items-center">
+                <div className="flex items-center justify-between">
                   <span className="text-slate-300">Level</span>
-                  <span className="text-white font-bold">
+                  <span className="font-bold text-white">
                     {careerStats.level}
                   </span>
                 </div>
@@ -103,23 +103,23 @@ export default function CareerScreen() {
             </Card>
 
             {/* Achievements */}
-            <Card className="bg-slate-800/50 border-slate-700 p-6">
-              <h2 className="text-2xl font-semibold text-white mb-4">
+            <Card className="border-slate-700 bg-slate-800/50 p-6">
+              <h2 className="mb-4 text-2xl font-semibold text-white">
                 Achievements
               </h2>
               <div className="space-y-3">
                 {achievements.map((achievement) => (
                   <div
                     key={achievement.id}
-                    className={`p-3 rounded-lg border ${
+                    className={`rounded-lg border p-3 ${
                       achievement.unlocked
-                        ? "bg-green-900/20 border-green-700"
-                        : "bg-slate-700/20 border-slate-600"
+                        ? "border-green-700 bg-green-900/20"
+                        : "border-slate-600 bg-slate-700/20"
                     }`}
                   >
                     <div className="flex items-center space-x-3">
                       <div
-                        className={`w-4 h-4 rounded-full ${
+                        className={`h-4 w-4 rounded-full ${
                           achievement.unlocked ? "bg-green-400" : "bg-slate-500"
                         }`}
                       />

@@ -1,6 +1,5 @@
 import type React from "react";
-
-import { createContext, useContext, useReducer, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext, useReducer } from "react";
 
 interface GameState {
   connected: boolean;
@@ -59,7 +58,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         isLoading: false,
       };
 
-    case "TRAIN_PLAYER":
+    case "TRAIN_PLAYER": {
       const newExp = state.experience + 10;
       const levelUp = newExp >= state.maxExp;
       return {
@@ -71,8 +70,9 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           ? `Level ${state.level + 1} Reached!`
           : state.achievement,
       };
+    }
 
-    case "MINE_COINS":
+    case "MINE_COINS": {
       const newCoins = state.coins + 5;
       return {
         ...state,
@@ -83,6 +83,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             ? "Wealthy Miner!"
             : state.achievement,
       };
+    }
 
     case "REST_PLAYER":
       return {

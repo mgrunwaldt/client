@@ -18,26 +18,32 @@ export default function CalendarItem({
   return (
     <div
       className={cn(
-        "flex justify-center items-center w-full h-full",
+        "flex h-full w-full items-center justify-center",
         "relative overflow-hidden",
-        className
+        className,
       )}
       style={{
         backgroundColor: borderColor,
-        clipPath: "polygon(87% 0, 100% 12%, 100% 100%, 75% 100%, 12% 100%, 0 87%, 0 0)",
+        clipPath:
+          "polygon(87% 0, 100% 12%, 100% 100%, 75% 100%, 12% 100%, 0 87%, 0 0)",
       }}
     >
       <div
         className={cn(
-          "absolute w-[98%] h-[98%]",
-          noShadow ? "shadow-none" : "shadow-[inset_0_0px_8px_rgba(3,228,232,100)]"
+          "absolute h-[98%] w-[98%]",
+          noShadow
+            ? "shadow-none"
+            : "shadow-[inset_0_0px_8px_rgba(3,228,232,100)]",
         )}
         style={{
           backgroundColor: bgColor,
-          clipPath: "polygon(87% 0, 100% 12%, 100% 100%, 75% 100%, 12% 100%, 0 87%, 0 0)",
+          clipPath:
+            "polygon(87% 0, 100% 12%, 100% 100%, 75% 100%, 12% 100%, 0 87%, 0 0)",
         }}
       />
-      <div className="relative z-10 flex flex-col items-center justify-start gap-2 mb-4">{children}</div>
+      <div className="relative z-10 mb-4 flex flex-col items-center justify-start gap-2">
+        {children}
+      </div>
     </div>
   );
 }
