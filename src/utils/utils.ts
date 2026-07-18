@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import {iconMap} from "./iconMap";
+
+import { iconMap } from "./iconMap";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

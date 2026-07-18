@@ -1,4 +1,4 @@
-import { useFBX, useGLTF, useTexture } from "@react-three/drei";
+import { useGLTF, useTexture } from "@react-three/drei";
 
 const defenderTextures = [
   "/models/in-game/textures/defenders/BaseTeam_1_Skin_1.png",
@@ -36,24 +36,8 @@ const fieldTextures = [
   "/field/aim-arrow-tip-glow.svg",
 ];
 
-[
-  "/models/in-game/ST.glb",
-  "/models/in-game/Ball/Ball.glb",
-].forEach((asset) => {
+["/models/in-game/ST.glb", "/models/in-game/Ball/Ball.glb"].forEach((asset) => {
   useGLTF.preload(asset);
-});
-
-[
-  "/models/in-game/game_model_1.fbx",
-  "/models/in-game/game_model_2.fbx",
-  "/models/in-game/game_model_3.fbx",
-  "/models/in-game/animations/DefensiveIdle.fbx",
-  "/models/in-game/animations/JogForward.fbx",
-  "/models/in-game/animations/JogForwardDiagonalLeft.fbx",
-  "/models/in-game/animations/JogForwardDiagonalRight.fbx",
-  "/models/in-game/animations/StrikeForwardJog.fbx",
-].forEach((asset) => {
-  useFBX.preload(asset);
 });
 
 [

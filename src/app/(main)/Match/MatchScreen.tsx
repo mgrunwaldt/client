@@ -1,11 +1,13 @@
+import "../../(game)/field-assets";
+
 import { useEffect, useMemo, useRef } from "react";
 import { useNavigate, useParams } from "react-router";
-import { LiveHeader } from "./components/LiveHeader";
-import { EventFeed } from "./components/EventFeed";
-import { MatchControls } from "./components/MatchControls";
-import { useMatchSessionStore } from "../../../match/session-store";
+
 import { fetchBackendMatch } from "../../../lib/backend-match";
-import "../../(game)/field-assets";
+import { useMatchSessionStore } from "../../../match/session-store";
+import { EventFeed } from "./components/EventFeed";
+import { LiveHeader } from "./components/LiveHeader";
+import { MatchControls } from "./components/MatchControls";
 
 type MatchEvent = {
   id: string;
@@ -27,8 +29,10 @@ function mapBackendEventType(event: {
 }): MatchEvent["type"] {
   if (event.my_team_scored) return "team-goal";
   if (event.opponent_team_scored) return "opponent-goal";
-  if (event.player_participates && event.team === "MY_TEAM") return "team-chance";
-  if (event.player_participates && event.team === "OPPONENT_TEAM") return "opponent-chance";
+  if (event.player_participates && event.team === "MY_TEAM")
+    return "team-chance";
+  if (event.player_participates && event.team === "OPPONENT_TEAM")
+    return "opponent-chance";
   return "normal";
 }
 
@@ -46,13 +50,23 @@ export default function MatchScreen() {
   const playstyle = useMatchSessionStore((state) => state.playstyle);
   const setEffort = useMatchSessionStore((state) => state.setEffort);
   const setPlaystyle = useMatchSessionStore((state) => state.setPlaystyle);
-  const setPlaybackMinute = useMatchSessionStore((state) => state.setPlaybackMinute);
-  const setPlaybackStatus = useMatchSessionStore((state) => state.setPlaybackStatus);
-  const hydrateMatchSession = useMatchSessionStore((state) => state.hydrateMatchSession);
+  const setPlaybackMinute = useMatchSessionStore(
+    (state) => state.setPlaybackMinute,
+  );
+  const setPlaybackStatus = useMatchSessionStore(
+    (state) => state.setPlaybackStatus,
+  );
+  const hydrateMatchSession = useMatchSessionStore(
+    (state) => state.hydrateMatchSession,
+  );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
-  const updateTransitionLoader = useMatchSessionStore((state) => state.updateTransitionLoader);
-  const hideTransitionLoader = useMatchSessionStore((state) => state.hideTransitionLoader);
+  const updateTransitionLoader = useMatchSessionStore(
+    (state) => state.updateTransitionLoader,
+  );
+  const hideTransitionLoader = useMatchSessionStore(
+    (state) => state.hideTransitionLoader,
+  );
   const fieldTransitionTimeout = useRef<number | null>(null);
 
   const targetMinute = pendingAction?.minute || match?.current_time || 0;
@@ -79,7 +93,8 @@ export default function MatchScreen() {
         });
       } catch (error) {
         if (cancelled) return;
-        const message = error instanceof Error ? error.message : "Failed to load match.";
+        const message =
+          error instanceof Error ? error.message : "Failed to load match.";
         setError(message);
         setLoading(false);
       }
@@ -129,7 +144,10 @@ export default function MatchScreen() {
 
     const interval = window.setInterval(() => {
       setPlaybackMinute(
-        Math.min(targetMinute, useMatchSessionStore.getState().playbackMinute + 1),
+        Math.min(
+          targetMinute,
+          useMatchSessionStore.getState().playbackMinute + 1,
+        ),
       );
     }, 1000);
 

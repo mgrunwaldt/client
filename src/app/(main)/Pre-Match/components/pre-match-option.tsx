@@ -21,8 +21,8 @@ type PrematchOptionProps = {
 
 const PrematchOption = ({ title }: PrematchOptionProps) => {
   return (
-    <div className="w-full h-full bg-transparent rounded-lg p-6 text-center pre-match-item-container">
-      <h3 className="text-white text-lg font-bold">{title}</h3>
+    <div className="pre-match-item-container h-full w-full rounded-lg bg-transparent p-6 text-center">
+      <h3 className="text-lg font-bold text-white">{title}</h3>
     </div>
   );
 };
@@ -34,7 +34,7 @@ export default function PrematchOptions({ className }: PrematchOptionsProps) {
   return (
     <div
       className={cn(
-        "w-full flex flex-col items-center justify-center gap-6 px-2 z-100 ",
+        "z-100 flex w-full flex-col items-center justify-center gap-6 px-2",
         className,
       )}
     >

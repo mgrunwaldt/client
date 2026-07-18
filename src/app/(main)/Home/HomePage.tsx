@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 
+import LoadingScreen from "../../../components/loader/LoadingScreen";
+import Scene from "../../../components/webgl/Scene";
 // import { useNavigate } from "react-router";
 // import { useStarknetConnect } from "../../../dojo/hooks/useStarknetConnect";
 // import useAppStore from "../../../zustand/store";
 import HomeMenu from "./components/menu";
-import Scene from "../../../components/webgl/Scene";
-import LoadingScreen from "../../../components/loader/LoadingScreen";
 
 export default function HomePage() {
   // const navigate = useNavigate();
@@ -14,33 +14,20 @@ export default function HomePage() {
   // const resetStore = useAppStore((state) => state.resetStore);
 
   const [isLoading, setIsLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [assetsLoaded, setAssetsLoaded] = useState({
-    background: false,
-    scene: false,
-  });
-
-  
+  const [sceneLoaded, setSceneLoaded] = useState(false);
+  const loadingProgress = sceneLoaded ? 100 : 0;
 
   // Track when all assets are loaded
   useEffect(() => {
-    if (assetsLoaded.scene) {
-      setLoadingProgress(100);
-      // Add a small delay before hiding the loader for smooth transition
-      const timer = setTimeout(() => {
-        setIsLoading(false);
-      }, 300);
-      return () => clearTimeout(timer);
-    } else {
-      // Update progress based on what's loaded
-      const progress =
-        (Object.values(assetsLoaded).filter(Boolean).length / 2) * 100;
-      setLoadingProgress(progress);
-    }
-  }, [assetsLoaded]);
+    if (!sceneLoaded) return;
+
+    // Add a small delay before hiding the loader for smooth transition.
+    const timer = setTimeout(() => setIsLoading(false), 300);
+    return () => clearTimeout(timer);
+  }, [sceneLoaded]);
 
   const handleSceneLoadComplete = () => {
-    setAssetsLoaded((prev) => ({ ...prev, scene: true }));
+    setSceneLoaded(true);
   };
 
   // Memoize static styles to prevent re-creation
@@ -57,13 +44,13 @@ export default function HomePage() {
       <LoadingScreen isLoading={isLoading} progress={loadingProgress} />
 
       {/* 3D Scene Layer - positioned behind UI */}
-      <div className="pointer-events-auto absolute inset-0 z-20 ">
+      <div className="pointer-events-auto absolute inset-0 z-20">
         <Scene onLoadComplete={handleSceneLoadComplete} />
       </div>
 
       {/* UI Overlay Layer - positioned on top */}
       <div className="relative z-30 h-dvh">
-        <div className="h-full flex flex-col pb-6">
+        <div className="flex h-full flex-col pb-6">
           <HomeMenu />
         </div>
       </div>

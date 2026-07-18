@@ -1,11 +1,10 @@
 import { useNavigate } from "react-router";
+
 import { BackButton } from "../../../components/ui/back-button";
 import { Button } from "../../../components/ui/button";
 import { useStarknetConnect } from "../../../dojo/hooks/useStarknetConnect";
 
-type Props = {};
-
-export default function SettingsScreen({}: Props) {
+export default function SettingsScreen() {
   const { handleDisconnect } = useStarknetConnect();
   const navigate = useNavigate();
 

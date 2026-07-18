@@ -5,7 +5,7 @@ the sibling `match_server`; it does not run the match engine locally.
 
 ## Prerequisites
 
-- Node.js 22 or later and pnpm 10.24.0 (the version is pinned in `package.json`).
+- Node.js 22.14.0 and pnpm 10.24.0 (pinned in `.nvmrc` and `package.json`).
 - The `match_server` checkout that owns this submodule, or a sibling standalone
   checkout.
 - `mkcert` only when running the client over local HTTPS.
@@ -68,7 +68,8 @@ over HTTPS. Use `VITE_MATCH_BACKEND_URL` only for a deployed backend URL that
 already supports the required browser security policy.
 
 All `VITE_` values are included in browser code. Do not put private keys,
-tokens, or production secrets in `.env` files or `VITE_` variables.
+tokens, or production secrets in `.env` files or `VITE_` variables. The client
+does not accept a browser-side master private key.
 
 ## Run
 
@@ -114,6 +115,43 @@ certificates and `VITE_LOCAL_HTTPS=true` in `.env.production.local`,
 set `VITE_MATCH_BACKEND_URL` to a reachable deployed backend before running
 `pnpm build`, or use `pnpm dev` for local proxying. Vite embeds public variables
 at build time; changing them after `pnpm build` does not update the bundle.
+
+## Quality Gates
+
+The client quality gates run on exactly Node.js 22.14.0. Local version managers
+use `.nvmrc`, while `package.json` constrains deployments to the Vercel-supported
+Node 22 line through `engines`. The `Client Quality` GitHub Actions workflow and
+runtime policy verifier enforce exact Node.js 22.14.0 and pnpm 10.24.0 versions.
+Its stable job check is `client-quality`.
+
+```bash
+pnpm install --frozen-lockfile
+pnpm ci:verify
+pnpm test:policy
+pnpm lint
+pnpm format:check
+pnpm typecheck
+pnpm test:unit
+pnpm exec playwright install --with-deps chromium
+pnpm test:browser
+pnpm build
+```
+
+The browser smoke builds the normal production bundle, including Dojo SDK
+initialization and `DojoSdkProvider`, serves it with Vite preview, and verifies
+the `/login` route in Chromium. It confirms application mounting and fatal-error
+handling only; broader client regression coverage is owned by M0-I5.
+
+The build keeps every JavaScript chunk below Vite's 500 kB warning boundary
+and verifies that the login static graph excludes the game route. The Chromium
+smoke also rejects browser warnings and any login-time game model request. These
+are interim startup guards; M0-I7 owns the final mobile transfer and runtime
+budgets.
+
+The intended `main` branch protection settings are machine-readable in
+`.github/branch-protection.main.json` and checked by `pnpm ci:verify`. Live
+repository enforcement requires a GitHub administrator and remains external to
+this checkout.
 
 ## Troubleshooting
 

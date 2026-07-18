@@ -1,11 +1,12 @@
-import { useState, useCallback, useEffect } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { useAccount } from "@starknet-react/core";
-import { Account } from "starknet";
 import { useDojoSDK } from "@dojoengine/sdk/react";
-import { useStarknetConnect } from "./useStarknetConnect";
-import { useOvergoalPlayer } from "./useOvergoalPlayer";
+import { useAccount } from "@starknet-react/core";
+import { useCallback, useEffect, useState } from "react";
+import { Account } from "starknet";
+import { v4 as uuidv4 } from "uuid";
+
 import useAppStore from "../../zustand/store";
+import { useOvergoalPlayer } from "./useOvergoalPlayer";
+import { useStarknetConnect } from "./useStarknetConnect";
 
 // Types
 interface InitializeOvergoalState {
@@ -253,6 +254,7 @@ export const useCreateOvergoalPlayer = () => {
       isInitializing,
       client.game,
       dojoState,
+      initState.txHash,
     ],
   );
 

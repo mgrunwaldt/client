@@ -1,16 +1,17 @@
-import SemiSquareContainer from "../Home/components/semi-square/semi-square-container";
+import { Link } from "react-router";
+
 import { BackButton } from "../../../components/ui/back-button";
 import { Button } from "../../../components/ui/button";
 import { Countdown } from "../../../components/ui/countdown";
+import SemiSquareContainer from "../Home/components/semi-square/semi-square-container";
 import { SEASON_COUNTDOWN_TARGET_DATE, socialLinks } from "../Home/constants";
-import { Link } from "react-router";
 
 export default function TournamentsScreen() {
   // Target date for tournament start
   const targetDate = SEASON_COUNTDOWN_TARGET_DATE;
 
   return (
-    <div className="relative flex   h-dvh w-full flex-col items-center justify-center gap-8 bg-[url('/backgrounds/glitch-bg.webp')] bg-cover bg-center px-12">
+    <div className="relative flex h-dvh w-full flex-col items-center justify-center gap-8 bg-[url('/backgrounds/glitch-bg.webp')] bg-cover bg-center px-12">
       <BackButton to="/" className="absolute top-5 left-0 z-100" />
 
       <div className="absolute top-0 h-20 w-full object-cover object-center">

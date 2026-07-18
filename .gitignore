@@ -14,6 +14,8 @@ dist-ssr/
 dev-dist/
 build/
 coverage/
+playwright-report/
+test-results/
 .vite/
 .pnpm-store/
 *.tsbuildinfo

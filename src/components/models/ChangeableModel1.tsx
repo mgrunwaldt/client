@@ -3,26 +3,27 @@
   Loads new_model.glb and uses Body_1_1 node
 */
 
-import * as THREE from "three";
-import { useEffect, useMemo, useRef } from "react";
 import {
-  useGLTF,
-  useAnimations,
-  useTexture,
   Outlines,
+  useAnimations,
+  useGLTF,
+  useTexture,
 } from "@react-three/drei";
+import { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
 import { GLTF } from "three-stdlib";
+
 import {
+  getActionMapLooping,
   mapAccesoriesTexture,
   mapTeamTexture,
-  getActionMapLooping,
 } from "../../utils/mapTeamTexture";
 import {
-  PlayerData,
-  CharacterConfig,
-  playerDataToCharacterConfig,
-  getAnim,
   BaseModelProps,
+  CharacterConfig,
+  getAnim,
+  PlayerData,
+  playerDataToCharacterConfig,
 } from "./shared-types";
 
 type GLTFModel1 = GLTF & {
@@ -123,7 +124,7 @@ export default function ChangeableModel1({
     // Start playing
     action.play();
 
-    const onLoop = (e: any) => {
+    const onLoop = (e: THREE.Event & { action: THREE.AnimationAction }) => {
       if (e.action === action) {
         action.time = actionTime;
       }
@@ -134,7 +135,7 @@ export default function ChangeableModel1({
       mixer.removeEventListener("loop", onLoop);
       action.stop();
     };
-  }, [actions, playerData, mixer]);
+  }, [actions, mixer, playerData, props.defaultAnimtion]);
 
   // Create materials
   const bodyMaterial = useMemo(() => {
@@ -216,8 +217,7 @@ export default function ChangeableModel1({
                   geometry={eyebrowsNode.geometry}
                   material={hairMaterial}
                   skeleton={eyebrowsNode.skeleton}
-                >
-                </skinnedMesh>
+                ></skinnedMesh>
               )}
 
               {/* Beard */}
@@ -305,4 +305,4 @@ export default function ChangeableModel1({
 // Preload model
 useGLTF.preload("/models/Male/new-text/new_model.glb");
 
-export type { PlayerData, CharacterConfig };
+export type { CharacterConfig, PlayerData };

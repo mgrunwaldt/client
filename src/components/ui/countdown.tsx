@@ -7,18 +7,19 @@ interface CountdownProps {
   readyText?: string;
 }
 
-export function Countdown({ 
-  targetDate, 
-  onComplete, 
-  className = "", 
-  readyText = "READY!" 
+export function Countdown({
+  targetDate,
+  onComplete,
+  className = "",
+  readyText = "READY!",
 }: CountdownProps) {
   const [countdown, setCountdown] = useState("");
 
   useEffect(() => {
-    const target = typeof targetDate === 'string' 
-      ? new Date(targetDate).getTime() 
-      : targetDate.getTime();
+    const target =
+      typeof targetDate === "string"
+        ? new Date(targetDate).getTime()
+        : targetDate.getTime();
 
     const updateCountdown = () => {
       const now = Date.now();
@@ -46,9 +47,5 @@ export function Countdown({
     return () => clearInterval(interval);
   }, [targetDate, onComplete, readyText]);
 
-  return (
-    <span className={className}>
-      {countdown}
-    </span>
-  );
+  return <span className={className}>{countdown}</span>;
 }

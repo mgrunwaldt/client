@@ -11,17 +11,12 @@ export { default as ChangeableModel2 } from "./ChangeableModel2";
 export { default as ChangeableModel3 } from "./ChangeableModel3";
 
 // Shared types and utilities
-export type { 
-  PlayerData, 
-  CharacterConfig, 
-  BaseModelProps 
+export type {
+  BaseModelProps,
+  CharacterConfig,
+  PlayerData,
 } from "./shared-types";
-
-export { 
-  playerDataToCharacterConfig, 
-  getAnim 
-} from "./shared-types";
+export { getAnim, playerDataToCharacterConfig } from "./shared-types";
 
 // Legacy export (for backwards compatibility if needed)
 export { default as ChangeableModels } from "./ChangeableModels";
-

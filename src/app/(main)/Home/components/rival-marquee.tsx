@@ -1,6 +1,7 @@
-import { useRef } from "react";
-import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
+import { gsap } from "gsap";
+import { useRef } from "react";
+
 import { SEASON_COUNTDOWN_TARGET_DATE } from "../constants";
 
 export default function RivalMarquee() {

@@ -10,16 +10,17 @@
   6. Navigate to main screen
 */
 
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router";
+import { useAccount } from "@starknet-react/core";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router";
+
+import { Button } from "../../../components/ui/button";
+import { GlitchText } from "../../../components/ui/glitch-text";
 import { useClaimPlayer } from "../../../dojo/hooks/useClaimPlayer";
 import { useStarknetConnect } from "../../../dojo/hooks/useStarknetConnect";
-import { useAccount } from "@starknet-react/core";
-import ClaimScene from "./ClaimScene";
-import { GlitchText } from "../../../components/ui/glitch-text";
-import { Button } from "../../../components/ui/button";
 import { cn } from "../../../utils/utils";
 import useAppStore from "../../../zustand/store";
+import ClaimScene from "./ClaimScene";
 
 // Helper function to convert UUID to felt252 hex
 const uuidToFelt252 = (uuid: string): string => {
@@ -60,7 +61,6 @@ export default function ClaimScreen() {
         const playerIdFelt = uuidToFelt252(player_id);
         const result = await claimPlayer(playerIdFelt);
 
-
         if (result.success) {
           // Save the claimed player's link ID to the store
           setClaimedPlayerLinkId(player_id);
@@ -84,6 +84,7 @@ export default function ClaimScreen() {
     hasAttemptedClaim,
     claimPlayer,
     navigate,
+    setClaimedPlayerLinkId,
   ]);
 
   // Handle claim button click (for manual retry if auto-claim fails)
@@ -177,7 +178,6 @@ export default function ClaimScreen() {
               <p className="text-sm">{error}</p>
             </div>
           )}
-
 
           {/* Claim Button */}
           {!showSuccess && (

@@ -1,6 +1,6 @@
 interface GlitchTextProps {
-  text: string
-  className?: string
+  text: string;
+  className?: string;
 }
 
 export function GlitchText({ text, className = "" }: GlitchTextProps) {
@@ -11,6 +11,5 @@ export function GlitchText({ text, className = "" }: GlitchTextProps) {
     >
       {text}
     </div>
-  )
+  );
 }
-

@@ -1,8 +1,9 @@
-import React from "react";
-import { PlayerData } from "./ChangeableModels";
-import { cn } from "../../utils/utils";
-import { mapCardBorderTexture } from "../../utils/mapTeamTexture";
 import { Html } from "@react-three/drei";
+import React from "react";
+
+import { mapCardBorderTexture } from "../../utils/mapTeamTexture";
+import { cn } from "../../utils/utils";
+import type { PlayerData } from "./shared-types";
 
 const getPlayerTeam = (team: number | undefined) => {
   if (team === 0) return "/teams/Cartridge City.webp";

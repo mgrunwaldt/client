@@ -1,15 +1,16 @@
-import * as THREE from "three";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Outlines, useAnimations, useFBX, useTexture } from "@react-three/drei";
-import { FBXLoader, SkeletonUtils } from "three-stdlib";
-import { mapAccesoriesTexture } from "../../../utils/mapTeamTexture";
-import { useLoader, useFrame } from "@react-three/fiber";
-import { GameModelProps } from "../shared-types";
+import { useFrame, useLoader } from "@react-three/fiber";
 import {
   CapsuleCollider,
   RapierRigidBody,
   RigidBody,
 } from "@react-three/rapier";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { FBXLoader, SkeletonUtils } from "three-stdlib";
+
+import { mapAccesoriesTexture } from "../../../utils/mapTeamTexture";
+import { GameModelProps } from "../shared-types";
 
 const getBodyModel = (body_type: number) => {
   switch (body_type) {
@@ -98,7 +99,7 @@ export default function GameModel(props: GameModelProps) {
       // Defender texture: BaseTeam_{team_id}_Skin_{skin_color + 1}.png
       return `/models/in-game/textures/defenders/BaseTeam_${type + 1}_Skin_${props.skin_color + 1}.png`;
     }
-  }, [props.goalkeeper.isGoalKeeper, props.team_id, props.skin_color]);
+  }, [props.goalkeeper.isGoalKeeper, props.skin_color, type]);
 
   // Load textures
   const skinTexture = useTexture(skinTextureUrl);
@@ -352,7 +353,14 @@ export default function GameModel(props: GameModelProps) {
         }
       }
     });
-  }, [accesoriesMaterial, bodyMaterial, fbxModel, hairMaterial, props.hair_type, props.visor_type]);
+  }, [
+    accesoriesMaterial,
+    bodyMaterial,
+    fbxModel,
+    hairMaterial,
+    props.hair_type,
+    props.visor_type,
+  ]);
 
   if (!fbxModel) {
     return null;
@@ -415,12 +423,3 @@ export default function GameModel(props: GameModelProps) {
     </RigidBody>
   );
 }
-
-useFBX.preload("/models/in-game/game_model_1.fbx");
-useFBX.preload("/models/in-game/game_model_2.fbx");
-useFBX.preload("/models/in-game/game_model_3.fbx");
-useFBX.preload("/models/in-game/animations/DefensiveIdle.fbx");
-useFBX.preload("/models/in-game/animations/JogForward.fbx");
-useFBX.preload("/models/in-game/animations/JogForwardDiagonalLeft.fbx");
-useFBX.preload("/models/in-game/animations/JogForwardDiagonalRight.fbx");
-useFBX.preload("/models/in-game/animations/StrikeForwardJog.fbx");

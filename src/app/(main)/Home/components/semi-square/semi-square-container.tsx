@@ -1,7 +1,5 @@
 import { cn } from "../../../../../utils/utils";
 
-
-
 interface Props {
   children: React.ReactNode;
   bgColor?: string;
@@ -9,8 +7,6 @@ interface Props {
   className?: string;
   noShadow?: boolean;
 }
-
-
 
 export default function SemiSquareContainer({
   children,
@@ -22,9 +18,9 @@ export default function SemiSquareContainer({
   return (
     <div
       className={cn(
-        "flex justify-center items-center w-full h-full",
+        "flex h-full w-full items-center justify-center",
         "relative overflow-hidden",
-        className
+        className,
       )}
       style={{
         backgroundColor: borderColor,
@@ -32,7 +28,12 @@ export default function SemiSquareContainer({
       }}
     >
       <div
-        className={cn("absolute w-[98%] h-[98%] ", noShadow ? "shadow-none" : "shadow-[inset_0_0px_8px_rgba(3,228,232,100)]")}
+        className={cn(
+          "absolute h-[98%] w-[98%]",
+          noShadow
+            ? "shadow-none"
+            : "shadow-[inset_0_0px_8px_rgba(3,228,232,100)]",
+        )}
         style={{
           backgroundColor: bgColor,
           clipPath: "polygon(16% 0, 100% 0, 100% 100%, 0 100%, 0 15%)",

@@ -1,9 +1,11 @@
-import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Preload } from "@react-three/drei";
+import { Canvas } from "@react-three/fiber";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import Lights from "./lights";
-import ChangeableModels, { PlayerData } from "../../models/ChangeableModels";
+
 import CardViewer from "../../models/CardViewer";
+import ChangeableModels from "../../models/ChangeableModels";
+import type { PlayerData } from "../../models/shared-types";
+import Lights from "./lights";
 
 const getRandomizedRotation = (bodyType: number): number => {
   if (bodyType === 0) {
@@ -75,7 +77,8 @@ const CardScene = ({ playerLinkId }: { playerLinkId: number | string }) => {
         const data = await res.json();
 
         const player = data.find(
-          (player: PlayerData) => player.linkID.toString() === playerLinkId.toString(),
+          (player: PlayerData) =>
+            player.linkID.toString() === playerLinkId.toString(),
         );
         setPlayer(player);
         console.log(player, "player");
@@ -84,40 +87,40 @@ const CardScene = ({ playerLinkId }: { playerLinkId: number | string }) => {
       }
     };
 
-    fetchData();
-  }, []);
+    void fetchData();
+  }, [playerLinkId]);
 
   return (
-      <Canvas
-        camera={cameraSettings}
-        gl={glSettings}
-        dpr={dpr}
-        className="pointer-events-auto h-full w-full"
-        style={{
-          touchAction: "none", // Prevent default touch behaviors
-          background: "transparent", // Make canvas background transparent
-        }}
-      >
-        {/* <Perf position="top-left" /> */}
-        <Suspense fallback={null}>
-          <OrbitControls {...orbitControlsSettings} />
-          <Lights />
+    <Canvas
+      camera={cameraSettings}
+      gl={glSettings}
+      dpr={dpr}
+      className="pointer-events-auto h-full w-full"
+      style={{
+        touchAction: "none", // Prevent default touch behaviors
+        background: "transparent", // Make canvas background transparent
+      }}
+    >
+      {/* <Perf position="top-left" /> */}
+      <Suspense fallback={null}>
+        <OrbitControls {...orbitControlsSettings} />
+        <Lights />
 
-          {player && <CardViewer player={player} />}
+        {player && <CardViewer player={player} />}
 
-          {/* <ModelBody2  scale={4.8}  position={[0, -200, 0]} rotation={[0, 0, 0]} /> */}
-          {player && (
-            <ChangeableModels
-              scale={player.body_type == 2 ? 6 : 6}
-              position={[0, player.body_type == 2 ? -250 : -250, -40]}
-              rotation={[0, getRandomizedRotation(player.body_type), 0]}
-              playerData={player}
-              autoRandomize={false}
-            />
-          )}
-          <Preload all />
-        </Suspense>
-      </Canvas>
+        {/* <ModelBody2  scale={4.8}  position={[0, -200, 0]} rotation={[0, 0, 0]} /> */}
+        {player && (
+          <ChangeableModels
+            scale={player.body_type == 2 ? 6 : 6}
+            position={[0, player.body_type == 2 ? -250 : -250, -40]}
+            rotation={[0, getRandomizedRotation(player.body_type), 0]}
+            playerData={player}
+            autoRandomize={false}
+          />
+        )}
+        <Preload all />
+      </Suspense>
+    </Canvas>
   );
 };
 

@@ -3,25 +3,26 @@
   Loads new_model_3.glb and uses Body_2 node
 */
 
-import * as THREE from "three";
-import { useEffect, useMemo, useRef } from "react";
 import {
-  useGLTF,
-  useAnimations,
-  useTexture,
   Outlines,
+  useAnimations,
+  useGLTF,
+  useTexture,
 } from "@react-three/drei";
+import { useEffect, useMemo, useRef } from "react";
+import * as THREE from "three";
 import { GLTF } from "three-stdlib";
+
 import {
   getActionMapLooping,
   mapAccesoriesTexture,
   mapTeamTexture,
 } from "../../utils/mapTeamTexture";
 import {
-  PlayerData,
-  CharacterConfig,
-  playerDataToCharacterConfig,
   BaseModelProps,
+  CharacterConfig,
+  PlayerData,
+  playerDataToCharacterConfig,
 } from "./shared-types";
 
 type GLTFModel3 = GLTF & {
@@ -53,9 +54,6 @@ export default function ChangeableModel3({
     "/models/Male/new-text/new_model_3.glb",
   ) as unknown as GLTFModel3;
 
-
-  
-
   // Load textures
   const skinTextureUrl = mapTeamTexture(
     playerData.team_id,
@@ -67,7 +65,6 @@ export default function ChangeableModel3({
   const accesoriesTexture = useTexture(
     mapAccesoriesTexture(playerData.visor_color),
   );
-
 
   // Set color space on textures
   useEffect(() => {
@@ -120,7 +117,7 @@ export default function ChangeableModel3({
     // Start playing
     action.play();
 
-    const onLoop = (e: any) => {
+    const onLoop = (e: THREE.Event & { action: THREE.AnimationAction }) => {
       if (e.action === action) {
         action.time = actionTime;
       }
@@ -131,7 +128,7 @@ export default function ChangeableModel3({
       mixer.removeEventListener("loop", onLoop);
       action.stop();
     };
-  }, [actions, playerData, mixer]);
+  }, [actions, mixer, playerData, props.defaultAnimtion]);
 
   // Create materials
   const bodyMaterial = useMemo(() => {
@@ -213,8 +210,7 @@ export default function ChangeableModel3({
                   geometry={eyebrowsNode.geometry}
                   material={hairMaterial}
                   skeleton={eyebrowsNode.skeleton}
-                >
-                </skinnedMesh>
+                ></skinnedMesh>
               )}
 
               {/* Beard */}
@@ -302,4 +298,4 @@ export default function ChangeableModel3({
 // Preload model
 useGLTF.preload("/models/Male/new-text/new_model_3.glb");
 
-export type { PlayerData, CharacterConfig };
+export type { CharacterConfig, PlayerData };

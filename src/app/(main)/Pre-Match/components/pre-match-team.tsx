@@ -14,16 +14,16 @@ export default function PreMatchTeam({
 }: PreMatchTeamProps) {
   // Split team name into words for better line breaking
   const formatTeamName = (name: string) => {
-    const words = name.split(' ');
+    const words = name.split(" ");
     if (words.length <= 2) {
       return name;
     }
-    
+
     // For names with more than 2 words, split into two lines
     const midPoint = Math.ceil(words.length / 2);
-    const firstLine = words.slice(0, midPoint).join(' ');
-    const secondLine = words.slice(midPoint).join(' ');
-    
+    const firstLine = words.slice(0, midPoint).join(" ");
+    const secondLine = words.slice(midPoint).join(" ");
+
     return (
       <>
         <span className="block">{firstLine}</span>
@@ -56,14 +56,14 @@ export default function PreMatchTeam({
             className="h-full w-full object-cover"
           />
         </div>
-          <h1
-            className={cn(
-              "font-orbitron mx-auto max-w-[140px] text-center text-lg leading-6 font-bold text-white uppercase",
-              isMyTeam ? "text-overgoal-lime-green" : "text-overgoal-error",
-            )}
-          >
-            {formatTeamName(teamName)}
-          </h1>
+        <h1
+          className={cn(
+            "font-orbitron mx-auto max-w-[140px] text-center text-lg leading-6 font-bold text-white uppercase",
+            isMyTeam ? "text-overgoal-lime-green" : "text-overgoal-error",
+          )}
+        >
+          {formatTeamName(teamName)}
+        </h1>
       </div>
     </div>
   );

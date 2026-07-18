@@ -1,13 +1,13 @@
-import { useState, useCallback, useEffect } from "react";
-import { v4 as uuidv4 } from "uuid";
-import { useAccount } from "@starknet-react/core";
-import { Account } from "starknet";
+import { lookupAddresses } from "@cartridge/controller";
 import { useDojoSDK } from "@dojoengine/sdk/react";
-import { useStarknetConnect } from "./useStarknetConnect";
-import useAppStore from "../../zustand/store";
 import { cairoShortStringToFelt } from "@dojoengine/torii-wasm";
-import { lookupAddresses } from '@cartridge/controller';
+import { useAccount } from "@starknet-react/core";
+import { useCallback, useEffect, useState } from "react";
+import { Account } from "starknet";
+import { v4 as uuidv4 } from "uuid";
 
+import useAppStore from "../../zustand/store";
+import { useStarknetConnect } from "./useStarknetConnect";
 
 // Types
 interface InitializeState {
@@ -159,7 +159,7 @@ export const useCreatePlayer = () => {
           console.log("🔄 Account:", account);
           console.log("🔄 Account address:", account.address);
           const username = await lookupAddresses([account.address]);
-            
+
           console.log("🔄 Username:", username);
 
           const spawnTx = await client.game.createOrGetUser(
@@ -257,6 +257,7 @@ export const useCreatePlayer = () => {
       isInitializing,
       client.game,
       dojoState,
+      initState.txHash,
     ]);
 
   /**

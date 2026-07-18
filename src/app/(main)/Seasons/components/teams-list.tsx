@@ -12,7 +12,7 @@ type SeasonTeamsListProps = {
 
 export default function TeamsList({ teams = teamsData }: SeasonTeamsListProps) {
   return (
-    <div className="flex flex-col gap-4 w-full items-center justify-center pb-30">
+    <div className="flex w-full flex-col items-center justify-center gap-4 pb-30">
       {teams.map((team, index) => (
         <SeasonTeamItem key={team.id} {...team} index={index + 1} />
       ))}

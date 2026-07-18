@@ -1,5 +1,5 @@
-import CalendarComponent from "./calendar-team-item";
 import teamsData from "../../Seasons/components/teams.json";
+import CalendarComponent from "./calendar-team-item";
 
 interface Team {
   id: number;
@@ -99,15 +99,14 @@ export default function CalendarList({
     return null;
   };
 
-
   return (
     <div className="h-full max-h-screen w-full overflow-x-hidden overflow-y-auto px-16 py-8">
-      <div className="grid grid-cols-3 gap-x-24 gap-y-12 ">
+      <div className="grid grid-cols-3 gap-x-24 gap-y-12">
         {events.map((event, index) => (
           <>
             <div key={event.id} className="relative z-30! flex justify-center">
               <CalendarComponent>
-                <span className="font-orbitron text-overgoal-blue text-center text-base font-normal z-30!">
+                <span className="font-orbitron text-overgoal-blue z-30! text-center text-base font-normal">
                   {event.date}
                 </span>
                 <img

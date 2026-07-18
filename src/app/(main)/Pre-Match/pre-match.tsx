@@ -1,21 +1,35 @@
-import { useEffect, useState } from "react";
-import { BackButton } from "../../../components/ui/back-button";
-import { cn } from "../../../utils/utils";
+import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router";
+
 import preMatchBackground from "/backgrounds/glitch-bg.webp";
-import PreMatchTeam from "./components/pre-match-team";
-import SemiSquareContainer from "../Home/components/semi-square/semi-square-container";
-import CyberContainer from "../Home/components/cyber-container";
+
+import playersData from "../../../../data/players.json";
+import { BackButton } from "../../../components/ui/back-button";
+import { Button } from "../../../components/ui/button";
+import { Countdown } from "../../../components/ui/countdown";
 import { GlitchText } from "../../../components/ui/glitch-text";
 import { StaminaBar } from "../../../components/ui/stamina-bar";
-import { Countdown } from "../../../components/ui/countdown";
-import { SEASON_COUNTDOWN_TARGET_DATE } from "../Home/constants";
-import useAppStore from "../../../zustand/store";
-import teamsData from "../Seasons/components/teams.json";
-import playersData from "../../../../data/players.json";
-import { Button } from "../../../components/ui/button";
-import { useNavigate, useParams } from "react-router";
-import { fetchBackendMatch, startBackendMatch } from "../../../lib/backend-match";
+import {
+  fetchBackendMatch,
+  startBackendMatch,
+} from "../../../lib/backend-match";
 import { useMatchSessionStore } from "../../../match/session-store";
+import { cn } from "../../../utils/utils";
+import useAppStore from "../../../zustand/store";
+import CyberContainer from "../Home/components/cyber-container";
+import SemiSquareContainer from "../Home/components/semi-square/semi-square-container";
+import { SEASON_COUNTDOWN_TARGET_DATE } from "../Home/constants";
+import teamsData from "../Seasons/components/teams.json";
+import PreMatchTeam from "./components/pre-match-team";
+
+function findClaimedPlayerTeam(claimedPlayerLinkId: string | null) {
+  if (!claimedPlayerLinkId) return undefined;
+
+  const claimedPlayer = playersData.find(
+    (player) => player.linkID === claimedPlayerLinkId,
+  );
+  return teamsData.find((team) => team.id === claimedPlayer?.team_id);
+}
 
 export default function PreMatchScreen() {
   const navigate = useNavigate();
@@ -24,51 +38,27 @@ export default function PreMatchScreen() {
   const match = useMatchSessionStore((state) => state.match);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
-  const hydrateMatchSession = useMatchSessionStore((state) => state.hydrateMatchSession);
-  const setStartResponse = useMatchSessionStore((state) => state.setStartResponse);
+  const hydrateMatchSession = useMatchSessionStore(
+    (state) => state.hydrateMatchSession,
+  );
+  const setStartResponse = useMatchSessionStore(
+    (state) => state.setStartResponse,
+  );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
-  const showTransitionLoader = useMatchSessionStore((state) => state.showTransitionLoader);
-  const updateTransitionLoader = useMatchSessionStore((state) => state.updateTransitionLoader);
+  const showTransitionLoader = useMatchSessionStore(
+    (state) => state.showTransitionLoader,
+  );
+  const updateTransitionLoader = useMatchSessionStore(
+    (state) => state.updateTransitionLoader,
+  );
   const loading = useMatchSessionStore((state) => state.loading);
-  const [playerTeam, setPlayerTeam] = useState(teamsData[3]); // Default to "dojoUnited" (id: 4, index: 3)
-  const [enemyTeam, setEnemyTeam] = useState(teamsData[0]);
-
-  useEffect(() => {
-    if (claimedPlayerLinkId) {
-      // Find the player using the linkID
-      const claimedPlayer = playersData.find(
-        (player) => player.linkID === claimedPlayerLinkId,
-      );
-
-      if (claimedPlayer && claimedPlayer.team_id) {
-        // Find the team using the player's team_id
-        const team = teamsData.find(
-          (team) => team.id === claimedPlayer.team_id,
-        );
-
-        if (team) {
-          setPlayerTeam(team);
-        }
-      }
-    }
-  }, [claimedPlayerLinkId]);
-
-  useEffect(() => {
-    if (myTeam?.name) {
-      const mapped = teamsData.find((team) => team.name === myTeam.name);
-      if (mapped) {
-        setPlayerTeam(mapped);
-      }
-    }
-
-    if (opponentTeam?.name) {
-      const mapped = teamsData.find((team) => team.name === opponentTeam.name);
-      if (mapped) {
-        setEnemyTeam(mapped);
-      }
-    }
-  }, [myTeam, opponentTeam]);
+  const playerTeam =
+    teamsData.find((team) => team.name === myTeam?.name) ??
+    findClaimedPlayerTeam(claimedPlayerLinkId) ??
+    teamsData[3];
+  const enemyTeam =
+    teamsData.find((team) => team.name === opponentTeam?.name) ?? teamsData[0];
 
   useEffect(() => {
     const matchId = params.matchId;
@@ -92,7 +82,8 @@ export default function PreMatchScreen() {
         });
       } catch (error) {
         if (cancelled) return;
-        const message = error instanceof Error ? error.message : "Failed to load match.";
+        const message =
+          error instanceof Error ? error.message : "Failed to load match.";
         setError(message);
         setLoading(false);
       }
@@ -120,7 +111,8 @@ export default function PreMatchScreen() {
       setLoading(true);
       setError(null);
       progressTimer = window.setInterval(() => {
-        const currentProgress = useMatchSessionStore.getState().transitionLoader.progress;
+        const currentProgress =
+          useMatchSessionStore.getState().transitionLoader.progress;
         if (currentProgress >= 56) {
           return;
         }
@@ -147,7 +139,8 @@ export default function PreMatchScreen() {
       if (progressTimer) {
         window.clearInterval(progressTimer);
       }
-      const message = error instanceof Error ? error.message : "Failed to start match.";
+      const message =
+        error instanceof Error ? error.message : "Failed to start match.";
       setError(message);
       setLoading(false);
       useMatchSessionStore.getState().hideTransitionLoader();
@@ -254,7 +247,11 @@ export default function PreMatchScreen() {
                   />
                 </div>
               ) : (
-                <Button className="h-full w-full" onClick={handleStartMatch} disabled={loading}>
+                <Button
+                  className="h-full w-full"
+                  onClick={handleStartMatch}
+                  disabled={loading}
+                >
                   <p className="airstrike-normal !text-5xl text-white uppercase">
                     {loading ? "..." : "Play"}
                   </p>

@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { Countdown } from "../../../components/ui/countdown";
-import { Button } from "../../../components/ui/button";
-import { SEASON_COUNTDOWN_TARGET_DATE } from "../Home/constants";
 import { Link } from "react-router";
-import { GlitchText } from "../../../components/ui/glitch-text";
+
 import LoadingScreen from "../../../components/loader/LoadingScreen";
+import { Button } from "../../../components/ui/button";
+import { Countdown } from "../../../components/ui/countdown";
+import { GlitchText } from "../../../components/ui/glitch-text";
+import { SEASON_COUNTDOWN_TARGET_DATE } from "../Home/constants";
 
 export default function SeasonCountdownScreen() {
   const [isLoading, setIsLoading] = useState(true);
-  
+
   // Set target date for next season (you can adjust this date as needed)
   const targetDate = SEASON_COUNTDOWN_TARGET_DATE;
 

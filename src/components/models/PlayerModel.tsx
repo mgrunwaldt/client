@@ -25,5 +25,4 @@ export default function PlayerModel({ playerData, ...props }: BaseModelProps) {
 }
 
 export { ChangeableModel1, ChangeableModel2, ChangeableModel3 };
-export type { PlayerData, CharacterConfig } from "./shared-types";
-
+export type { CharacterConfig, PlayerData } from "./shared-types";
