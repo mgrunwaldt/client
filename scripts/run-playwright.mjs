@@ -13,7 +13,6 @@ const pnpmVersion =
 const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
 const usesProcessGroups = process.platform !== "win32";
 const initialParentPid = process.ppid;
-const browserDistDirectory = "dev-dist/browser-tests";
 
 if (!pnpmVersion) {
   throw new Error("pnpm is required to run browser tests");
@@ -21,6 +20,7 @@ if (!pnpmVersion) {
 
 const ownedChildren = new Map();
 let cleanupPromise;
+let browserDistDirectory;
 let pnpmShimDirectory;
 let parentWatchdog;
 let shutdownRequested = false;
@@ -121,7 +121,9 @@ async function cleanup() {
     if (pnpmShimDirectory) {
       await rm(pnpmShimDirectory, { force: true, recursive: true });
     }
-    await rm(browserDistDirectory, { force: true, recursive: true });
+    if (browserDistDirectory) {
+      await rm(browserDistDirectory, { force: true, recursive: true });
+    }
 
     if (failures.length > 0) {
       throw new AggregateError(
@@ -167,6 +169,9 @@ async function createPnpmShimDirectory() {
   }
 
   pnpmShimDirectory = directory;
+  browserDistDirectory = await mkdtemp(
+    join(tmpdir(), "overgoal-browser-dist-"),
+  );
   await runOwned("corepack-enable", "corepack", [
     "enable",
     "--install-directory",

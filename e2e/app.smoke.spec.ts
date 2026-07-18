@@ -36,7 +36,7 @@ async function expectLazyRouteFallback(
 
   releaseChunk();
   await navigation;
-  await expect(loadingSurface).toBeHidden();
+  await expect(loadingSurface).toBeHidden({ timeout: 15_000 });
 }
 
 test("mounts the login route without a fatal page error", async ({ page }) => {

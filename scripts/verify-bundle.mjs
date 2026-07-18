@@ -1,13 +1,14 @@
 import { readdir, readFile, stat } from "node:fs/promises";
+import { resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = new URL("../", import.meta.url);
 const outputDirectory = process.argv[2] || "dist";
 const allowsBrowserTestBridge = process.argv.includes(
   "--allow-browser-test-bridge",
 );
-const outputRoot = new URL(
-  `${outputDirectory.replace(/\/?$/u, "/")}`,
-  projectRoot,
+const outputRoot = pathToFileURL(
+  `${resolve(fileURLToPath(projectRoot), outputDirectory)}${sep}`,
 );
 const manifest = JSON.parse(
   await readFile(new URL(".vite/manifest.json", outputRoot), "utf8"),
