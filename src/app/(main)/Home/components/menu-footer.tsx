@@ -3,10 +3,71 @@ import { HOME_MENU_ITEMS, SEASON_COUNTDOWN_TARGET_DATE } from "../constants";
 import MenuItem from "./menu-item";
 import { getIcon } from "../../../../utils/utils";
 import { Countdown } from "../../../../components/ui/countdown";
-import { Link } from "react-router";
+import { useNavigate } from "react-router";
 import { Button } from "../../../../components/ui/button";
+import teamsData from "../../Seasons/components/teams.json";
+import {
+  createBackendMatch,
+  defaultLegendProfile,
+  fetchBackendTeams,
+  type BackendTeam,
+} from "../../../../lib/backend-match";
+import { useMatchSessionStore } from "../../../../match/session-store";
+
+function pickTeams(backendTeams: BackendTeam[]) {
+  const preferredHomeName = "Dojo United";
+  const preferredAwayName = "Cartridge City";
+  const localHomeTeam = teamsData.find((team) => team.name === preferredHomeName);
+  const homeTeam =
+    backendTeams.find((team) => team.name === localHomeTeam?.name) ||
+    backendTeams.find((team) => team.name === preferredHomeName) ||
+    backendTeams[0];
+  const awayTeam =
+    backendTeams.find((team) => team.name === preferredAwayName && team.id !== homeTeam?.id) ||
+    backendTeams.find((team) => team.id !== homeTeam?.id) ||
+    backendTeams[1];
+
+  return { homeTeam, awayTeam };
+}
 
 export default function MenuFooter() {
+  const navigate = useNavigate();
+  const setCreatedMatch = useMatchSessionStore((state) => state.setCreatedMatch);
+  const setLoading = useMatchSessionStore((state) => state.setLoading);
+  const setError = useMatchSessionStore((state) => state.setError);
+  const loading = useMatchSessionStore((state) => state.loading);
+
+  const handleCreateMatch = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const backendTeams = await fetchBackendTeams();
+      const { homeTeam, awayTeam } = pickTeams(backendTeams);
+
+      if (!homeTeam || !awayTeam) {
+        throw new Error("Could not select backend teams for match creation.");
+      }
+
+      const created = await createBackendMatch({
+        my_team_id: homeTeam.id,
+        opponent_team_id: awayTeam.id,
+        player_profile: defaultLegendProfile(),
+        ruleset: { rebound_play_enabled: true },
+      });
+
+      setCreatedMatch({
+        match: created.match,
+        myTeam: created.my_team,
+        opponentTeam: created.opponent_team,
+      });
+      navigate(`/pre-match/${created.match.id}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create match.";
+      setError(message);
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="home-footer relative h-full max-h-[175px] w-full bg-black">
       <div
@@ -29,13 +90,11 @@ export default function MenuFooter() {
             />
           </div>
         ) : (
-          <Link to="/pre-match/1" className="">
-            <Button className="h-full w-full" asChild={true}>
-              <p className="airstrike-normal !text-5xl text-white uppercase">
-                Play
-              </p>
-            </Button>
-          </Link>
+          <Button className="h-full w-full" onClick={handleCreateMatch} disabled={loading}>
+            <p className="airstrike-normal !text-5xl text-white uppercase">
+              {loading ? "..." : "Play"}
+            </p>
+          </Button>
         )}
       </div>
       <div className="relative flex h-full w-full flex-row items-end justify-center gap-8 p-4 text-white">

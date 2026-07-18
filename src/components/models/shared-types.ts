@@ -116,4 +116,5 @@ export interface GameModelProps {
   };
   isTeamMate: boolean;
   targetPosition?: [number, number, number] | null;
+  renderOnly?: boolean;
 }

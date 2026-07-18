@@ -115,7 +115,8 @@ export const dojoConfig = createDojoConfig({
 - **`manifest`**: Contains deployed contract addresses and ABIs
 - **RPC URL**: Direct connection to Starknet network
 - **Torii URL**: GraphQL endpoint for indexed blockchain data
-- **Master Account**: For contract administration (development only)
+- **Master Address**: Public development contract identity. Browser clients must
+  never receive its private key.
 
 **🌍 Environment Configuration:**
 
@@ -124,8 +125,12 @@ export const dojoConfig = createDojoConfig({
 VITE_PUBLIC_NODE_URL=https://api.cartridge.gg/x/starknet/sepolia
 VITE_PUBLIC_TORII=https://api.cartridge.gg/x/full-starter-react/torii
 VITE_PUBLIC_MASTER_ADDRESS=0x...
-VITE_PUBLIC_MASTER_PRIVATE_KEY=0x...
 ```
+
+Do not define `VITE_PUBLIC_MASTER_PRIVATE_KEY`. Vite embeds every `VITE_`
+variable into browser code. Development transactions must use a burner/session
+account or another approved signer boundary, never a privileged private key in
+the client bundle.
 
 ---
 

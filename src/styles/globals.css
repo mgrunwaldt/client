@@ -356,6 +356,93 @@
   color: var(--color-overgoal-magenta);
 }
 
+@keyframes transition-loader-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.015);
+  }
+}
+
+@keyframes transition-loader-scan {
+  0% {
+    transform: translateY(-120%);
+  }
+  100% {
+    transform: translateY(420%);
+  }
+}
+
+@keyframes transition-loader-shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+.transition-loader-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.transition-loader-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(34, 211, 238, 0.14), transparent 38%),
+    linear-gradient(180deg, rgba(3, 14, 34, 0.14), rgba(1, 6, 19, 0.52));
+  pointer-events: none;
+}
+
+.transition-loader-shell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -30%;
+  height: 30%;
+  background: linear-gradient(
+    180deg,
+    rgba(34, 211, 238, 0),
+    rgba(34, 211, 238, 0.12),
+    rgba(34, 211, 238, 0)
+  );
+  animation: transition-loader-scan 3.6s linear infinite;
+  pointer-events: none;
+}
+
+.transition-loader-glow {
+  animation: transition-loader-pulse 2.8s ease-in-out infinite;
+}
+
+.transition-loader-shimmer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.transition-loader-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0),
+    rgba(255, 255, 255, 0.28),
+    rgba(255, 255, 255, 0)
+  );
+  transform: translateX(-120%);
+  animation: transition-loader-shimmer 2.2s ease-in-out infinite;
+}
+
 
 
 .glitch-text {

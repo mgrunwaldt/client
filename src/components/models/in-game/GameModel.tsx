@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Outlines, useAnimations, useFBX, useTexture } from "@react-three/drei";
-import { FBXLoader } from "three-stdlib";
+import { FBXLoader, SkeletonUtils } from "three-stdlib";
 import { mapAccesoriesTexture } from "../../../utils/mapTeamTexture";
 import { useLoader, useFrame } from "@react-three/fiber";
 import { GameModelProps } from "../shared-types";
@@ -27,13 +27,18 @@ const getBodyModel = (body_type: number) => {
 export default function GameModel(props: GameModelProps) {
   const rb = useRef<RapierRigidBody>(null);
   const group = useRef<THREE.Group>(null);
+  const renderOnly = Boolean(props.renderOnly);
 
   // --- NEW: Animation state refs ---
   const previousActionRef = useRef<THREE.AnimationAction | null>(null);
   const idleInitializedRef = useRef(false);
 
   // Load FBX model
-  const fbxModel = useLoader(FBXLoader, getBodyModel(props.body_type));
+  const sourceModel = useLoader(FBXLoader, getBodyModel(props.body_type));
+  const fbxModel = useMemo(
+    () => SkeletonUtils.clone(sourceModel) as THREE.Group,
+    [sourceModel],
+  );
 
   // Load Animations
   const { animations: defensiveIdleAnims } = useFBX(
@@ -301,7 +306,7 @@ export default function GameModel(props: GameModelProps) {
   }, [accesoriesTexture]);
 
   // Apply materials to meshes in the FBX model
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!fbxModel) return;
 
     fbxModel.traverse((child) => {
@@ -347,10 +352,25 @@ export default function GameModel(props: GameModelProps) {
         }
       }
     });
-  }, [fbxModel, bodyMaterial, hairMaterial, accesoriesMaterial]);
+  }, [accesoriesMaterial, bodyMaterial, fbxModel, hairMaterial, props.hair_type, props.visor_type]);
 
   if (!fbxModel) {
     return null;
+  }
+
+  if (renderOnly) {
+    return (
+      <group
+        ref={group}
+        position={props.position}
+        rotation={props.rotation}
+        scale={props.scale}
+        dispose={null}
+      >
+        <primitive object={fbxModel} dispose={null} />
+        <Outlines thickness={1.5} color="black" angle={0} />
+      </group>
+    );
   }
 
   return (
@@ -397,6 +417,8 @@ export default function GameModel(props: GameModelProps) {
 }
 
 useFBX.preload("/models/in-game/game_model_1.fbx");
+useFBX.preload("/models/in-game/game_model_2.fbx");
+useFBX.preload("/models/in-game/game_model_3.fbx");
 useFBX.preload("/models/in-game/animations/DefensiveIdle.fbx");
 useFBX.preload("/models/in-game/animations/JogForward.fbx");
 useFBX.preload("/models/in-game/animations/JogForwardDiagonalLeft.fbx");

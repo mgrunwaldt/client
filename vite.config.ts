@@ -1,35 +1,41 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import topLevelAwait from "vite-plugin-top-level-await";
 import wasm from "vite-plugin-wasm";
 import fs from "fs";
 import path from "path";
 
-export default defineConfig(({ command }) => {
-  const isDev = command === "serve";
-  const isLocalHttps = process.env.VITE_LOCAL_HTTPS === "true";
+function localHttpsConfig(env: Record<string, string>) {
+  if (env.VITE_LOCAL_HTTPS !== "true") return undefined;
 
-  const getHttpsConfig = () => {
-    if (!isDev || !isLocalHttps) return {};
+  const keyPath = path.resolve(env.VITE_HTTPS_KEY_PATH || "dev-key.pem");
+  const certPath = path.resolve(env.VITE_HTTPS_CERT_PATH || "dev.pem");
 
-    const keyPath = path.resolve("./dev-key.pem");
-    const certPath = path.resolve("./dev.pem");
+  if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
+    throw new Error(
+      [
+        "VITE_LOCAL_HTTPS=true requires a local certificate and key.",
+        `Expected key: ${keyPath}`,
+        `Expected certificate: ${certPath}`,
+        "Run `pnpm mkcert`, or set VITE_LOCAL_HTTPS=false.",
+      ].join("\n"),
+    );
+  }
 
-    try {
-      if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-        return {
-          https: {
-            key: fs.readFileSync(keyPath),
-            cert: fs.readFileSync(certPath),
-          },
-        };
-      }
-    } catch (error) {
-      console.warn("⚠️  Error reading HTTPS certificates. Using HTTP.", error);
-    }
+  try {
+    return {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Unable to read local HTTPS certificates: ${message}`);
+  }
+}
 
-    return {};
-  };
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const https = localHttpsConfig(env);
 
   return {
     plugins: [react(), wasm(), topLevelAwait()],
@@ -41,11 +47,22 @@ export default defineConfig(({ command }) => {
     },
     server: {
       port: 3002,
-      ...getHttpsConfig(),
-      ...(isDev && {
-        host: true,
-        cors: true,
-      }),
+      host: true,
+      cors: true,
+      https,
+      proxy: {
+        "/api": {
+          target:
+            env.VITE_MATCH_BACKEND_PROXY_TARGET || "http://localhost:3000",
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api/, ""),
+        },
+      },
+    },
+    preview: {
+      host: true,
+      https,
     },
     define: {
       global: "globalThis",

@@ -1,0 +1,22 @@
+<svg width="360" height="420" viewBox="0 0 360 420" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tipOuter" x1="180" y1="0" x2="180" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD8FF"/>
+      <stop offset="0.5" stop-color="#FF67F7"/>
+      <stop offset="1" stop-color="#FFE2FF"/>
+    </linearGradient>
+    <linearGradient id="tipInner" x1="180" y1="0" x2="180" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="0.55" stop-color="#FFE3FF"/>
+      <stop offset="1" stop-color="#FFF5FF"/>
+    </linearGradient>
+  </defs>
+
+  <path d="M180 12L338 192L256 178L218 310L180 408L142 310L104 178L22 192L180 12Z" fill="#FF4FF0" fill-opacity="0.2"/>
+  <path d="M180 32L314 188L246 176L212 286L180 368L148 286L114 176L46 188L180 32Z" fill="#67186D" fill-opacity="0.94" stroke="url(#tipOuter)" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M180 70L278 184L228 174L199 258L180 316L161 258L132 174L82 184L180 70Z" fill="url(#tipInner)" fill-opacity="0.98"/>
+  <path d="M180 102L248 180L214 172L194 228L180 270L166 228L146 172L112 180L180 102Z" stroke="#FF9BFB" stroke-width="10" stroke-linejoin="round"/>
+  <rect x="160" y="218" width="40" height="172" rx="18" fill="url(#tipInner)" fill-opacity="0.32"/>
+  <rect x="170" y="178" width="20" height="210" rx="10" fill="url(#tipInner)" fill-opacity="0.9"/>
+  <rect x="154" y="244" width="52" height="124" rx="22" stroke="#FFF6FF" stroke-opacity="0.22" stroke-width="4"/>
+</svg>
