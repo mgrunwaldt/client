@@ -1,0 +1,18 @@
+{
+  "id": "action-bathroom-1", "minute": 79, "action_type": "BATHROOM", "scene_type": "BATHROOM", "action_team": "NEUTRAL", "source": "SIMULATION",
+  "title": "Bathroom Emergency", "description": "A random match event interrupts play.", "field_state_id": "field-bathroom-1",
+  "available_choices": [
+    { "id": "ASK_FOR_SUB", "label": "Ask For Sub", "description": "Signal for help.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } },
+    { "id": "HOLD_IT", "label": "Hold It", "description": "Try to push through.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } },
+    { "id": "BEHIND_BOARDS", "label": "Behind Boards", "description": "Sneak away.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } }
+  ],
+  "context": { "seed": 79001, "distance_to_goal": 55, "side_of_pitch": "CENTER", "pressure": 50, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "SAFE", "previous_outcome": null },
+  "origin": null, "contract_version": 2,
+  "field_state": {
+    "id": "field-bathroom-1", "match_id": "match-fixture-1", "minute": 79, "action_type": "BATHROOM", "scene_family": "RANDOM_EVENT",
+    "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 50, "y": 52, "is_legend": true }],
+    "opponent_positions": [{ "id": "team_2_CB_3", "role": "CB", "x": 62, "y": 42 }],
+    "legend_player_id": "team_1_ST_10", "carrier_player_id": null, "distance_to_goal": 55, "ball_x": 50, "ball_y": 50,
+    "context": { "seed": 79001, "distance_to_goal": 55, "side_of_pitch": "CENTER", "pressure": 50, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "SAFE", "previous_outcome": null }
+  }
+}

@@ -1,0 +1,986 @@
+{
+  "openapi": "3.1.0",
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "info": {
+    "title": "Overgoal Match API v1",
+    "version": "1.0.0-prototype",
+    "summary": "Client-agnostic contract for the Overgoal playable match.",
+    "description": "Match API v1 describes the current prototype wire surface and the additive fields that M1 must enforce. The current server exposes legacy unversioned paths; path versioning and production guarantees are not claimed by this document. See docs/contracts/match-api-v1.md.",
+    "license": { "name": "Proprietary", "identifier": "LicenseRef-Proprietary" },
+    "x-overgoal-contract-major": 1,
+    "x-overgoal-current-scene-contract-version": 2,
+    "x-overgoal-implementation-profile": "M0_PROTOTYPE"
+  },
+  "servers": [
+    { "url": "/", "description": "Current root-relative legacy transport" }
+  ],
+  "security": [],
+  "tags": [
+    { "name": "Operations", "description": "Liveness and operational metadata." },
+    { "name": "Teams", "description": "Prototype team catalogue endpoints." },
+    { "name": "Matches", "description": "Authoritative match lifecycle and state." },
+    { "name": "Timeline", "description": "Ordered authoritative match events." }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": ["Operations"],
+        "summary": "Check prototype process liveness",
+        "responses": {
+          "200": {
+            "description": "Process is live.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          }
+        }
+      }
+    },
+    "/teams": {
+      "get": {
+        "operationId": "listTeams",
+        "tags": ["Teams"],
+        "summary": "List teams",
+        "responses": {
+          "200": {
+            "description": "Team catalogue.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TeamListResponse" } } }
+          },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "operationId": "createTeam",
+        "tags": ["Teams"],
+        "summary": "Create a prototype team",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateTeamRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created team.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Team" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/team/{id}": {
+      "get": {
+        "operationId": "getTeam",
+        "tags": ["Teams"],
+        "summary": "Get a team",
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": {
+          "200": {
+            "description": "Team snapshot.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Team" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/createMatch": {
+      "post": {
+        "operationId": "createMatch",
+        "tags": ["Matches"],
+        "summary": "Create an unstarted match shell",
+        "description": "Creates a NOT_STARTED match. The seed and idempotency semantics are accepted contract fields but are not durably enforced by the M0 prototype.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateMatchRequest" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Created match shell.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateMatchResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/startMatch": {
+      "post": {
+        "operationId": "startMatch",
+        "tags": ["Matches"],
+        "summary": "Start a NOT_STARTED match and run to the next stop",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/MatchRevision" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchCommandRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/MatchProgress" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/resumeMatch": {
+      "post": {
+        "operationId": "resumeMatch",
+        "tags": ["Matches"],
+        "summary": "Resume a HALFTIME match and run to the next stop",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/MatchRevision" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchCommandRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/MatchProgress" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/processMatchAction": {
+      "post": {
+        "operationId": "processMatchAction",
+        "tags": ["Matches"],
+        "summary": "Resolve the current pending scene and run to the next stop",
+        "description": "The action_id binds the intent to the scene shown to the client. M0 ignores it; M1 must reject missing, stale, or mismatched action identifiers.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/MatchRevision" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProcessMatchActionRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/MatchProgress" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/match/{id}": {
+      "get": {
+        "operationId": "getMatch",
+        "tags": ["Matches"],
+        "summary": "Get the current match snapshot and full timeline",
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": {
+          "200": {
+            "description": "Current match snapshot.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchSnapshotResponse" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/match/{id}/timeline": {
+      "get": {
+        "operationId": "getMatchTimeline",
+        "tags": ["Timeline"],
+        "summary": "Get the complete ordered match timeline",
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "responses": {
+          "200": {
+            "description": "Timeline in ascending event_id order.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TimelineResponse" } } }
+          },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "headers": {
+      "MatchApiVersion": {
+        "description": "Contract major selected by the server. Required in M1; absent from the M0 prototype.",
+        "schema": { "type": "string", "const": "1" },
+        "x-overgoal-m1-required": true
+      }
+    },
+    "parameters": {
+      "ResourceId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "Opaque resource identifier.",
+        "schema": { "$ref": "#/components/schemas/Identifier" }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Opaque key scoped to the authenticated principal, operation, and target. M1 must require it on state-changing match commands and replay the first completed response for an identical retry.",
+        "schema": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
+        "x-overgoal-m1-required": true
+      },
+      "MatchRevision": {
+        "name": "If-Match-Revision",
+        "in": "header",
+        "required": false,
+        "description": "Last observed match revision. M1 must reject stale commands with MATCH_REVISION_CONFLICT.",
+        "schema": { "type": "integer", "minimum": 0 },
+        "x-overgoal-m1-required": true
+      }
+    },
+    "responses": {
+      "MatchProgress": {
+        "description": "The next externally observable stop: a playable scene, halftime, or full time.",
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchProgressResponse" } } }
+      },
+      "BadRequest": {
+        "description": "Malformed JSON or a prototype-era invalid lifecycle transition.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "NotFound": {
+        "description": "Unknown match or team.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "Conflict": {
+        "description": "Lifecycle, stale-action, revision, or idempotency conflict. M1 guarantee.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+        "x-overgoal-m1-required": true
+      },
+      "ValidationError": {
+        "description": "Syntactically valid JSON that violates the request or current-scene decision schema.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      },
+      "InternalError": {
+        "description": "Unexpected server error.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+      }
+    },
+    "schemas": {
+      "Identifier": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": "Opaque identifier. Consumers must not infer UUID structure."
+      },
+      "SimulationSeed": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._:-]+$",
+        "description": "Canonical match seed serialized as an opaque string to avoid numeric precision loss. M1 must persist it and derive all authoritative randomness from it."
+      },
+      "Rating": { "type": "number", "minimum": 0, "maximum": 100 },
+      "Coordinate": { "type": "number", "minimum": 0, "maximum": 100 },
+      "MatchStatus": {
+        "type": "string",
+        "enum": ["NOT_STARTED", "IN_PROGRESS", "WAITING_FOR_DECISION", "HALFTIME", "FINISHED"]
+      },
+      "ActionTeam": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM", "NEUTRAL"] },
+      "PlayerParticipation": { "type": "string", "enum": ["NOT_PARTICIPATING", "PARTICIPATING", "OBSERVING"] },
+      "MatchAction": {
+        "type": "string",
+        "enum": [
+          "OPEN_PLAY", "DRIBBLE", "FREE_KICK", "CORNER", "PENALTY",
+          "JUMPER", "BRAWL", "ARGUMENT_OPPONENT", "ARGUMENT_TEAMMATE", "BATHROOM",
+          "RANDOM_EVENT", "HALFTIME", "MATCH_END", "SUBSTITUTE", "RESUME_MATCH"
+        ]
+      },
+      "PlayableSceneType": {
+        "type": "string",
+        "enum": [
+          "OPEN_PLAY", "DRIBBLE", "FREE_KICK", "CORNER", "PENALTY",
+          "JUMPER", "BRAWL", "ARGUMENT_OPPONENT", "ARGUMENT_TEAMMATE", "BATHROOM"
+        ]
+      },
+      "Team": {
+        "type": "object",
+        "required": ["id", "name", "offense", "defense", "intensity", "set_pieces", "chemistry", "formation"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 120, "pattern": ".*\\S.*" },
+          "offense": { "$ref": "#/components/schemas/Rating" },
+          "defense": { "$ref": "#/components/schemas/Rating" },
+          "intensity": { "$ref": "#/components/schemas/Rating" },
+          "set_pieces": { "$ref": "#/components/schemas/Rating" },
+          "chemistry": { "$ref": "#/components/schemas/Rating" },
+          "formation": { "type": "string", "enum": ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"] }
+        },
+        "additionalProperties": true
+      },
+      "CreateTeamRequest": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120, "pattern": ".*\\S.*" },
+          "offense": { "$ref": "#/components/schemas/Rating" },
+          "defense": { "$ref": "#/components/schemas/Rating" },
+          "intensity": { "$ref": "#/components/schemas/Rating" },
+          "set_pieces": { "$ref": "#/components/schemas/Rating" },
+          "chemistry": { "$ref": "#/components/schemas/Rating" },
+          "formation": { "type": "string", "enum": ["4-3-3", "4-2-3-1", "4-4-2", "3-5-2"] }
+        },
+        "additionalProperties": false
+      },
+      "TeamListResponse": {
+        "type": "object",
+        "required": ["teams"],
+        "properties": { "teams": { "type": "array", "items": { "$ref": "#/components/schemas/Team" } } },
+        "additionalProperties": false
+      },
+      "LegendProfile": {
+        "type": "object",
+        "required": ["stamina", "energy", "shoot", "dribble", "speed", "passing", "heading", "defense", "intelligence"],
+        "properties": {
+          "stamina": { "$ref": "#/components/schemas/Rating" },
+          "energy": { "$ref": "#/components/schemas/Rating" },
+          "shoot": { "$ref": "#/components/schemas/Rating" },
+          "dribble": { "$ref": "#/components/schemas/Rating" },
+          "speed": { "$ref": "#/components/schemas/Rating" },
+          "passing": { "$ref": "#/components/schemas/Rating" },
+          "heading": { "$ref": "#/components/schemas/Rating" },
+          "defense": { "$ref": "#/components/schemas/Rating" },
+          "intelligence": { "$ref": "#/components/schemas/Rating" },
+          "yellow_cards": { "type": "integer", "minimum": 0, "maximum": 2 },
+          "red_card": { "type": "boolean" },
+          "simulation_attempts": { "type": "integer", "minimum": 0 },
+          "substitutions": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": true
+      },
+      "Ruleset": {
+        "type": "object",
+        "properties": { "rebound_play_enabled": { "type": "boolean" } },
+        "additionalProperties": false
+      },
+      "MatchMetadata": {
+        "type": "object",
+        "required": ["attack_chain_depth", "last_scene_origin"],
+        "properties": {
+          "attack_chain_depth": { "type": "integer", "minimum": 0 },
+          "last_scene_origin": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP"] }
+        },
+        "additionalProperties": true
+      },
+      "Match": {
+        "type": "object",
+        "required": [
+          "id", "my_team_id", "opponent_team_id", "my_team_score", "opponent_team_score",
+          "current_time", "prev_time", "match_status", "event_counter", "pending_action"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "my_team_id": { "$ref": "#/components/schemas/Identifier" },
+          "opponent_team_id": { "$ref": "#/components/schemas/Identifier" },
+          "my_team_score": { "type": "integer", "minimum": 0 },
+          "opponent_team_score": { "type": "integer", "minimum": 0 },
+          "next_match_action": { "$ref": "#/components/schemas/MatchAction" },
+          "next_match_action_minute": { "type": "integer", "minimum": 0, "maximum": 90 },
+          "current_time": { "type": "integer", "minimum": 0, "maximum": 90 },
+          "prev_time": { "type": "integer", "minimum": 0, "maximum": 90 },
+          "match_status": { "$ref": "#/components/schemas/MatchStatus" },
+          "player_participation": { "$ref": "#/components/schemas/PlayerParticipation" },
+          "action_team": { "$ref": "#/components/schemas/ActionTeam" },
+          "event_counter": { "type": "integer", "minimum": 0 },
+          "field_state_id": { "type": ["string", "null"], "minLength": 1 },
+          "pending_action": {
+            "oneOf": [{ "$ref": "#/components/schemas/PendingAction" }, { "type": "null" }]
+          },
+          "legend_profile": { "$ref": "#/components/schemas/LegendProfile" },
+          "legend_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "ruleset": { "$ref": "#/components/schemas/Ruleset" },
+          "match_metadata": { "$ref": "#/components/schemas/MatchMetadata" },
+          "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
+          "engine_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
+          "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
+          "revision": { "type": "integer", "minimum": 0, "x-overgoal-m1-required": true }
+        },
+        "additionalProperties": true
+      },
+      "MatchContext": {
+        "type": "object",
+        "properties": {
+          "seed": { "type": "number" },
+          "distance_to_goal": { "type": "number", "minimum": 0, "maximum": 100 },
+          "side_of_pitch": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
+          "pressure": { "$ref": "#/components/schemas/Rating" },
+          "attack_phase": { "type": "string", "enum": ["SETTLED", "TRANSITION", "HALF_SPACE"] },
+          "numerical_advantage": { "type": "integer", "minimum": -2, "maximum": 2 },
+          "quality_band": { "type": "string", "enum": ["SAFE", "PROGRESSIVE", "RISKY"] },
+          "previous_outcome": { "type": ["string", "null"] },
+          "carrier_player_id": { "type": ["string", "null"] },
+          "possession_state": { "type": "string" },
+          "ball_x": { "$ref": "#/components/schemas/Coordinate" },
+          "ball_y": { "$ref": "#/components/schemas/Coordinate" }
+        },
+        "additionalProperties": true
+      },
+      "FieldPlayer": {
+        "type": "object",
+        "required": ["id", "role", "x", "y"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "role": { "type": "string", "minLength": 1 },
+          "x": { "$ref": "#/components/schemas/Coordinate" },
+          "y": { "$ref": "#/components/schemas/Coordinate" },
+          "is_legend": { "type": "boolean" },
+          "has_ball": { "type": "boolean" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" }
+        },
+        "additionalProperties": true
+      },
+      "DefenderWave": {
+        "type": "object",
+        "required": ["at_second", "lane", "speed"],
+        "properties": {
+          "at_second": { "type": "number", "minimum": 0, "maximum": 8 },
+          "lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
+          "speed": { "$ref": "#/components/schemas/Rating" }
+        },
+        "additionalProperties": false
+      },
+      "LaneTracePoint": {
+        "type": "object",
+        "description": "A lane input timestamp. The required first point selects starting_lane at second 0; every later point starts movement toward lane at at_second and never applies before that timestamp.",
+        "required": ["at_second", "lane"],
+        "properties": {
+          "at_second": { "type": "number", "minimum": 0, "maximum": 7.6 },
+          "lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] }
+        },
+        "additionalProperties": false
+      },
+      "DribblePattern": {
+        "type": "object",
+        "required": ["duration_seconds", "starting_lane", "lane_switch_seconds", "lanes", "defender_waves", "simulate_foul_window"],
+        "properties": {
+          "duration_seconds": { "type": "number", "const": 8 },
+          "starting_lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
+          "lane_switch_seconds": { "type": "number", "minimum": 0.4, "maximum": 1.15 },
+          "lanes": {
+            "type": "array",
+            "prefixItems": [
+              { "type": "string", "const": "LEFT" },
+              { "type": "string", "const": "CENTER" },
+              { "type": "string", "const": "RIGHT" }
+            ],
+            "minItems": 3,
+            "maxItems": 3
+          },
+          "defender_waves": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/DefenderWave" } },
+          "simulate_foul_window": {
+            "type": "object",
+            "required": ["enabled", "recommended_after_second"],
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "recommended_after_second": { "type": "number", "minimum": 0, "maximum": 8 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "FieldState": {
+        "type": "object",
+        "required": [
+          "id", "match_id", "minute", "action_type", "scene_family", "my_team_positions",
+          "opponent_positions", "legend_player_id", "carrier_player_id", "distance_to_goal", "ball_x", "ball_y", "context"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
+          "action_type": { "$ref": "#/components/schemas/PlayableSceneType" },
+          "scene_family": { "type": "string", "enum": ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY", "RANDOM_EVENT"] },
+          "my_team_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/FieldPlayer" } },
+          "opponent_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/FieldPlayer" } },
+          "legend_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "carrier_player_id": { "type": ["string", "null"] },
+          "distance_to_goal": { "type": "number", "minimum": 0, "maximum": 100 },
+          "ball_x": { "$ref": "#/components/schemas/Coordinate" },
+          "ball_y": { "$ref": "#/components/schemas/Coordinate" },
+          "context": { "$ref": "#/components/schemas/MatchContext" },
+          "dribble_pattern": { "$ref": "#/components/schemas/DribblePattern" }
+        },
+        "additionalProperties": true
+      },
+      "InputSchemaHint": {
+        "type": "object",
+        "properties": {
+          "required": { "type": "array", "items": { "type": "string" } },
+          "optional": { "type": "array", "items": { "type": "string" } },
+          "target_lane_values": { "type": "array", "items": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] } },
+          "lane_trace_values": { "type": "array", "items": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] } },
+          "lane_trace_point_fields": { "type": "array", "items": { "type": "string", "enum": ["at_second", "lane"] } }
+        },
+        "additionalProperties": true
+      },
+      "AvailableChoice": {
+        "type": "object",
+        "required": ["id", "label", "description", "input_schema"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "label": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "input_schema": { "$ref": "#/components/schemas/InputSchemaHint" }
+        },
+        "additionalProperties": false
+      },
+      "PendingActionOrigin": {
+        "type": "object",
+        "required": ["previous_action_id", "previous_outcome"],
+        "properties": {
+          "previous_action_id": { "$ref": "#/components/schemas/Identifier" },
+          "previous_outcome": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "PendingActionBase": {
+        "type": "object",
+        "required": [
+          "id", "minute", "action_type", "scene_type", "action_team", "source", "title",
+          "description", "field_state_id", "available_choices", "context", "origin", "contract_version"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
+          "action_type": { "$ref": "#/components/schemas/PlayableSceneType" },
+          "scene_type": { "$ref": "#/components/schemas/PlayableSceneType" },
+          "action_team": { "$ref": "#/components/schemas/ActionTeam" },
+          "source": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP"] },
+          "title": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "field_state_id": { "$ref": "#/components/schemas/Identifier" },
+          "available_choices": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/AvailableChoice" } },
+          "context": { "$ref": "#/components/schemas/MatchContext" },
+          "origin": { "oneOf": [{ "$ref": "#/components/schemas/PendingActionOrigin" }, { "type": "null" }] },
+          "contract_version": { "type": "integer", "const": 2 },
+          "field_state": { "$ref": "#/components/schemas/FieldState" }
+        },
+        "additionalProperties": true
+      },
+      "OpenPlayPendingAction": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PendingActionBase" },
+          { "type": "object", "properties": { "scene_type": { "const": "OPEN_PLAY" } }, "x-overgoal-choice-ids": ["KICK", "DRIBBLE"] }
+        ]
+      },
+      "DribblePendingAction": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PendingActionBase" },
+          {
+            "type": "object",
+            "properties": {
+              "scene_type": { "const": "DRIBBLE" },
+              "field_state": { "allOf": [{ "$ref": "#/components/schemas/FieldState" }, { "required": ["dribble_pattern"] }] }
+            },
+            "x-overgoal-choice-ids": ["DRIBBLE_RUN", "SIMULATE_FOUL"]
+          }
+        ]
+      },
+      "FreeKickPendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "FREE_KICK" } }, "x-overgoal-choice-ids": ["KICK"] }]
+      },
+      "CornerPendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "CORNER" } }, "x-overgoal-choice-ids": ["KICK"] }]
+      },
+      "PenaltyPendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "PENALTY" } }, "x-overgoal-choice-ids": ["KICK"] }]
+      },
+      "JumperPendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "JUMPER" } }, "x-overgoal-choice-ids": ["ACCEPT_HUG", "DODGE", "SECURITY_TACKLE"] }]
+      },
+      "BrawlPendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "BRAWL" } }, "x-overgoal-choice-ids": ["JOIN_IN", "PULL_AWAY", "STAY_OUT"] }]
+      },
+      "ArgumentOpponentPendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "ARGUMENT_OPPONENT" } }, "x-overgoal-choice-ids": ["TRASH_TALK", "WALK_AWAY", "HEADBUTT"] }]
+      },
+      "ArgumentTeammatePendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "ARGUMENT_TEAMMATE" } }, "x-overgoal-choice-ids": ["SHOUT_BACK", "CALM_DOWN", "IGNORE"] }]
+      },
+      "BathroomPendingAction": {
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "BATHROOM" } }, "x-overgoal-choice-ids": ["ASK_FOR_SUB", "HOLD_IT", "BEHIND_BOARDS"] }]
+      },
+      "PendingAction": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/OpenPlayPendingAction" },
+          { "$ref": "#/components/schemas/DribblePendingAction" },
+          { "$ref": "#/components/schemas/FreeKickPendingAction" },
+          { "$ref": "#/components/schemas/CornerPendingAction" },
+          { "$ref": "#/components/schemas/PenaltyPendingAction" },
+          { "$ref": "#/components/schemas/JumperPendingAction" },
+          { "$ref": "#/components/schemas/BrawlPendingAction" },
+          { "$ref": "#/components/schemas/ArgumentOpponentPendingAction" },
+          { "$ref": "#/components/schemas/ArgumentTeammatePendingAction" },
+          { "$ref": "#/components/schemas/BathroomPendingAction" }
+        ],
+        "discriminator": { "propertyName": "scene_type" }
+      },
+      "TimelineEvent": {
+        "type": "object",
+        "required": [
+          "match_id", "event_id", "action", "minute", "team", "description", "my_team_score",
+          "opponent_team_score", "my_team_scored", "opponent_team_scored", "player_participates", "halftime", "match_end", "meta"
+        ],
+        "properties": {
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "event_id": { "type": "integer", "minimum": 1 },
+          "action": { "$ref": "#/components/schemas/MatchAction" },
+          "minute": { "type": "integer", "minimum": 1, "maximum": 90 },
+          "team": { "$ref": "#/components/schemas/ActionTeam" },
+          "description": { "type": "string", "minLength": 1 },
+          "my_team_score": { "type": "integer", "minimum": 0 },
+          "opponent_team_score": { "type": "integer", "minimum": 0 },
+          "my_team_scored": { "type": "boolean" },
+          "opponent_team_scored": { "type": "boolean" },
+          "player_participates": { "type": "boolean" },
+          "halftime": { "type": "boolean" },
+          "match_end": { "type": "boolean" },
+          "meta": { "type": ["object", "null"], "additionalProperties": true }
+        },
+        "additionalProperties": true
+      },
+      "FlightPoint": {
+        "type": "object",
+        "required": ["x", "y", "z", "t"],
+        "properties": {
+          "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" }, "t": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": false
+      },
+      "DecisionResult": {
+        "type": "object",
+        "required": ["description", "success", "outcome_type"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 },
+          "success": { "type": "boolean" },
+          "outcome_type": { "type": "string", "minLength": 1 },
+          "my_team_scored": { "type": "boolean" },
+          "opponent_team_scored": { "type": "boolean" },
+          "yellow_card": { "type": "boolean" },
+          "red_card": { "type": "boolean" },
+          "loose_possession": { "type": "boolean" },
+          "energy_modifier": { "type": "number", "minimum": 0 },
+          "follow_up_scene": { "$ref": "#/components/schemas/PlayableSceneType" },
+          "follow_up_context": { "$ref": "#/components/schemas/MatchContext" },
+          "flight_path": { "type": "array", "items": { "$ref": "#/components/schemas/FlightPoint" } },
+          "flight_outcome": { "type": "string" },
+          "final_point": { "$ref": "#/components/schemas/FlightPoint" },
+          "receiver": { "$ref": "#/components/schemas/FieldPlayer" },
+          "interceptor": { "$ref": "#/components/schemas/FieldPlayer" },
+          "dribble_resolution": { "$ref": "#/components/schemas/DribbleResolution" }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": ["outcome_type"],
+              "properties": { "outcome_type": { "const": "DRIBBLE_SUCCESS" } }
+            },
+            "then": {
+              "required": ["dribble_resolution"],
+              "properties": {
+                "success": { "const": true },
+                "dribble_resolution": {
+                  "type": "object",
+                  "required": ["survived", "collision"],
+                  "properties": { "survived": { "const": true }, "collision": { "type": "null" } }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "required": ["outcome_type"],
+              "properties": { "outcome_type": { "const": "DRIBBLE_FAILED" } }
+            },
+            "then": {
+              "required": ["dribble_resolution"],
+              "properties": {
+                "success": { "const": false },
+                "dribble_resolution": {
+                  "type": "object",
+                  "required": ["survived", "collision"],
+                  "properties": {
+                    "survived": { "const": false },
+                    "collision": { "$ref": "#/components/schemas/DribbleEncounter" }
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "additionalProperties": true
+      },
+      "DribbleEncounter": {
+        "type": "object",
+        "required": [
+          "wave_index", "at_second", "defender_lane", "player_position", "lane_distance",
+          "risk_kind", "collision_chance", "roll", "collision"
+        ],
+        "properties": {
+          "wave_index": { "type": "integer", "minimum": 0 },
+          "at_second": { "type": "number", "minimum": 0, "maximum": 8 },
+          "defender_lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
+          "player_position": { "type": "number", "minimum": 0, "maximum": 2 },
+          "lane_distance": { "type": "number", "minimum": 0, "maximum": 2 },
+          "risk_kind": { "type": "string", "enum": ["DIRECT_COLLISION", "CLOSE_DOWN"] },
+          "collision_chance": { "type": "number", "minimum": 0, "maximum": 100 },
+          "roll": { "type": "number", "minimum": 0, "maximum": 100 },
+          "collision": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "DribbleResolution": {
+        "type": "object",
+        "required": ["survived", "collision", "encounters"],
+        "properties": {
+          "survived": { "type": "boolean" },
+          "collision": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/DribbleEncounter" },
+              { "type": "null" }
+            ]
+          },
+          "encounters": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DribbleEncounter" }
+          }
+        },
+        "additionalProperties": false
+      },
+      "LastDecision": {
+        "type": "object",
+        "required": ["id", "match_id", "minute", "action", "action_team", "decision_data", "field_state_id", "timestamp"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
+          "action": { "$ref": "#/components/schemas/PlayableSceneType" },
+          "action_team": { "$ref": "#/components/schemas/ActionTeam" },
+          "decision_data": { "type": "object", "additionalProperties": true },
+          "field_state_id": { "$ref": "#/components/schemas/Identifier" },
+          "timestamp": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": true
+      },
+      "MatchProgressResponse": {
+        "type": "object",
+        "required": ["minute", "status", "prev_time", "pending_action", "field_state", "action", "action_team", "events", "match"],
+        "properties": {
+          "minute": { "type": "integer", "minimum": 1, "maximum": 90 },
+          "status": { "$ref": "#/components/schemas/MatchStatus" },
+          "prev_time": { "type": "integer", "minimum": 0, "maximum": 90 },
+          "pending_action": { "oneOf": [{ "$ref": "#/components/schemas/PendingAction" }, { "type": "null" }] },
+          "field_state": { "oneOf": [{ "$ref": "#/components/schemas/FieldState" }, { "type": "null" }] },
+          "action": { "oneOf": [{ "$ref": "#/components/schemas/PlayableSceneType" }, { "type": "null" }] },
+          "action_team": { "oneOf": [{ "$ref": "#/components/schemas/ActionTeam" }, { "type": "null" }] },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } },
+          "match": { "$ref": "#/components/schemas/Match" },
+          "decision_result": { "$ref": "#/components/schemas/DecisionResult" },
+          "last_decision": { "$ref": "#/components/schemas/LastDecision" }
+        },
+        "additionalProperties": true
+      },
+      "CreateMatchRequest": {
+        "type": "object",
+        "required": ["my_team_id", "opponent_team_id"],
+        "properties": {
+          "my_team_id": { "$ref": "#/components/schemas/Identifier" },
+          "opponent_team_id": { "$ref": "#/components/schemas/Identifier" },
+          "player_profile": {
+            "type": "object",
+            "properties": {
+              "stamina": { "$ref": "#/components/schemas/Rating" }, "energy": { "$ref": "#/components/schemas/Rating" },
+              "shoot": { "$ref": "#/components/schemas/Rating" }, "dribble": { "$ref": "#/components/schemas/Rating" },
+              "speed": { "$ref": "#/components/schemas/Rating" }, "passing": { "$ref": "#/components/schemas/Rating" },
+              "heading": { "$ref": "#/components/schemas/Rating" }, "defense": { "$ref": "#/components/schemas/Rating" },
+              "intelligence": { "$ref": "#/components/schemas/Rating" }
+            },
+            "additionalProperties": false
+          },
+          "ruleset": { "$ref": "#/components/schemas/Ruleset" },
+          "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true }
+        },
+        "additionalProperties": false
+      },
+      "CreateMatchResponse": {
+        "type": "object",
+        "required": ["id", "match", "my_team", "opponent_team"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "match": { "$ref": "#/components/schemas/Match" },
+          "my_team": { "$ref": "#/components/schemas/Team" },
+          "opponent_team": { "$ref": "#/components/schemas/Team" }
+        },
+        "additionalProperties": false
+      },
+      "MatchCommandRequest": {
+        "type": "object",
+        "required": ["match_id"],
+        "properties": { "match_id": { "$ref": "#/components/schemas/Identifier" } },
+        "additionalProperties": false
+      },
+      "DecisionSeedHint": {
+        "type": "number",
+        "description": "Compatibility/replay metadata supplied by the client. The runtime records but does not use this value for authoritative outcomes; M1 replay derives outcomes from the durable match seed and ordered action identity."
+      },
+      "KickDecision": {
+        "type": "object",
+        "required": ["choice", "end_x", "end_y", "contact_x", "contact_y", "power", "curve", "selection_quality", "seed"],
+        "properties": {
+          "choice": { "const": "KICK" },
+          "end_x": { "$ref": "#/components/schemas/Coordinate" }, "end_y": { "$ref": "#/components/schemas/Coordinate" },
+          "contact_x": { "$ref": "#/components/schemas/Coordinate" }, "contact_y": { "$ref": "#/components/schemas/Coordinate" },
+          "power": { "$ref": "#/components/schemas/Rating" },
+          "curve": { "type": "number", "minimum": -100, "maximum": 100 },
+          "selection_quality": { "$ref": "#/components/schemas/Rating" },
+          "intent_hint": { "type": "string" },
+          "target_zone": { "type": "string" },
+          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+        },
+        "additionalProperties": false
+      },
+      "DribbleStartDecision": {
+        "type": "object",
+        "required": ["choice", "target_lane", "selection_quality", "seed"],
+        "properties": {
+          "choice": { "const": "DRIBBLE" },
+          "target_lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
+          "selection_quality": { "$ref": "#/components/schemas/Rating" },
+          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+        },
+        "additionalProperties": false
+      },
+      "DribbleRunDecision": {
+        "type": "object",
+        "required": ["choice", "lane_trace", "selection_quality", "seed"],
+        "properties": {
+          "choice": { "const": "DRIBBLE_RUN" },
+          "lane_trace": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "description": "Movement-input timestamps. The final selected lane is held through second 8 without an endpoint marker; each movement must finish within the advertised duration.",
+            "items": { "$ref": "#/components/schemas/LaneTracePoint" }
+          },
+          "selection_quality": {
+            "allOf": [{ "$ref": "#/components/schemas/Rating" }],
+            "description": "Compatibility UI metadata only. It does not affect authoritative dribble probability or outcome."
+          },
+          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+        },
+        "additionalProperties": false
+      },
+      "SimulateFoulDecision": {
+        "type": "object",
+        "required": ["choice", "selection_quality", "seed"],
+        "properties": {
+          "choice": { "const": "SIMULATE_FOUL" },
+          "selection_quality": { "$ref": "#/components/schemas/Rating" },
+          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+        },
+        "additionalProperties": false
+      },
+      "NarrativeDecision": {
+        "type": "object",
+        "required": ["choice", "selection_quality", "seed"],
+        "properties": {
+          "choice": {
+            "type": "string",
+            "enum": [
+              "ACCEPT_HUG", "DODGE", "SECURITY_TACKLE", "JOIN_IN", "PULL_AWAY", "STAY_OUT",
+              "TRASH_TALK", "WALK_AWAY", "HEADBUTT", "SHOUT_BACK", "CALM_DOWN", "IGNORE",
+              "ASK_FOR_SUB", "HOLD_IT", "BEHIND_BOARDS"
+            ]
+          },
+          "selection_quality": { "$ref": "#/components/schemas/Rating" },
+          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+        },
+        "additionalProperties": false
+      },
+      "MatchDecision": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/KickDecision" },
+          { "$ref": "#/components/schemas/DribbleStartDecision" },
+          { "$ref": "#/components/schemas/DribbleRunDecision" },
+          { "$ref": "#/components/schemas/SimulateFoulDecision" },
+          { "$ref": "#/components/schemas/NarrativeDecision" }
+        ],
+        "discriminator": { "propertyName": "choice" }
+      },
+      "ProcessMatchActionRequest": {
+        "type": "object",
+        "required": ["match_id", "match_decision"],
+        "properties": {
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "action_id": { "$ref": "#/components/schemas/Identifier", "x-overgoal-m1-required": true },
+          "match_decision": { "$ref": "#/components/schemas/MatchDecision" }
+        },
+        "additionalProperties": false
+      },
+      "MatchSnapshotResponse": {
+        "type": "object",
+        "required": ["match", "my_team", "opponent_team", "timeline"],
+        "properties": {
+          "match": { "$ref": "#/components/schemas/Match" },
+          "my_team": { "$ref": "#/components/schemas/Team" },
+          "opponent_team": { "$ref": "#/components/schemas/Team" },
+          "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } }
+        },
+        "additionalProperties": false
+      },
+      "TimelineResponse": {
+        "type": "object",
+        "required": ["timeline"],
+        "properties": { "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } } },
+        "additionalProperties": false
+      },
+      "HealthResponse": {
+        "type": "object",
+        "required": ["status", "timestamp"],
+        "properties": {
+          "status": { "type": "string", "const": "ok" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": ["error"],
+        "properties": {
+          "error": { "type": "string", "minLength": 1 },
+          "code": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
+          "status": { "type": "integer", "minimum": 400, "maximum": 599, "x-overgoal-m1-required": true },
+          "details": { "type": ["object", "null"], "additionalProperties": true },
+          "request_id": { "type": "string" },
+          "retryable": { "type": "boolean" }
+        },
+        "additionalProperties": true
+      }
+    }
+  }
+}

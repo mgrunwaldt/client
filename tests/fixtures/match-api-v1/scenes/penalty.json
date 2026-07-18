@@ -1,0 +1,14 @@
+{
+  "id": "action-penalty-1", "minute": 39, "action_type": "PENALTY", "scene_type": "PENALTY", "action_team": "MY_TEAM", "source": "SIMULATION",
+  "title": "Penalty Kick", "description": "Your Legend steps up for a penalty.", "field_state_id": "field-penalty-1",
+  "available_choices": [{ "id": "KICK", "label": "Kick", "description": "Aim the penalty.", "input_schema": { "required": ["choice", "end_x", "end_y", "contact_x", "contact_y", "power", "curve", "selection_quality", "seed"], "optional": ["intent_hint", "target_zone"] } }],
+  "context": { "seed": 39001, "distance_to_goal": 11, "side_of_pitch": "CENTER", "pressure": 68, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "RISKY", "previous_outcome": null },
+  "origin": null, "contract_version": 2,
+  "field_state": {
+    "id": "field-penalty-1", "match_id": "match-fixture-1", "minute": 39, "action_type": "PENALTY", "scene_family": "PENALTY",
+    "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 50, "y": 16, "is_legend": true, "has_ball": true }],
+    "opponent_positions": [{ "id": "team_2_GK_1", "role": "GK", "x": 50, "y": 2 }],
+    "legend_player_id": "team_1_ST_10", "carrier_player_id": "team_1_ST_10", "distance_to_goal": 11, "ball_x": 50, "ball_y": 12,
+    "context": { "seed": 39001, "distance_to_goal": 11, "side_of_pitch": "CENTER", "pressure": 68, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "RISKY", "previous_outcome": null }
+  }
+}

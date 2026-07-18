@@ -1,0 +1,19 @@
+{
+  "minute": 90,
+  "status": "FINISHED",
+  "prev_time": 89,
+  "pending_action": null,
+  "field_state": null,
+  "action": null,
+  "action_team": null,
+  "events": [],
+  "match": {
+    "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
+    "current_time": 90, "prev_time": 89, "match_status": "FINISHED", "event_counter": 18, "pending_action": null
+  },
+  "decision_result": {
+    "description": "Missing authoritative resolution.",
+    "success": true,
+    "outcome_type": "DRIBBLE_SUCCESS"
+  }
+}

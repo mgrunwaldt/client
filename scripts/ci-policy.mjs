@@ -51,15 +51,24 @@ const EXPECTED_STEPS = [
   { name: "Install dependencies", run: "pnpm install --frozen-lockfile" },
   { name: "Verify CI policy", run: "pnpm ci:verify" },
   { name: "Policy mutation tests", run: "pnpm test:policy" },
+  { name: "Verify Match API v1 fixtures", run: "pnpm test:fixtures" },
   { name: "Check formatting", run: "pnpm format:check" },
   { name: "Lint", run: "pnpm lint" },
   { name: "Typecheck", run: "pnpm typecheck" },
-  { name: "Unit smoke", run: "pnpm test:unit" },
+  { name: "Unit tests", run: "pnpm test:unit" },
   {
     name: "Install Chromium",
     run: "pnpm exec playwright install --with-deps chromium",
   },
   { name: "Browser smoke", run: "pnpm test:browser" },
+  {
+    name: "Browser stale-listener proof",
+    run: "pnpm test:browser:stale-port",
+  },
+  {
+    name: "Browser signal-cleanup proof",
+    run: "pnpm test:browser:signal",
+  },
   { name: "Production build", run: "pnpm build" },
 ];
 
@@ -122,7 +131,10 @@ export function verifyCiPolicy({
       format: packageJson.scripts?.["format:check"],
       lint: packageJson.scripts?.lint,
       policy: packageJson.scripts?.["test:policy"],
+      fixtures: packageJson.scripts?.["test:fixtures"],
       browser: packageJson.scripts?.["test:browser"],
+      stalePortBrowser: packageJson.scripts?.["test:browser:stale-port"],
+      signalBrowser: packageJson.scripts?.["test:browser:signal"],
       typecheck: packageJson.scripts?.typecheck,
       unit: packageJson.scripts?.["test:unit"],
     },
@@ -133,9 +145,14 @@ export function verifyCiPolicy({
       format: "prettier --check .",
       lint: "eslint . --max-warnings 0",
       policy: "vitest run tests/ci-policy.test.mjs",
-      browser: "env -u NO_COLOR playwright test",
+      fixtures: "node scripts/verify-match-api-v1-fixtures.mjs",
+      browser: "env -u NO_COLOR node scripts/run-playwright.mjs",
+      stalePortBrowser:
+        "env -u NO_COLOR node scripts/verify-playwright-stale-port.mjs",
+      signalBrowser:
+        "env -u NO_COLOR node scripts/verify-playwright-signal-cleanup.mjs",
       typecheck: "tsc -b",
-      unit: "vitest run tests/app-config.smoke.test.ts",
+      unit: "vitest run tests",
     },
     "Required package scripts",
   );

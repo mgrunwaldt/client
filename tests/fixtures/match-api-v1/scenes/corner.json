@@ -1,0 +1,14 @@
+{
+  "id": "action-corner-1", "minute": 28, "action_type": "CORNER", "scene_type": "CORNER", "action_team": "MY_TEAM", "source": "FOLLOW_UP",
+  "title": "Corner", "description": "Your team has a corner to attack.", "field_state_id": "field-corner-1",
+  "available_choices": [{ "id": "KICK", "label": "Kick", "description": "Aim the corner delivery or direct attempt.", "input_schema": { "required": ["choice", "end_x", "end_y", "contact_x", "contact_y", "power", "curve", "selection_quality", "seed"], "optional": ["intent_hint", "target_zone"] } }],
+  "context": { "seed": 28002, "distance_to_goal": 11, "side_of_pitch": "RIGHT", "pressure": 60, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "RISKY", "previous_outcome": "SHOT_TO_CORNER" },
+  "origin": { "previous_action_id": "action-free-kick-1", "previous_outcome": "SHOT_TO_CORNER" }, "contract_version": 2,
+  "field_state": {
+    "id": "field-corner-1", "match_id": "match-fixture-1", "minute": 28, "action_type": "CORNER", "scene_family": "CORNER",
+    "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 95, "y": 6, "is_legend": true, "has_ball": true }],
+    "opponent_positions": [{ "id": "team_2_GK_1", "role": "GK", "x": 50, "y": 2 }],
+    "legend_player_id": "team_1_ST_10", "carrier_player_id": "team_1_ST_10", "distance_to_goal": 11, "ball_x": 95, "ball_y": 5,
+    "context": { "seed": 28002, "distance_to_goal": 11, "side_of_pitch": "RIGHT", "pressure": 60, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "RISKY", "previous_outcome": "SHOT_TO_CORNER" }
+  }
+}

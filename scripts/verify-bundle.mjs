@@ -1,11 +1,20 @@
 import { readdir, readFile, stat } from "node:fs/promises";
+import { resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const projectRoot = new URL("../", import.meta.url);
+const outputDirectory = process.argv[2] || "dist";
+const allowsBrowserTestBridge = process.argv.includes(
+  "--allow-browser-test-bridge",
+);
+const outputRoot = pathToFileURL(
+  `${resolve(fileURLToPath(projectRoot), outputDirectory)}${sep}`,
+);
 const manifest = JSON.parse(
-  await readFile(new URL("dist/.vite/manifest.json", projectRoot), "utf8"),
+  await readFile(new URL(".vite/manifest.json", outputRoot), "utf8"),
 );
 const maxChunkBytes = 500_000;
-const assetDirectory = new URL("dist/assets/", projectRoot);
+const assetDirectory = new URL("assets/", outputRoot);
 const javaScriptFiles = (await readdir(assetDirectory)).filter((file) =>
   file.endsWith(".js"),
 );
@@ -23,6 +32,27 @@ if (oversizedChunks.length > 0) {
       .map(({ file, bytes }) => `${file} (${bytes})`)
       .join(", ")}`,
   );
+}
+
+if (!allowsBrowserTestBridge) {
+  const bridgeChunks = (
+    await Promise.all(
+      javaScriptFiles.map(async (file) => ({
+        file,
+        containsBridge: (
+          await readFile(new URL(file, assetDirectory), "utf8")
+        ).includes("__OVERGOAL_E2E_SET_MATCH_RESPONSE__"),
+      })),
+    )
+  ).filter(({ containsBridge }) => containsBridge);
+
+  if (bridgeChunks.length > 0) {
+    throw new Error(
+      `Production bundle contains the browser-test bridge: ${bridgeChunks
+        .map(({ file }) => file)
+        .join(", ")}`,
+    );
+  }
 }
 
 const entryKey = Object.keys(manifest).find((key) => manifest[key].isEntry);

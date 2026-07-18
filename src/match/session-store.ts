@@ -62,6 +62,7 @@ interface MatchSessionActions {
     myTeam: BackendTeam;
     opponentTeam: BackendTeam;
     timelineEvents: BackendTimelineEvent[];
+    pendingAction?: BackendPendingAction | null;
   }) => void;
   setPlaybackMinute: (minute: number) => void;
   setPlaybackStatus: (status: MatchPlaybackStatus) => void;
@@ -194,26 +195,51 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       loading: false,
       error: null,
     })),
-  hydrateMatchSession: ({ match, myTeam, opponentTeam, timelineEvents }) =>
+  hydrateMatchSession: ({
+    match,
+    myTeam,
+    opponentTeam,
+    timelineEvents,
+    pendingAction: hydratedPendingAction,
+  }) =>
     set((state) => {
-      const pendingAction = match.pending_action || null;
-      const fieldState = pendingAction?.field_state || state.fieldState || null;
+      const pendingAction =
+        hydratedPendingAction === undefined
+          ? (match.pending_action ?? null)
+          : hydratedPendingAction;
+      const hydratedMatch =
+        match.pending_action === pendingAction
+          ? match
+          : { ...match, pending_action: pendingAction };
+      const isWaitingForDecision =
+        match.match_status === "WAITING_FOR_DECISION" && pendingAction !== null;
+      const isSameMatch = state.match?.id === match.id;
+      // A snapshot is authoritative. Lifecycle stops must not retain a field from
+      // the preceding decision while the singleton remains mounted.
+      const fieldState = isWaitingForDecision
+        ? pendingAction.field_state || null
+        : null;
       const shouldPlayTimeline =
-        match.match_status === "WAITING_FOR_DECISION" &&
-        Boolean(pendingAction) &&
-        state.playbackStatus === "idle";
+        isWaitingForDecision &&
+        (!isSameMatch || state.playbackStatus === "idle");
 
       return {
-        match,
+        match: hydratedMatch,
         myTeam,
         opponentTeam,
         pendingAction,
         fieldState,
         timelineEvents,
-        playbackMinute: shouldPlayTimeline ? 0 : state.playbackMinute,
-        playbackStatus: shouldPlayTimeline
-          ? "timeline_playing"
-          : state.playbackStatus,
+        playbackMinute: isWaitingForDecision
+          ? shouldPlayTimeline
+            ? 0
+            : state.playbackMinute
+          : match.current_time,
+        playbackStatus: isWaitingForDecision
+          ? shouldPlayTimeline
+            ? "timeline_playing"
+            : state.playbackStatus
+          : "idle",
         loading: false,
         error: null,
       };
@@ -223,3 +249,21 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
   setEffort: (effort) => set({ effort }),
   setPlaystyle: (playstyle) => set({ playstyle }),
 }));
+
+if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
+  Object.defineProperty(globalThis, "__OVERGOAL_E2E_SET_MATCH_RESPONSE__", {
+    configurable: true,
+    value: (
+      response: BackendMatchResponse,
+      myTeam: BackendTeam,
+      opponentTeam: BackendTeam,
+    ) => {
+      useMatchSessionStore.getState().setCreatedMatch({
+        match: response.match,
+        myTeam,
+        opponentTeam,
+      });
+      useMatchSessionStore.getState().setStartResponse(response);
+    },
+  });
+}

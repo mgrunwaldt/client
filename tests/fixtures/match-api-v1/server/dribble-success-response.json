@@ -1,0 +1,25 @@
+{
+  "minute": 90,
+  "status": "FINISHED",
+  "prev_time": 89,
+  "pending_action": null,
+  "field_state": null,
+  "action": null,
+  "action_team": null,
+  "events": [{ "match_id": "match-fixture-1", "event_id": 18, "action": "MATCH_END", "minute": 90, "team": "NEUTRAL", "description": "Match finished.", "my_team_score": 2, "opponent_team_score": 1, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": true, "meta": null }],
+  "match": {
+    "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
+    "current_time": 90, "prev_time": 89, "match_status": "FINISHED", "event_counter": 18, "pending_action": null
+  },
+  "decision_result": {
+    "description": "You beat the pressure and keep driving forward.",
+    "success": true,
+    "outcome_type": "DRIBBLE_SUCCESS",
+    "energy_modifier": 1.2,
+    "dribble_resolution": {
+      "survived": true,
+      "collision": null,
+      "encounters": [{ "wave_index": 0, "at_second": 1, "defender_lane": "LEFT", "player_position": 2, "lane_distance": 2, "risk_kind": "CLOSE_DOWN", "collision_chance": 3, "roll": 73.4, "collision": false }]
+    }
+  }
+}

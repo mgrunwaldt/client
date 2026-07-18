@@ -104,7 +104,10 @@ describe("CI policy contract", () => {
       ["scripts", "format:check"],
       ["scripts", "lint"],
       ["scripts", "test:policy"],
+      ["scripts", "test:fixtures"],
       ["scripts", "test:browser"],
+      ["scripts", "test:browser:stale-port"],
+      ["scripts", "test:browser:signal"],
       ["scripts", "typecheck"],
       ["scripts", "test:unit"],
     ]) {

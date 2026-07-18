@@ -40,17 +40,23 @@ jobs:
         run: pnpm ci:verify
       - name: Policy mutation tests
         run: pnpm test:policy
+      - name: Verify Match API v1 fixtures
+        run: pnpm test:fixtures
       - name: Check formatting
         run: pnpm format:check
       - name: Lint
         run: pnpm lint
       - name: Typecheck
         run: pnpm typecheck
-      - name: Unit smoke
+      - name: Unit tests
         run: pnpm test:unit
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium
       - name: Browser smoke
         run: pnpm test:browser
+      - name: Browser stale-listener proof
+        run: pnpm test:browser:stale-port
+      - name: Browser signal-cleanup proof
+        run: pnpm test:browser:signal
       - name: Production build
         run: pnpm build

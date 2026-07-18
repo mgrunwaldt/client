@@ -5,7 +5,10 @@ the sibling `match_server`; it does not run the match engine locally.
 
 ## Prerequisites
 
-- Node.js 22.14.0 and pnpm 10.24.0 (pinned in `.nvmrc` and `package.json`).
+- Local development and CI use exactly Node.js 22.14.0 (`.nvmrc` and the CI
+  workflow) plus pnpm 10.24.0 (the integrity-pinned `packageManager`).
+  `engines.node` deliberately allows Node.js `22.x` so Vercel can select its
+  supported Node 22 runtime; it is not an exact Node 22.14.0 deployment pin.
 - The `match_server` checkout that owns this submodule, or a sibling standalone
   checkout.
 - `mkcert` only when running the client over local HTTPS.
@@ -118,29 +121,58 @@ at build time; changing them after `pnpm build` does not update the bundle.
 
 ## Quality Gates
 
-The client quality gates run on exactly Node.js 22.14.0. Local version managers
-use `.nvmrc`, while `package.json` constrains deployments to the Vercel-supported
-Node 22 line through `engines`. The `Client Quality` GitHub Actions workflow and
-runtime policy verifier enforce exact Node.js 22.14.0 and pnpm 10.24.0 versions.
+The client quality gates run on exactly Node.js 22.14.0 and pnpm 10.24.0. Local
+version managers use `.nvmrc`; CI verifies both executable versions after
+Corepack resolves the integrity-pinned `packageManager` entry. `engines.node`
+intentionally remains `22.x` for Vercel's supported runtime selection, while the
+explicit Vercel install and build commands remain in place because deployed
+commit `f6faa371b8eed341e3bc9ec1c067ef099ccfdd10` was empirically green. The
+configuration alone does not prove a host enables Corepack, so deployment
+evidence and the explicit commands are required alongside the local/CI policy.
 Its stable job check is `client-quality`.
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm ci:verify
 pnpm test:policy
+pnpm test:fixtures
 pnpm lint
 pnpm format:check
 pnpm typecheck
 pnpm test:unit
 pnpm exec playwright install --with-deps chromium
 pnpm test:browser
+pnpm test:browser:stale-port
+pnpm test:browser:signal
 pnpm build
 ```
 
+`pnpm test:fixtures` verifies the hardcoded source revision, a hardcoded
+fixture-manifest digest, and a hardcoded aggregate tree digest for the
+checked-in, test-only Match API v1 mirror at `tests/fixtures/match-api-v1`.
+The mirror includes canonical `openapi.json`; AJV 2020-12 with `ajv-formats`
+checks all declared payloads against its schemas, route associations, and
+declared formats. Its canonical source is
+`overgoal/match_server` revision
+`b9d96f8e3d2e584d52329c4a90abdd770e3b88c7`. Runtime source must not import
+these fixtures. The self-pass packet under `tests/fixtures/reproductions` has
+its own source-revision/hash manifest plus an independently hardcoded manifest
+seal. It is client hydration input only; the server harness owns executable
+engine reproduction and causal correctness.
+
 The browser smoke builds the normal production bundle, including Dojo SDK
-initialization and `DojoSdkProvider`, serves it with Vite preview, and verifies
-the `/login` route in Chromium. It confirms application mounting and fatal-error
-handling only; broader client regression coverage is owned by M0-I5.
+initialization and `DojoSdkProvider`, starts an owned Vite preview on an
+OS-assigned port, exports that URL as `PLAYWRIGHT_BASE_URL`, and verifies the
+routes in desktop Chromium plus a Pixel 5 viewport with real touch dispatch.
+Startup, early preview exit, and failed teardown fail the command. Signal mode
+selects one desktop-only worker rather than duplicating its 60-second hold in
+the mobile project. `pnpm test:browser:stale-port` occupies a separate
+OS-assigned listener and passes that port to the runner; it never requires a
+specific port to be free. `pnpm test:browser:signal` starts the actual
+Corepack/pnpm package script, terminates its active process group while
+Playwright is running, then proves the runner PID, package-script, preview, and
+Playwright process groups are gone and the preview port can be rebound. The
+smoke confirms application mounting and fatal-error handling only.
 
 The build keeps every JavaScript chunk below Vite's 500 kB warning boundary
 and verifies that the login static graph excludes the game route. The Chromium
