@@ -13,6 +13,7 @@ const pnpmVersion =
 const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
 const usesProcessGroups = process.platform !== "win32";
 const initialParentPid = process.ppid;
+const browserDistDirectory = "dev-dist/browser-tests";
 
 if (!pnpmVersion) {
   throw new Error("pnpm is required to run browser tests");
@@ -120,6 +121,7 @@ async function cleanup() {
     if (pnpmShimDirectory) {
       await rm(pnpmShimDirectory, { force: true, recursive: true });
     }
+    await rm(browserDistDirectory, { force: true, recursive: true });
 
     if (failures.length > 0) {
       throw new AggregateError(
@@ -241,7 +243,28 @@ function waitForBrowserOrPreviewExit(browser, preview) {
 
 async function main() {
   await createPnpmShimDirectory();
-  await runPnpm("build", ["build"]);
+  await runPnpm("typecheck", ["typecheck"]);
+  await runPnpm(
+    "build",
+    [
+      "exec",
+      "vite",
+      "build",
+      "--outDir",
+      browserDistDirectory,
+      "--emptyOutDir",
+    ],
+    {
+      env: { VITE_E2E_MATCH_SESSION_BRIDGE: "true" },
+    },
+  );
+  await runPnpm("bundle-verify", [
+    "exec",
+    "node",
+    "scripts/verify-bundle.mjs",
+    browserDistDirectory,
+    "--allow-browser-test-bridge",
+  ]);
 
   const preview = spawnOwned(
     "preview",
@@ -254,6 +277,8 @@ async function main() {
       "--port",
       "0",
       "--strictPort",
+      "--outDir",
+      browserDistDirectory,
     ],
     { stdio: ["ignore", "pipe", "pipe"] },
   );

@@ -249,3 +249,21 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
   setEffort: (effort) => set({ effort }),
   setPlaystyle: (playstyle) => set({ playstyle }),
 }));
+
+if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
+  Object.defineProperty(globalThis, "__OVERGOAL_E2E_SET_MATCH_RESPONSE__", {
+    configurable: true,
+    value: (
+      response: BackendMatchResponse,
+      myTeam: BackendTeam,
+      opponentTeam: BackendTeam,
+    ) => {
+      useMatchSessionStore.getState().setCreatedMatch({
+        match: response.match,
+        myTeam,
+        opponentTeam,
+      });
+      useMatchSessionStore.getState().setStartResponse(response);
+    },
+  });
+}

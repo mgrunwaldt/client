@@ -14,7 +14,6 @@ import {
   type MouseEvent as ReactMouseEvent,
   Suspense,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
 } from "react";
@@ -578,17 +577,6 @@ function BackendPlayerModel({
   const groupRef = useRef<THREE.Group>(null);
   const currentRotationRef = useRef(rotationY);
 
-  const resetRotation = useEffectEvent(() => {
-    currentRotationRef.current = rotationY;
-    if (groupRef.current) {
-      groupRef.current.rotation.y = rotationY;
-    }
-  });
-
-  useEffect(() => {
-    resetRotation();
-  }, [player.id]);
-
   useFrame((_state, delta) => {
     const group = groupRef.current;
     if (!group) {
@@ -881,6 +869,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   return (
     <div
       data-testid="game-field"
+      data-player-count={myPlayers.length + opponentPlayers.length}
       className={`fixed inset-0 overflow-hidden bg-[#0a4739] ${
         active ? "z-40 opacity-100" : "pointer-events-none -z-10 opacity-0"
       }`}
