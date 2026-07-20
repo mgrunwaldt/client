@@ -142,7 +142,7 @@ try {
     120_000,
   );
   const previewUrl = readyOutput.match(
-    /OVERGOAL_PREVIEW_URL=(http:\/\/127\.0\.0\.1:\d+)/u,
+    /OVERGOAL_PREVIEW_URL=(https:\/\/127\.0\.0\.1:\d+)/u,
   )?.[1];
   if (!previewUrl)
     throw new Error("Runner did not report an owned preview URL");

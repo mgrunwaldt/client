@@ -8,8 +8,8 @@ export default function SettingsScreen() {
   const { handleDisconnect } = useStarknetConnect();
   const navigate = useNavigate();
 
-  const onDisconnect = () => {
-    handleDisconnect();
+  const onDisconnect = async () => {
+    await handleDisconnect();
     navigate("/login");
   };
   return (
@@ -25,7 +25,7 @@ export default function SettingsScreen() {
 
       <div className="flex w-full items-center justify-center">
         <Button
-          onClick={onDisconnect}
+          onClick={() => void onDisconnect()}
           variant="outline"
           className="bg-overgoal-dark-blue/90 text-white"
         >

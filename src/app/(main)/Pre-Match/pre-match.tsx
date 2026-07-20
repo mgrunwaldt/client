@@ -248,7 +248,8 @@ export default function PreMatchScreen() {
                 "bg-no-repeat",
               )}
             >
-              {!import.meta.env.DEV ? (
+              {!import.meta.env.DEV &&
+              !import.meta.env.VITE_E2E_LOCAL_CI_WALLETS ? (
                 <div
                   className={cn(
                     "z-100 mt-2 flex h-full w-full flex-col items-center justify-center gap-2",

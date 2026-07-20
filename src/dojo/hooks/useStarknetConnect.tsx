@@ -1,13 +1,35 @@
 // hooks/useStarknetConnect.ts
 import { useAccount, useConnect, useDisconnect } from "@starknet-react/core";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+
+import { logoutAuthSession } from "../../auth/api";
 
 export function useStarknetConnect() {
   const { connect, connectors } = useConnect();
   const { disconnect } = useDisconnect();
   const { status, address } = useAccount();
+  const [isAwaitingAutoConnect, setIsAwaitingAutoConnect] = useState(
+    () =>
+      status === "disconnected" &&
+      typeof localStorage !== "undefined" &&
+      localStorage.getItem("lastUsedConnector") !== null,
+  );
   const [hasTriedConnect, setHasTriedConnect] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+
+  useEffect(() => {
+    if (status === "connected") {
+      setIsAwaitingAutoConnect(false);
+      return;
+    }
+    if (!isAwaitingAutoConnect) return;
+
+    const timeout = window.setTimeout(
+      () => setIsAwaitingAutoConnect(false),
+      1_500,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [isAwaitingAutoConnect, status]);
 
   const handleConnect = useCallback(async () => {
     const connector = connectors[0]; // Cartridge connector
@@ -32,7 +54,11 @@ export function useStarknetConnect() {
   const handleDisconnect = useCallback(async () => {
     try {
       console.log("🔌 Disconnecting controller...");
-      await disconnect();
+      try {
+        await disconnect();
+      } finally {
+        await logoutAuthSession();
+      }
       setHasTriedConnect(false);
       console.log("✅ controller disconnected successfully");
     } catch (error) {
@@ -49,7 +75,10 @@ export function useStarknetConnect() {
   });
 
   return {
-    status,
+    status:
+      status === "disconnected" && isAwaitingAutoConnect
+        ? ("reconnecting" as const)
+        : status,
     address,
     isConnecting,
     hasTriedConnect,

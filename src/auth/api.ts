@@ -18,22 +18,29 @@ export interface WalletAuthSigner {
 
 interface AuthChallenge {
   challenge_id: string;
+  action: AuthChallengeAction;
+  account_address: string;
+  chain_id: string;
+  expires_at: string;
   typed_data: TypedData;
 }
 
 interface AuthSessionResponse {
-  session: AuthSessionSummary;
-  transport?: {
-    kind?: AuthTransportKind;
-    bearer_credential?: string;
+  session: {
+    issued_at: string;
+    idle_expires_at: string;
+    absolute_expires_at: string;
+    subject: {
+      provider: "starknet";
+      chain_id: string;
+      account_address: string;
+    };
   };
-}
-
-interface AuthHydrationResponse {
-  session: AuthSessionSummary;
+  legend: { legend_id: string } | null;
   response_context: {
     cookie_csrf_token: string | null;
   };
+  session_credential?: string;
 }
 
 interface AuthErrorBody {
@@ -79,13 +86,12 @@ async function parseJson(response: Response): Promise<unknown> {
 async function authRequest<T>(
   path: string,
   init: RequestInit = {},
-  options: { unsafe?: boolean; includeSession?: boolean } = {},
+  options: { unsafe?: boolean; credentials?: RequestInit["credentials"] } = {},
 ): Promise<T> {
   const unsafe = options.unsafe ?? false;
-  const includeSession = options.includeSession ?? true;
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    credentials: includeSession ? "include" : "omit",
+    credentials: options.credentials ?? "same-origin",
     headers: requestHeaders(init.headers, unsafe),
   });
   const data = await parseJson(response);
@@ -114,7 +120,7 @@ export async function authenticateWalletSession(
   const store = useAuthSessionStore.getState();
   store.beginAuthentication(signer.accountAddress, signer.chainId);
   try {
-    const challengeResult = await authRequest<{ challenge: AuthChallenge }>(
+    const challenge = await authRequest<AuthChallenge>(
       "/auth/v1/challenges",
       {
         method: "POST",
@@ -125,10 +131,10 @@ export async function authenticateWalletSession(
           account_address: signer.accountAddress,
         }),
       },
-      { unsafe: true, includeSession: false },
+      { unsafe: true, credentials: "omit" },
     );
     const signature = signatureFromWallet(
-      await signer.signMessage(challengeResult.challenge.typed_data),
+      await signer.signMessage(challenge.typed_data),
     );
     const sessionResult = await authRequest<AuthSessionResponse>(
       "/auth/v1/sessions",
@@ -136,21 +142,26 @@ export async function authenticateWalletSession(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          proof: {
-            challenge_id: challengeResult.challenge.challenge_id,
-            signature,
-          },
+          challenge_id: challenge.challenge_id,
+          account_address: signer.accountAddress,
+          chain_id: signer.chainId,
+          signature,
         }),
       },
-      { unsafe: true, includeSession: false },
+      // same-origin accepts Set-Cookie without enabling credentialed CORS.
+      { unsafe: true, credentials: "same-origin" },
     );
-    const transport = sessionResult.transport?.kind || "cookie";
+    const transport: AuthTransportKind = sessionResult.session_credential
+      ? "bearer"
+      : "cookie";
     useAuthSessionStore.getState().setAuthenticated({
-      walletAddress: signer.accountAddress,
-      chainId: signer.chainId,
+      walletAddress:
+        sessionResult.session.subject?.account_address ?? signer.accountAddress,
+      chainId: sessionResult.session.subject?.chain_id ?? signer.chainId,
       session: sessionResult.session,
       transport,
-      bearerCredential: sessionResult.transport?.bearer_credential || null,
+      csrfToken: sessionResult.response_context.cookie_csrf_token,
+      bearerCredential: sessionResult.session_credential ?? null,
     });
     return sessionResult.session;
   } catch (error) {
@@ -166,14 +177,14 @@ export async function authenticateWalletSession(
 export async function hydrateAuthSession(): Promise<AuthSessionSummary> {
   useAuthSessionStore.getState().beginHydration();
   try {
-    const result = await authRequest<AuthHydrationResponse>(
-      "/auth/v1/session",
-      { method: "GET" },
-    );
+    const result = await authRequest<AuthSessionResponse>("/auth/v1/session", {
+      method: "GET",
+    });
     const current = useAuthSessionStore.getState();
     useAuthSessionStore.getState().setAuthenticated({
-      walletAddress: current.walletAddress,
-      chainId: current.chainId,
+      walletAddress:
+        result.session.subject?.account_address ?? current.walletAddress,
+      chainId: result.session.subject?.chain_id ?? current.chainId,
       session: result.session,
       transport: current.transport,
       csrfToken: result.response_context.cookie_csrf_token,
@@ -214,7 +225,7 @@ export function authenticatedRequestInit(
   const auth = useAuthSessionStore.getState();
   return {
     ...init,
-    credentials: auth.transport === "cookie" ? "include" : "omit",
+    credentials: auth.transport === "cookie" ? "same-origin" : "omit",
     headers: requestHeaders(init.headers, unsafe),
   };
 }

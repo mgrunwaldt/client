@@ -8,6 +8,12 @@ describe("extractVitePreviewUrl", () => {
     );
   });
 
+  it("extracts an HTTPS Vite preview URL", () => {
+    expect(extractVitePreviewUrl("Local: https://127.0.0.1:43123/\n")).toBe(
+      "https://127.0.0.1:43123",
+    );
+  });
+
   it("strips ANSI styling embedded between the host and dynamic port", () => {
     const output =
       "Local: \u001b[36mhttp://127.0.0.1:\u001b[1m38041\u001b[22m/\u001b[39m";

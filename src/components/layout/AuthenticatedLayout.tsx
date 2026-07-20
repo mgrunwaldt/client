@@ -8,7 +8,7 @@ import {
   logoutAuthSession,
 } from "../../auth/api";
 import { useAuthSessionStore } from "../../auth/session-store";
-import { walletAuthSigner } from "../../auth/wallet";
+import { canonicalWalletAddress, walletAuthSigner } from "../../auth/wallet";
 import { useStarknetConnect } from "../../dojo/hooks/useStarknetConnect";
 import { useMatchSessionStore } from "../../match/session-store";
 import LoadingScreen from "../loader/LoadingScreen";
@@ -36,8 +36,9 @@ export function AuthenticatedLayout() {
 
   useEffect(() => {
     if (status !== "connected" || !account || !address || !chainId) return;
-    if (authenticatedWallet && authenticatedWallet !== address) {
-      if (switchingRef.current) return;
+    if (switchingRef.current) return;
+    const connectedWallet = canonicalWalletAddress(address);
+    if (authenticatedWallet && authenticatedWallet !== connectedWallet) {
       switchingRef.current = true;
       useAuthSessionStore.getState().beginAccountSwitch();
       resetMatchSession();
@@ -59,7 +60,13 @@ export function AuthenticatedLayout() {
       void (async () => {
         try {
           // Hydration recovers only the existing cookie-bound CSRF token.
-          await hydrateAuthSession();
+          const session = await hydrateAuthSession();
+          if (
+            session.subject?.account_address === canonicalWalletAddress(address)
+          ) {
+            return;
+          }
+          await logoutAuthSession();
         } catch {
           // A missing or expired cookie still permits a fresh wallet session.
         }
@@ -85,6 +92,7 @@ export function AuthenticatedLayout() {
   // Show loading while checking connection
   if (
     status === "connecting" ||
+    status === "reconnecting" ||
     authStatus === "unknown" ||
     authStatus === "hydrating" ||
     authStatus === "account_switching"

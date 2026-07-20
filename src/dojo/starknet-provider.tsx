@@ -6,6 +6,7 @@ import {
 } from "@starknet-react/core";
 import type { PropsWithChildren } from "react";
 
+import { createLocalCiConnector } from "../auth/local-ci-connector";
 import cartridgeConnector from "../config/cartridgeConnector";
 
 export default function StarknetProvider({ children }: PropsWithChildren) {
@@ -30,12 +31,19 @@ export default function StarknetProvider({ children }: PropsWithChildren) {
 
   // Determine which chain to use
   const chains = VITE_PUBLIC_DEPLOY_TYPE === "mainnet" ? [mainnet] : [sepolia];
+  const localCiConnector = import.meta.env.VITE_E2E_LOCAL_CI_WALLETS
+    ? createLocalCiConnector(
+        import.meta.env.VITE_E2E_LOCAL_CI_WALLETS,
+        getRpcUrl(),
+        chains[0].id,
+      )
+    : null;
 
   return (
     <StarknetConfig
       autoConnect
       chains={chains}
-      connectors={[cartridgeConnector]}
+      connectors={[localCiConnector || cartridgeConnector]}
       explorer={starkscan}
       provider={provider}
     >

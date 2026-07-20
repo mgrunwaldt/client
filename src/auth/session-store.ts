@@ -11,9 +11,13 @@ export type AuthStatus =
   | "error";
 
 export interface AuthSessionSummary {
-  legend?: {
-    id?: string;
-    display_name?: string;
+  issued_at?: string;
+  idle_expires_at?: string;
+  absolute_expires_at?: string;
+  subject?: {
+    provider: string;
+    chain_id: string;
+    account_address: string;
   } | null;
 }
 

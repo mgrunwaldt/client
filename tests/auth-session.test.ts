@@ -34,6 +34,32 @@ const typedData = {
   message: {},
 };
 
+const challengeResponse = {
+  challenge_id: "0x11111111111111111111111111111111",
+  action: "CREATE_SESSION",
+  account_address: "0x123",
+  chain_id: "0x534e",
+  expires_at: "2026-07-19T12:05:00.000Z",
+  typed_data: typedData,
+};
+
+function sessionResponse(csrfToken: string | null) {
+  return {
+    session: {
+      issued_at: "2026-07-19T12:00:00.000Z",
+      idle_expires_at: "2026-07-19T12:15:00.000Z",
+      absolute_expires_at: "2026-07-20T12:00:00.000Z",
+      subject: {
+        provider: "starknet",
+        chain_id: "0x534e",
+        account_address: "0x123",
+      },
+    },
+    legend: { legend_id: "legend-1" },
+    response_context: { cookie_csrf_token: csrfToken },
+  };
+}
+
 describe("auth session client", () => {
   const fetchMock = vi.fn();
 
@@ -48,19 +74,12 @@ describe("auth session client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("creates a session through challenge and SNIP-12 signing without browser-readable credentials", async () => {
+  it("sends the approved top-level proof wire shape and accepts the cookie on session creation", async () => {
     const signMessage = vi.fn().mockResolvedValue(["0x11", "0x22"]);
     fetchMock
+      .mockResolvedValueOnce(jsonResponse(challengeResponse, 201))
       .mockResolvedValueOnce(
-        jsonResponse(
-          {
-            challenge: { challenge_id: "challenge-1", typed_data: typedData },
-          },
-          201,
-        ),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({ session: { legend: { id: "legend-1" } } }, 201),
+        jsonResponse(sessionResponse("csrf-created"), 201),
       );
 
     await authenticateWalletSession({
@@ -84,20 +103,23 @@ describe("auth session client", () => {
     expect(
       JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string),
     ).toEqual({
-      proof: {
-        challenge_id: "challenge-1",
-        signature: { r: "0x11", s: "0x22" },
-      },
+      challenge_id: challengeResponse.challenge_id,
+      account_address: "0x123",
+      chain_id: "0x534e",
+      signature: { r: "0x11", s: "0x22" },
     });
     expect(headers(fetchMock.mock.calls[0]).get("X-CSRF-Token")).toBeNull();
     expect(headers(fetchMock.mock.calls[1]).get("X-CSRF-Token")).toBeNull();
     expect((fetchMock.mock.calls[0][1] as RequestInit).credentials).toBe(
       "omit",
     );
+    expect((fetchMock.mock.calls[1][1] as RequestInit).credentials).toBe(
+      "same-origin",
+    );
     expect(useAuthSessionStore.getState()).toMatchObject({
       status: "authenticated",
       transport: "cookie",
-      csrfToken: null,
+      csrfToken: "csrf-created",
       bearerCredential: null,
       walletAddress: "0x123",
     });
@@ -105,10 +127,7 @@ describe("auth session client", () => {
 
   it("hydrates only the session-bound cookie CSRF token and keeps it in memory", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        session: { legend: { id: "legend-1" } },
-        response_context: { cookie_csrf_token: "csrf-hydrated" },
-      }),
+      jsonResponse(sessionResponse("csrf-hydrated")),
     );
     const storage = { getItem: vi.fn(), setItem: vi.fn() };
     vi.stubGlobal("localStorage", storage);
@@ -118,7 +137,7 @@ describe("auth session client", () => {
 
     expect(fetchMock.mock.calls[0][0]).toBe("/api/auth/v1/session");
     expect((fetchMock.mock.calls[0][1] as RequestInit).credentials).toBe(
-      "include",
+      "same-origin",
     );
     expect(headers(fetchMock.mock.calls[0]).get("X-CSRF-Token")).toBeNull();
     expect(useAuthSessionStore.getState()).toMatchObject({
@@ -138,12 +157,7 @@ describe("auth session client", () => {
       transport: "bearer",
       bearerCredential: "bearer-memory-only",
     });
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        session: { legend: { id: "legend-1" } },
-        response_context: { cookie_csrf_token: null },
-      }),
-    );
+    fetchMock.mockResolvedValueOnce(jsonResponse(sessionResponse(null)));
 
     await hydrateAuthSession();
 
@@ -161,7 +175,7 @@ describe("auth session client", () => {
     useAuthSessionStore.getState().setAuthenticated({
       walletAddress: "0x123",
       chainId: "0x534e",
-      session: { legend: { id: "legend-1" } },
+      session: {},
       transport: "cookie",
       csrfToken: "csrf-token",
     });

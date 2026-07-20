@@ -86,7 +86,7 @@ export default function MenuFooter() {
           "disabled:opacity-90",
         )}
       >
-        {!import.meta.env.DEV ? (
+        {!import.meta.env.DEV && !import.meta.env.VITE_E2E_LOCAL_CI_WALLETS ? (
           <div className="flex flex-col items-center justify-center">
             <span className="font-orbitron text-base text-white">
               Season 0 Starts:
