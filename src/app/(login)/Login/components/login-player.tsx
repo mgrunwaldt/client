@@ -3,6 +3,9 @@ import { Loader2, Wallet } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 
+import { authenticateWalletSession } from "../../../../auth/api";
+import { useAuthSessionStore } from "../../../../auth/session-store";
+import { walletAuthSigner } from "../../../../auth/wallet";
 import { Button } from "../../../../components/ui/button";
 import { useStarknetConnect } from "../../../../dojo/hooks/useStarknetConnect";
 
@@ -14,11 +17,13 @@ interface LoginPlayerProps {
 
 export function LoginPlayer({
   className = "",
+  onLoginError,
   onLoginSuccess,
 }: LoginPlayerProps) {
   const navigate = useNavigate();
   const { status, isConnecting, handleConnect } = useStarknetConnect();
-  const { account } = useAccount();
+  const { account, address, chainId } = useAccount();
+  const authError = useAuthSessionStore((state) => state.error);
   // Use ref to track if we've already called onLoginSuccess to prevent infinite loops
   const hasCalledSuccess = useRef(false);
 
@@ -30,26 +35,46 @@ export function LoginPlayer({
   useEffect(() => {
     if (!isConnected) {
       hasCalledSuccess.current = false;
-    } else {
-      navigate("/");
     }
-  }, [isConnected, navigate]);
+  }, [isConnected]);
 
   // Handle successful connection with useEffect to prevent infinite loops
   useEffect(() => {
     if (
       isConnected &&
       hasAccount &&
-      onLoginSuccess &&
+      account &&
+      address &&
+      chainId !== undefined &&
       !hasCalledSuccess.current
     ) {
-      console.log(
-        "🎮 Controller connected successfully, calling onLoginSuccess",
-      );
-      navigate("/post-login-screen");
       hasCalledSuccess.current = true;
+      void authenticateWalletSession(
+        walletAuthSigner(account, address, chainId),
+      )
+        .then(() => {
+          onLoginSuccess?.();
+          navigate("/post-login-screen");
+        })
+        .catch((error: unknown) => {
+          hasCalledSuccess.current = false;
+          onLoginError?.(
+            error instanceof Error
+              ? error
+              : new Error("Authentication failed."),
+          );
+        });
     }
-  }, [hasAccount, isConnected, navigate, onLoginSuccess]);
+  }, [
+    account,
+    address,
+    chainId,
+    hasAccount,
+    isConnected,
+    navigate,
+    onLoginError,
+    onLoginSuccess,
+  ]);
 
   // Show different button states based on current status
   const getButtonContent = () => {
@@ -103,6 +128,11 @@ export function LoginPlayer({
       {isConnected && !hasAccount && (
         <div className="mt-4 flex flex-col items-center justify-center text-yellow-400">
           Controller connected, waiting for account...
+        </div>
+      )}
+      {authError && (
+        <div role="alert" className="mt-4 text-center text-sm text-red-300">
+          {authError}
         </div>
       )}
     </div>

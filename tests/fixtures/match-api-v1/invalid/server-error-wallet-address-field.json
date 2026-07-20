@@ -1,0 +1,6 @@
+{
+  "error": "Invalid request.",
+  "code": "INVALID_REQUEST",
+  "status": 400,
+  "wallet_address": "0x123456789abcdef"
+}

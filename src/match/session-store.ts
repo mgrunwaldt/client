@@ -7,6 +7,7 @@ import {
   BackendPendingAction,
   BackendTeam,
   BackendTimelineEvent,
+  type MatchCommand,
 } from "../lib/backend-match";
 
 export type EffortLevel = "low" | "medium" | "high";
@@ -38,6 +39,7 @@ interface MatchSessionState {
   playstyle: Playstyle;
   loading: boolean;
   error: string | null;
+  pendingCommand: MatchCommand | null;
   transitionLoader: MatchTransitionLoaderState;
 }
 
@@ -45,6 +47,8 @@ interface MatchSessionActions {
   resetMatchSession: () => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
+  retainPendingCommand: (command: MatchCommand) => void;
+  clearPendingCommand: () => void;
   showTransitionLoader: (payload: Partial<MatchTransitionLoaderState>) => void;
   updateTransitionLoader: (
     payload: Partial<MatchTransitionLoaderState>,
@@ -85,6 +89,7 @@ const initialState: MatchSessionState = {
   playstyle: "balanced",
   loading: false,
   error: null,
+  pendingCommand: null,
   transitionLoader: {
     visible: false,
     title: "Loading",
@@ -126,6 +131,8 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
   resetMatchSession: () => set(initialState),
   setLoading: (loading) => set({ loading }),
   setError: (error) => set({ error }),
+  retainPendingCommand: (pendingCommand) => set({ pendingCommand }),
+  clearPendingCommand: () => set({ pendingCommand: null }),
   showTransitionLoader: (payload) =>
     set((state) => ({
       transitionLoader: {
@@ -163,6 +170,7 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       playbackStatus: "created",
       loading: false,
       error: null,
+      pendingCommand: null,
     }),
   setStartResponse: (response) =>
     set((state) => ({
@@ -177,6 +185,7 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       playbackStatus: playbackStatusFromResponse(response),
       loading: false,
       error: null,
+      pendingCommand: null,
     })),
   setActionResponse: (response) =>
     set((state) => ({
@@ -194,6 +203,7 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       playbackStatus: playbackStatusFromResponse(response),
       loading: false,
       error: null,
+      pendingCommand: null,
     })),
   hydrateMatchSession: ({
     match,
@@ -242,6 +252,11 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
           : "idle",
         loading: false,
         error: null,
+        pendingCommand:
+          state.pendingCommand?.matchId === match.id &&
+          state.pendingCommand.actionId === pendingAction?.id
+            ? state.pendingCommand
+            : null,
       };
     }),
   setPlaybackMinute: (playbackMinute) => set({ playbackMinute }),

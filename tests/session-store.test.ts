@@ -9,6 +9,7 @@ import type {
   BackendTeam,
   BackendTimelineEvent,
 } from "../src/lib/backend-match";
+import { createMatchCommand } from "../src/lib/backend-match";
 import {
   type MatchPlaybackStatus,
   useMatchSessionStore,
@@ -357,5 +358,37 @@ describe("match session store hydration", () => {
     );
     expect(state.timelineEvents.map((event) => event.event_id)).toEqual([1, 2]);
     expect(state.timelineEvents.map((event) => event.minute)).toEqual([12, 12]);
+  });
+
+  it("preserves an ambiguous command across a reconnect to the same action", async () => {
+    const scene = await readFixture<SceneFixture>("scenes/open-play.json");
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const response = responseForScene(scene, 1);
+    const command = createMatchCommand(
+      "action",
+      {
+        match_id: response.match.id,
+        action_id: scene.id,
+        match_decision: { choice: "KICK", seed: 42 },
+      },
+      {
+        matchId: response.match.id,
+        actionId: scene.id,
+        revision: 3,
+        idempotencyKey: "reconnect-key",
+      },
+    );
+
+    useMatchSessionStore.getState().retainPendingCommand(command);
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match: response.match,
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+      timelineEvents: response.events,
+    });
+
+    expect(useMatchSessionStore.getState().pendingCommand).toEqual(command);
   });
 });

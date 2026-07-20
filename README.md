@@ -42,10 +42,12 @@ npm run dev
 
 For standalone sibling checkouts, use `cd ../match_server` instead.
 
-The backend listens on `http://localhost:3000`; confirm it is ready with:
+Configure the backend on an explicit non-3000 port, for example `3100`, then
+confirm it is ready with:
 
 ```bash
-curl http://localhost:3000/health
+PORT=3100 npm run dev
+curl http://localhost:3100/health
 ```
 
 ## Environment
@@ -64,10 +66,10 @@ production build or HTTPS preview:
 cp .env.example .env.production.local
 ```
 
-For local development, keep `VITE_MATCH_BACKEND_URL=/api` and
-`VITE_MATCH_BACKEND_PROXY_TARGET=http://localhost:3000`. Vite proxies `/api/*`
+For local development, keep `VITE_MATCH_API_BASE_URL=/api` and
+`VITE_MATCH_API_PROXY_TARGET=http://localhost:3100`. Vite proxies `/api/*`
 to the backend, so the browser uses one origin even when the client is served
-over HTTPS. Use `VITE_MATCH_BACKEND_URL` only for a deployed backend URL that
+over HTTPS. Use `VITE_MATCH_API_BASE_URL` only for a deployed backend URL that
 already supports the required browser security policy.
 
 All `VITE_` values are included in browser code. Do not put private keys,
@@ -115,7 +117,7 @@ pnpm preview
 `pnpm preview` serves the production build over HTTP by default. With generated
 certificates and `VITE_LOCAL_HTTPS=true` in `.env.production.local`,
 `pnpm preview:https` serves it over HTTPS. Vite preview does not proxy `/api`;
-set `VITE_MATCH_BACKEND_URL` to a reachable deployed backend before running
+set `VITE_MATCH_API_BASE_URL` to a reachable deployed backend before running
 `pnpm build`, or use `pnpm dev` for local proxying. Vite embeds public variables
 at build time; changing them after `pnpm build` does not update the bundle.
 
@@ -154,11 +156,15 @@ The mirror includes canonical `openapi.json`; AJV 2020-12 with `ajv-formats`
 checks all declared payloads against its schemas, route associations, and
 declared formats. Its canonical source is
 `overgoal/match_server` revision
-`b9d96f8e3d2e584d52329c4a90abdd770e3b88c7`. Runtime source must not import
-these fixtures. The self-pass packet under `tests/fixtures/reproductions` has
+`9918cbc1beb502f0675895b9fbe64d77a96127dc`. The mirror includes the final
+Auth Boundary v1 challenge/proof requests and challenge/session responses;
+tests validate their route associations, schemas, two-field proof shape, file
+hashes, and aggregate tree seal. Runtime source must not import these fixtures.
+The self-pass packet under `tests/fixtures/reproductions` has
 its own source-revision/hash manifest plus an independently hardcoded manifest
-seal. It is client hydration input only; the server harness owns executable
-engine reproduction and causal correctness.
+seal. It preserves a historical M0 packet rather than claiming conformance to
+the current M1 response schema. It is client hydration input only; the server
+harness owns executable engine reproduction and causal correctness.
 
 The browser smoke builds the normal production bundle, including Dojo SDK
 initialization and `DojoSdkProvider`, starts an owned Vite preview on an
@@ -190,6 +196,6 @@ this checkout.
 - `VITE_LOCAL_HTTPS=true requires a local certificate and key`: run `pnpm mkcert`
   or set `VITE_LOCAL_HTTPS=false`.
 - Requests to `/api` fail: start the parent or sibling `match_server`, check its
-  `/health` endpoint, and verify `VITE_MATCH_BACKEND_PROXY_TARGET`.
-- A direct `VITE_MATCH_BACKEND_URL` is blocked by the browser: use an HTTPS
+  `/health` endpoint, and verify `VITE_MATCH_API_PROXY_TARGET`.
+- A direct `VITE_MATCH_API_BASE_URL` is blocked by the browser: use an HTTPS
   backend with an appropriate CORS policy, or restore the local `/api` proxy.

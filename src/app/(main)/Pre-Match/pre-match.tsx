@@ -10,6 +10,7 @@ import { Countdown } from "../../../components/ui/countdown";
 import { GlitchText } from "../../../components/ui/glitch-text";
 import { StaminaBar } from "../../../components/ui/stamina-bar";
 import {
+  createMatchCommand,
   fetchBackendMatch,
   startBackendMatch,
 } from "../../../lib/backend-match";
@@ -46,6 +47,10 @@ export default function PreMatchScreen() {
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
+  const retainPendingCommand = useMatchSessionStore(
+    (state) => state.retainPendingCommand,
+  );
+  const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
   const showTransitionLoader = useMatchSessionStore(
     (state) => state.showTransitionLoader,
   );
@@ -121,7 +126,21 @@ export default function PreMatchScreen() {
           subtitle: "Loading kickoff state and match timeline.",
         });
       }, 220);
-      const response = await startBackendMatch(matchId);
+      const matchSnapshot = match;
+      if (!matchSnapshot) {
+        throw new Error("Match state is unavailable. Reconnect and try again.");
+      }
+      const command =
+        pendingCommand?.operation === "start" &&
+        pendingCommand.matchId === matchId
+          ? pendingCommand
+          : createMatchCommand(
+              "start",
+              { match_id: matchId },
+              { matchId, revision: matchSnapshot.revision ?? null },
+            );
+      retainPendingCommand(command);
+      const response = await startBackendMatch(matchSnapshot, command);
       if (progressTimer) {
         window.clearInterval(progressTimer);
       }
@@ -229,7 +248,8 @@ export default function PreMatchScreen() {
                 "bg-no-repeat",
               )}
             >
-              {!import.meta.env.DEV ? (
+              {!import.meta.env.DEV &&
+              !import.meta.env.VITE_E2E_LOCAL_CI_WALLETS ? (
                 <div
                   className={cn(
                     "z-100 mt-2 flex h-full w-full flex-col items-center justify-center gap-2",

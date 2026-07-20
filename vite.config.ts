@@ -65,6 +65,11 @@ function vendorChunk(id: string) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
+  env.VITE_LOCAL_HTTPS = process.env.VITE_LOCAL_HTTPS ?? env.VITE_LOCAL_HTTPS;
+  env.VITE_HTTPS_KEY_PATH =
+    process.env.VITE_HTTPS_KEY_PATH ?? env.VITE_HTTPS_KEY_PATH;
+  env.VITE_HTTPS_CERT_PATH =
+    process.env.VITE_HTTPS_CERT_PATH ?? env.VITE_HTTPS_CERT_PATH;
   const https = localHttpsConfig(env);
 
   return {
@@ -91,8 +96,7 @@ export default defineConfig(({ mode }) => {
       https,
       proxy: {
         "/api": {
-          target:
-            env.VITE_MATCH_BACKEND_PROXY_TARGET || "http://localhost:3000",
+          target: env.VITE_MATCH_API_PROXY_TARGET || "http://localhost:3100",
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path.replace(/^\/api/, ""),

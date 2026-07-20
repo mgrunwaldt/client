@@ -35,14 +35,21 @@ if (oversizedChunks.length > 0) {
 }
 
 if (!allowsBrowserTestBridge) {
+  const browserTestMarkers = [
+    "__OVERGOAL_E2E_SET_MATCH_RESPONSE__",
+    "__OVERGOAL_E2E_SWITCH_LOCAL_CI_WALLET__",
+  ];
   const bridgeChunks = (
     await Promise.all(
-      javaScriptFiles.map(async (file) => ({
-        file,
-        containsBridge: (
-          await readFile(new URL(file, assetDirectory), "utf8")
-        ).includes("__OVERGOAL_E2E_SET_MATCH_RESPONSE__"),
-      })),
+      javaScriptFiles.map(async (file) => {
+        const source = await readFile(new URL(file, assetDirectory), "utf8");
+        return {
+          file,
+          containsBridge: browserTestMarkers.some((marker) =>
+            source.includes(marker),
+          ),
+        };
+      }),
     )
   ).filter(({ containsBridge }) => containsBridge);
 

@@ -27,6 +27,7 @@ import Stadium from "../../components/models/in-game/Stadium";
 import {
   type BackendFieldPlayer,
   type BackendMatchResponse,
+  createMatchCommand,
   processBackendMatchAction,
 } from "../../lib/backend-match";
 import { useMatchSessionStore } from "../../match/session-store";
@@ -633,6 +634,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
+  const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
+  const retainPendingCommand = useMatchSessionStore(
+    (state) => state.retainPendingCommand,
+  );
   const [releasedAimDraft, setReleasedAimDraft] = useState<BallAimDraft | null>(
     null,
   );
@@ -827,7 +832,31 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       setLoading(true);
       setError(null);
 
-      const response = await processBackendMatchAction(match.id, payload);
+      const command =
+        pendingCommand?.operation === "action" &&
+        pendingCommand.matchId === match.id &&
+        pendingCommand.actionId === pendingAction.id
+          ? pendingCommand
+          : createMatchCommand(
+              "action",
+              {
+                match_id: match.id,
+                action_id: pendingAction.id,
+                match_decision: payload,
+              },
+              {
+                matchId: match.id,
+                revision: match.revision ?? null,
+                actionId: pendingAction.id,
+              },
+            );
+      retainPendingCommand(command);
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        payload,
+        command,
+      );
       setReleasedAimDraft(null);
       setStagedKickResult({
         response,

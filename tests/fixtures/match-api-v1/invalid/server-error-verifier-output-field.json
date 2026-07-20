@@ -1,0 +1,6 @@
+{
+  "error": "Invalid request.",
+  "code": "INVALID_REQUEST",
+  "status": 400,
+  "verifier_output": { "valid": false, "reason": "account contract detail" }
+}

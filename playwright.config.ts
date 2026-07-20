@@ -11,10 +11,10 @@ if (!baseURL) {
 const parsedBaseUrl = new URL(baseURL);
 
 if (
-  parsedBaseUrl.protocol !== "http:" ||
+  parsedBaseUrl.protocol !== "https:" ||
   parsedBaseUrl.hostname !== "127.0.0.1"
 ) {
-  throw new Error("PLAYWRIGHT_BASE_URL must be an HTTP loopback URL.");
+  throw new Error("PLAYWRIGHT_BASE_URL must be an HTTPS loopback URL.");
 }
 
 export default defineConfig({
@@ -26,6 +26,7 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL,
+    ignoreHTTPSErrors: true,
     launchOptions: {
       args: ["--enable-unsafe-swiftshader"],
     },

@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ec } from "starknet";
 import { extractVitePreviewUrl } from "./preview-url.mjs";
 
 const viteBinary = fileURLToPath(
@@ -247,6 +248,19 @@ function waitForBrowserOrPreviewExit(browser, preview) {
 }
 
 async function main() {
+  const localCiWallets = Array.from({ length: 2 }, () => {
+    const privateKey = `0x${Buffer.from(
+      ec.starkCurve.utils.randomPrivateKey(),
+    ).toString("hex")}`;
+    return {
+      address: ec.starkCurve.getStarkKey(privateKey),
+      privateKey,
+      publicKey: `0x${Buffer.from(
+        ec.starkCurve.getPublicKey(privateKey),
+      ).toString("hex")}`,
+    };
+  });
+  const encodedLocalCiWallets = JSON.stringify(localCiWallets);
   await createPnpmShimDirectory();
   await runPnpm("typecheck", ["typecheck"]);
   await runPnpm(
@@ -260,7 +274,10 @@ async function main() {
       "--emptyOutDir",
     ],
     {
-      env: { VITE_E2E_MATCH_SESSION_BRIDGE: "true" },
+      env: {
+        VITE_E2E_LOCAL_CI_WALLETS: encodedLocalCiWallets,
+        VITE_E2E_MATCH_SESSION_BRIDGE: "true",
+      },
     },
   );
   await runPnpm("bundle-verify", [
@@ -270,6 +287,31 @@ async function main() {
     browserDistDirectory,
     "--allow-browser-test-bridge",
   ]);
+
+  const httpsKeyPath = join(browserDistDirectory, "preview-key.pem");
+  const httpsCertPath = join(browserDistDirectory, "preview-cert.pem");
+  await runOwned(
+    "https-certificate",
+    "openssl",
+    [
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      httpsKeyPath,
+      "-out",
+      httpsCertPath,
+      "-days",
+      "1",
+      "-subj",
+      "/CN=127.0.0.1",
+      "-addext",
+      "subjectAltName=IP:127.0.0.1,DNS:localhost",
+    ],
+    { stdio: "ignore" },
+  );
 
   const preview = spawnOwned(
     "preview",
@@ -285,7 +327,15 @@ async function main() {
       "--outDir",
       browserDistDirectory,
     ],
-    { stdio: ["ignore", "pipe", "pipe"] },
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        VITE_LOCAL_HTTPS: "true",
+        VITE_HTTPS_KEY_PATH: httpsKeyPath,
+        VITE_HTTPS_CERT_PATH: httpsCertPath,
+      },
+    },
   );
   preview.stdout.pipe(process.stdout);
   preview.stderr.pipe(process.stderr);
@@ -314,6 +364,7 @@ async function main() {
     env: {
       ...process.env,
       PATH: `${pnpmShimDirectory}${delimiter}${process.env.PATH}`,
+      OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
       PLAYWRIGHT_BASE_URL: baseUrl,
     },
   });

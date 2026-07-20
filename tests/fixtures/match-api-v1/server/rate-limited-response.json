@@ -1,0 +1,7 @@
+{
+  "error": "Rate limit exceeded",
+  "code": "RATE_LIMITED",
+  "status": 429,
+  "request_id": "request-fixture-0001",
+  "retryable": true
+}

@@ -1,0 +1,13 @@
+{
+  "challenge_id": "0x11111111111111111111111111111111",
+  "action": "CREATE_SESSION",
+  "account_address": "0x111",
+  "chain_id": "0x534e5f5345504f4c4941",
+  "expires_at": "2026-07-19T12:05:00.000Z",
+  "typed_data": {
+    "types": {},
+    "primaryType": "OvergoalAuthChallenge",
+    "domain": {},
+    "message": {}
+  }
+}

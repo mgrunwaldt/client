@@ -1,0 +1,7 @@
+{
+  "error": "Request failed validation.",
+  "code": "VALIDATION_ERROR",
+  "status": 422,
+  "details": { "issues": ["MISSING_REQUIRED_FIELD"] },
+  "retryable": false
+}
