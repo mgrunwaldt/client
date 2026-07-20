@@ -74,7 +74,7 @@ describe("auth session client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("sends the approved top-level proof wire shape and accepts the cookie on session creation", async () => {
+  it("sends only the challenge proof and accepts the cookie on session creation", async () => {
     const signMessage = vi.fn().mockResolvedValue(["0x11", "0x22"]);
     fetchMock
       .mockResolvedValueOnce(jsonResponse(challengeResponse, 201))
@@ -104,8 +104,6 @@ describe("auth session client", () => {
       JSON.parse((fetchMock.mock.calls[1][1] as RequestInit).body as string),
     ).toEqual({
       challenge_id: challengeResponse.challenge_id,
-      account_address: "0x123",
-      chain_id: "0x534e",
       signature: { r: "0x11", s: "0x22" },
     });
     expect(headers(fetchMock.mock.calls[0]).get("X-CSRF-Token")).toBeNull();

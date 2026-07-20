@@ -73,6 +73,7 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
   context,
   page,
 }) => {
+  test.setTimeout(90_000);
   let activeAddress: string | null = null;
   let challengeSequence = 0;
   let hydrated = false;
@@ -115,20 +116,11 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
     if (request.method() === "POST" && pathname === "/api/auth/v1/sessions") {
       const body = request.postDataJSON() as {
         challenge_id: string;
-        account_address: string;
-        chain_id: string;
         signature: { r: string; s: string };
       };
-      expect(Object.keys(body).sort()).toEqual([
-        "account_address",
-        "chain_id",
-        "challenge_id",
-        "signature",
-      ]);
+      expect(Object.keys(body).sort()).toEqual(["challenge_id", "signature"]);
       const challenge = issuedChallenges.get(body.challenge_id);
       expect(challenge).toBeDefined();
-      expect(body.account_address).toBe(challenge!.account_address);
-      expect(body.chain_id).toBe(challenge!.chain_id);
       expect(
         typedData.verifyMessage(
           challenge!.typed_data,

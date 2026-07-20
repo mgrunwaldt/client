@@ -143,8 +143,6 @@ export async function authenticateWalletSession(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           challenge_id: challenge.challenge_id,
-          account_address: signer.accountAddress,
-          chain_id: signer.chainId,
           signature,
         }),
       },
