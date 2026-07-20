@@ -1,3 +1,5 @@
+import { authenticatedRequestInit, matchApiBaseUrl } from "../auth/api";
+
 export type BackendActionTeam = "MY_TEAM" | "OPPONENT_TEAM" | "NEUTRAL";
 
 export interface BackendTeam {
@@ -18,6 +20,7 @@ export interface BackendMatch {
   my_team_score: number;
   opponent_team_score: number;
   current_time: number;
+  revision?: number;
   match_status: string;
   pending_action?: BackendPendingAction | null;
 }
@@ -111,25 +114,90 @@ export interface BackendMatchResponse {
   decision_result?: BackendDecisionResult;
 }
 
-const BACKEND_BASE_URL = import.meta.env.VITE_MATCH_BACKEND_URL || "/api";
+export interface MatchCommand {
+  operation: "create" | "start" | "resume" | "action";
+  idempotencyKey: string;
+  matchId: string;
+  revision: number | null;
+  actionId: string | null;
+  payload: Record<string, unknown>;
+}
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BACKEND_BASE_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-    ...init,
+export class BackendRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string | null,
+    readonly retryable: boolean,
+  ) {
+    super(message);
+    this.name = "BackendRequestError";
+  }
+}
+
+function newIdempotencyKey() {
+  return crypto.randomUUID();
+}
+
+function requireRevision(match: BackendMatch) {
+  const revision = match.revision;
+  if (
+    typeof revision !== "number" ||
+    !Number.isInteger(revision) ||
+    revision < 0
+  ) {
+    throw new Error("Match revision is required before submitting a command.");
+  }
+  return revision as number;
+}
+
+export function createMatchCommand(
+  operation: MatchCommand["operation"],
+  payload: Record<string, unknown>,
+  options: {
+    matchId?: string;
+    revision?: number | null;
+    actionId?: string | null;
+    idempotencyKey?: string;
+  } = {},
+): MatchCommand {
+  return {
+    operation,
+    idempotencyKey: options.idempotencyKey || newIdempotencyKey(),
+    matchId: options.matchId || "",
+    revision: options.revision ?? null,
+    actionId: options.actionId ?? null,
+    payload: structuredClone(payload),
+  };
+}
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  unsafe = false,
+): Promise<T> {
+  const authenticatedInit = authenticatedRequestInit(init, unsafe);
+  const headers = new Headers(authenticatedInit.headers);
+  headers.set("Content-Type", "application/json");
+  const response = await fetch(`${matchApiBaseUrl()}${path}`, {
+    ...authenticatedInit,
+    headers,
   });
 
-  const data: unknown = await response.json();
+  const data: unknown = response.status === 204 ? null : await response.json();
   if (!response.ok) {
-    const error =
-      typeof data === "object" && data !== null && "error" in data
-        ? data.error
-        : null;
-    throw new Error(
-      typeof error === "string" ? error : `Backend request failed: ${path}`,
+    const error = data as {
+      error?: unknown;
+      code?: unknown;
+      retryable?: unknown;
+    } | null;
+    throw new BackendRequestError(
+      typeof error?.error === "string"
+        ? error.error
+        : `Backend request failed: ${path}`,
+      response.status,
+      typeof error?.code === "string" ? error.code : null,
+      error?.retryable === true,
     );
   }
 
@@ -141,30 +209,86 @@ export async function fetchBackendTeams(): Promise<BackendTeam[]> {
   return data.teams;
 }
 
-export async function createBackendMatch(body: {
-  my_team_id: string;
-  opponent_team_id: string;
-  player_profile: Record<string, number>;
-  ruleset?: Record<string, unknown>;
-}): Promise<{
+export async function createBackendMatch(
+  body: {
+    my_team_id: string;
+    opponent_team_id: string;
+    player_profile: Record<string, number>;
+    ruleset?: Record<string, unknown>;
+  },
+  command?: MatchCommand,
+): Promise<{
   id: string;
   match: BackendMatch;
   my_team: BackendTeam;
   opponent_team: BackendTeam;
 }> {
-  return request("/createMatch", {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  const requestCommand = command || createMatchCommand("create", body);
+  return request(
+    "/createMatch",
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": requestCommand.idempotencyKey },
+      body: JSON.stringify(requestCommand.payload),
+    },
+    true,
+  );
+}
+
+export async function resumeBackendMatch(
+  match: BackendMatch,
+  command?: MatchCommand,
+): Promise<BackendMatchResponse> {
+  const requestCommand =
+    command ||
+    createMatchCommand(
+      "resume",
+      { match_id: match.id },
+      { matchId: match.id, revision: requireRevision(match) },
+    );
+  if (requestCommand.revision === null) {
+    throw new Error("Match revision is required before submitting a command.");
+  }
+  return request(
+    "/resumeMatch",
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": requestCommand.idempotencyKey,
+        "If-Match-Revision": String(requestCommand.revision),
+      },
+      body: JSON.stringify(requestCommand.payload),
+    },
+    true,
+  );
 }
 
 export async function startBackendMatch(
-  matchId: string,
+  match: BackendMatch,
+  command?: MatchCommand,
 ): Promise<BackendMatchResponse> {
-  return request("/startMatch", {
-    method: "POST",
-    body: JSON.stringify({ match_id: matchId }),
-  });
+  const requestCommand =
+    command ||
+    createMatchCommand(
+      "start",
+      { match_id: match.id },
+      { matchId: match.id, revision: requireRevision(match) },
+    );
+  if (requestCommand.revision === null) {
+    throw new Error("Match revision is required before submitting a command.");
+  }
+  return request(
+    "/startMatch",
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": requestCommand.idempotencyKey,
+        "If-Match-Revision": String(requestCommand.revision),
+      },
+      body: JSON.stringify(requestCommand.payload),
+    },
+    true,
+  );
 }
 
 export async function fetchBackendMatch(matchId: string): Promise<{
@@ -177,16 +301,43 @@ export async function fetchBackendMatch(matchId: string): Promise<{
 }
 
 export async function processBackendMatchAction(
-  matchId: string,
+  match: BackendMatch,
+  actionId: string,
   matchDecision: Record<string, unknown>,
+  command?: MatchCommand,
 ): Promise<BackendMatchResponse> {
-  return request("/processMatchAction", {
-    method: "POST",
-    body: JSON.stringify({
-      match_id: matchId,
-      match_decision: matchDecision,
-    }),
-  });
+  const requestCommand =
+    command ||
+    createMatchCommand(
+      "action",
+      {
+        match_id: match.id,
+        action_id: actionId,
+        match_decision: matchDecision,
+      },
+      {
+        matchId: match.id,
+        revision: requireRevision(match),
+        actionId,
+      },
+    );
+  if (requestCommand.revision === null) {
+    throw new Error("Match revision is required before submitting a command.");
+  }
+  return request(
+    "/processMatchAction",
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": requestCommand.idempotencyKey,
+        "If-Match-Revision": String(requestCommand.revision),
+      },
+      body: JSON.stringify({
+        ...requestCommand.payload,
+      }),
+    },
+    true,
+  );
 }
 
 export function defaultLegendProfile() {

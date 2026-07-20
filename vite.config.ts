@@ -91,8 +91,7 @@ export default defineConfig(({ mode }) => {
       https,
       proxy: {
         "/api": {
-          target:
-            env.VITE_MATCH_BACKEND_PROXY_TARGET || "http://localhost:3000",
+          target: env.VITE_MATCH_API_PROXY_TARGET || "http://localhost:3100",
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path.replace(/^\/api/, ""),
