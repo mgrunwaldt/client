@@ -1,0 +1,19 @@
+{
+  "session": {
+    "issued_at": "2026-07-19T12:00:00.000Z",
+    "idle_expires_at": "2026-07-19T12:15:00.000Z",
+    "absolute_expires_at": "2026-07-20T12:00:00.000Z",
+    "subject": {
+      "provider": "starknet",
+      "chain_id": "0x534e5f5345504f4c4941",
+      "account_address": "0x111"
+    }
+  },
+  "legend": {
+    "legend_id": "legend_fixture_001"
+  },
+  "response_context": {
+    "cookie_csrf_token": null
+  },
+  "session_credential": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+}

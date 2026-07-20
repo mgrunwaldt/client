@@ -3,50 +3,133 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "Overgoal Match API v1",
-    "version": "1.0.0-prototype",
+    "version": "1.0.0",
     "summary": "Client-agnostic contract for the Overgoal playable match.",
-    "description": "Match API v1 describes the current prototype wire surface and the additive fields that M1 must enforce. The current server exposes legacy unversioned paths; path versioning and production guarantees are not claimed by this document. See docs/contracts/match-api-v1.md.",
+    "description": "Match API v1 describes the durable, authenticated owner-bound match service and Auth Boundary v1 routes. The server retains root-relative v1 paths for compatibility. See docs/contracts/match-api-v1.md.",
     "license": { "name": "Proprietary", "identifier": "LicenseRef-Proprietary" },
     "x-overgoal-contract-major": 1,
     "x-overgoal-current-scene-contract-version": 2,
-    "x-overgoal-implementation-profile": "M0_PROTOTYPE"
+    "x-overgoal-implementation-profile": "M1_AUTHENTICATED_OWNER"
   },
   "servers": [
     { "url": "/", "description": "Current root-relative legacy transport" }
   ],
-  "security": [],
+  "security": [
+    { "sessionCookie": [] },
+    { "sessionBearer": [] }
+  ],
   "tags": [
     { "name": "Operations", "description": "Liveness and operational metadata." },
     { "name": "Teams", "description": "Prototype team catalogue endpoints." },
     { "name": "Matches", "description": "Authoritative match lifecycle and state." },
-    { "name": "Timeline", "description": "Ordered authoritative match events." }
+    { "name": "Timeline", "description": "Ordered authoritative match events." },
+    { "name": "Authentication", "description": "SNIP-12 challenge, session, and recovery transitions." }
   ],
   "paths": {
     "/health": {
       "get": {
         "operationId": "getHealth",
+        "security": [],
         "tags": ["Operations"],
         "summary": "Check prototype process liveness",
         "responses": {
           "200": {
             "description": "Process is live.",
-            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
-          }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/live": {
+      "get": {
+        "operationId": "getLiveness",
+        "security": [],
+        "tags": ["Operations"],
+        "summary": "Check process liveness",
+        "responses": {
+          "200": {
+            "description": "Process is live.",
+            "headers": {
+              "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" },
+              "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" },
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" },
+              "traceparent": { "$ref": "#/components/headers/Traceparent" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "operationId": "getReadiness",
+        "security": [],
+        "tags": ["Operations"],
+        "summary": "Check repository-backed readiness",
+        "responses": {
+          "200": {
+            "description": "Service can accept match traffic.",
+            "headers": {
+              "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" },
+              "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" },
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" },
+              "traceparent": { "$ref": "#/components/headers/Traceparent" }
+            },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ReadinessResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/NotReady" }
+        }
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "getMetrics",
+        "security": [],
+        "tags": ["Operations"],
+        "summary": "Read low-cardinality Prometheus metrics when enabled",
+        "responses": {
+          "200": {
+            "description": "Prometheus text exposition.",
+            "headers": {
+              "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" },
+              "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" },
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" },
+              "traceparent": { "$ref": "#/components/headers/Traceparent" }
+            },
+            "content": { "text/plain": { "schema": { "type": "string" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }
         }
       }
     },
     "/teams": {
       "get": {
         "operationId": "listTeams",
+        "security": [],
         "tags": ["Teams"],
         "summary": "List teams",
         "responses": {
           "200": {
             "description": "Team catalogue.",
-            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TeamListResponse" } } }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       },
@@ -62,11 +145,15 @@
         "responses": {
           "201": {
             "description": "Created team.",
-            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Team" } } }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -74,16 +161,20 @@
     "/team/{id}": {
       "get": {
         "operationId": "getTeam",
+        "security": [],
         "tags": ["Teams"],
         "summary": "Get a team",
         "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
         "responses": {
           "200": {
             "description": "Team snapshot.",
-            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Team" } } }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -102,13 +193,16 @@
         "responses": {
           "201": {
             "description": "Created match shell.",
-            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateMatchResponse" } } }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -129,9 +223,12 @@
         "responses": {
           "200": { "$ref": "#/components/responses/MatchProgress" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -152,9 +249,12 @@
         "responses": {
           "200": { "$ref": "#/components/responses/MatchProgress" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -164,10 +264,10 @@
         "operationId": "processMatchAction",
         "tags": ["Matches"],
         "summary": "Resolve the current pending scene and run to the next stop",
-        "description": "The action_id binds the intent to the scene shown to the client. M0 ignores it; M1 must reject missing, stale, or mismatched action identifiers.",
+        "description": "The action_id binds the intent to the scene shown to the client. The command is revision-checked and durably idempotent.",
         "parameters": [
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/MatchRevision" }
+          { "$ref": "#/components/parameters/ProcessActionIdempotencyKey" },
+          { "$ref": "#/components/parameters/ProcessActionMatchRevision" }
         ],
         "requestBody": {
           "required": true,
@@ -176,9 +276,12 @@
         "responses": {
           "200": { "$ref": "#/components/responses/MatchProgress" },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
           "409": { "$ref": "#/components/responses/Conflict" },
           "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -192,10 +295,15 @@
         "responses": {
           "200": {
             "description": "Current match snapshot.",
-            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchSnapshotResponse" } } }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -209,21 +317,194 @@
         "responses": {
           "200": {
             "description": "Timeline in ascending event_id order.",
-            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TimelineResponse" } } }
           },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
           "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/challenges": {
+      "post": {
+        "operationId": "issueChallenge",
+        "security": [],
+        "tags": ["Authentication"],
+        "summary": "Issue a subject-bound SNIP-12 challenge",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthChallengeRequest" } } } },
+        "responses": {
+          "201": { "description": "Challenge issued.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthChallengeResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/sessions": {
+      "post": {
+        "operationId": "createSession",
+        "security": [],
+        "tags": ["Authentication"],
+        "summary": "Consume a signed challenge and create a session",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthProofRequest" } } } },
+        "responses": {
+          "201": { "description": "Session created.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSessionResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/session": {
+      "get": {
+        "operationId": "hydrateSession",
+        "tags": ["Authentication"],
+        "summary": "Hydrate and touch the current session",
+        "responses": {
+          "200": { "description": "Current session.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSessionResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "operationId": "logoutSession",
+        "tags": ["Authentication"],
+        "summary": "Idempotently revoke the current session",
+        "responses": {
+          "204": { "description": "Session authority removed or already absent.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/session/refresh": {
+      "post": {
+        "operationId": "refreshSession",
+        "tags": ["Authentication"],
+        "summary": "Refresh the current session idle window",
+        "responses": {
+          "200": { "description": "Session refreshed.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSessionResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }, "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/session/rotate": {
+      "post": {
+        "operationId": "rotateSession",
+        "tags": ["Authentication"],
+        "summary": "Atomically replace the current session credential",
+        "responses": {
+          "200": { "description": "Session rotated.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSessionResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }, "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/sessions/revoke-all": {
+      "post": {
+        "operationId": "revokeAllSessions",
+        "tags": ["Authentication"],
+        "summary": "Revoke every principal session and pending recovery capability",
+        "responses": {
+          "204": { "description": "Principal sessions revoked.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }, "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/recoveries": {
+      "post": {
+        "operationId": "startRecovery",
+        "security": [],
+        "tags": ["Authentication"],
+        "summary": "Consume current-subject authorization and begin recovery",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthProofRequest" } } } },
+        "responses": {
+          "202": { "description": "Recovery pending.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthRecoveryResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" }, "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/recoveries/pending": {
+      "get": {
+        "operationId": "getPendingRecovery",
+        "tags": ["Authentication"],
+        "summary": "Reconcile the caller's pending recovery without session touch",
+        "responses": {
+          "200": { "description": "Pending recovery.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthRecoveryResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }, "404": { "$ref": "#/components/responses/NotFound" },
+          "429": { "$ref": "#/components/responses/RateLimited" }, "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
+    "/auth/v1/recoveries/{id}/complete": {
+      "post": {
+        "operationId": "completeRecovery",
+        "security": [],
+        "tags": ["Authentication"],
+        "summary": "Consume replacement-subject proof and complete recovery",
+        "parameters": [{ "$ref": "#/components/parameters/ResourceId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthProofRequest" } } } },
+        "responses": {
+          "201": { "description": "Recovery complete and replacement session issued.", "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AuthSessionResponse" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }, "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }, "409": { "$ref": "#/components/responses/Conflict" },
+          "429": { "$ref": "#/components/responses/RateLimited" }, "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     }
   },
   "components": {
+    "securitySchemes": {
+      "sessionCookie": { "type": "apiKey", "in": "cookie", "name": "__Host-overgoal_session" },
+      "sessionBearer": { "type": "http", "scheme": "bearer", "bearerFormat": "opaque" }
+    },
     "headers": {
       "MatchApiVersion": {
         "description": "Contract major selected by the server. Required in M1; absent from the M0 prototype.",
         "schema": { "type": "string", "const": "1" },
         "x-overgoal-m1-required": true
+      },
+      "MatchAuthProfile": {
+        "description": "Authenticated authorization profile selected by the server.",
+        "schema": { "type": "string", "const": "owner-v1" },
+        "x-overgoal-m1-required": true
+      },
+      "RequestId": {
+        "description": "Bounded request correlation identifier accepted or generated by the server.",
+        "schema": { "type": "string", "minLength": 8, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" }
+      },
+      "Traceparent": {
+        "description": "Server span in W3C trace context format.",
+        "schema": { "type": "string", "pattern": "^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$" }
+      },
+      "RetryAfter": {
+        "description": "Seconds until the caller may retry.",
+        "schema": { "type": "integer", "minimum": 1 }
       }
     },
     "parameters": {
@@ -249,34 +530,86 @@
         "description": "Last observed match revision. M1 must reject stale commands with MATCH_REVISION_CONFLICT.",
         "schema": { "type": "integer", "minimum": 0 },
         "x-overgoal-m1-required": true
+      },
+      "ProcessActionIdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Opaque key scoped to processMatchAction and the target match. Exact retries replay the first completed response.",
+        "schema": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" }
+      },
+      "ProcessActionMatchRevision": {
+        "name": "If-Match-Revision",
+        "in": "header",
+        "required": true,
+        "description": "Last observed match revision for the pending action.",
+        "schema": { "type": "integer", "minimum": 0 }
       }
     },
     "responses": {
       "MatchProgress": {
         "description": "The next externally observable stop: a playable scene, halftime, or full time.",
-        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" } },
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchProgressResponse" } } }
       },
       "BadRequest": {
         "description": "Malformed JSON or a prototype-era invalid lifecycle transition.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BadRequestErrorResponse" } } }
+      },
+      "Unauthorized": {
+        "description": "M1 authenticated profile only: no usable principal or session.",
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UnauthorizedErrorResponse" } } },
+        "x-overgoal-m1-required": true
+      },
+      "Forbidden": {
+        "description": "M1 authenticated profile only: public transport-policy denial.",
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ForbiddenErrorResponse" } } },
+        "x-overgoal-m1-required": true
       },
       "NotFound": {
         "description": "Unknown match or team.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotFoundErrorResponse" } } }
       },
       "Conflict": {
-        "description": "Lifecycle, stale-action, revision, or idempotency conflict. M1 guarantee.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } },
+        "description": "Lifecycle, stale-action, revision, idempotency, or caller-scoped Legend mapping conflict. M1 guarantee.",
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConflictErrorResponse" } } },
         "x-overgoal-m1-required": true
       },
       "ValidationError": {
         "description": "Syntactically valid JSON that violates the request or current-scene decision schema.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ValidationErrorResponse" } } }
       },
       "InternalError": {
         "description": "Unexpected server error.",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" } } }
+        "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/InternalErrorResponse" } } }
+      },
+      "RateLimited": {
+        "description": "The bounded per-process request policy rejected the request before its handler ran.",
+        "headers": {
+          "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" },
+          "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" },
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" },
+          "traceparent": { "$ref": "#/components/headers/Traceparent" },
+          "Retry-After": { "$ref": "#/components/headers/RetryAfter" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RateLimitedErrorResponse" } } }
+      },
+      "NotReady": {
+        "description": "The process is draining or durable storage is unavailable.",
+        "headers": {
+          "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" },
+          "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" },
+          "X-Request-Id": { "$ref": "#/components/headers/RequestId" },
+          "traceparent": { "$ref": "#/components/headers/Traceparent" }
+        },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/NotReadyErrorResponse" } } }
       }
     },
     "schemas": {
@@ -380,16 +713,32 @@
         "type": "object",
         "required": ["attack_chain_depth", "last_scene_origin"],
         "properties": {
-          "attack_chain_depth": { "type": "integer", "minimum": 0 },
-          "last_scene_origin": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP"] }
+          "attack_chain_depth": { "type": "integer", "minimum": 0, "maximum": 8 },
+          "last_scene_origin": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP"] },
+          "requested_seed": {
+            "oneOf": [{ "$ref": "#/components/schemas/SimulationSeed" }, { "type": "null" }],
+            "description": "Optional client compatibility metadata. It is never an authoritative entropy source."
+          }
         },
         "additionalProperties": true
+      },
+      "ReplayInitialState": {
+        "type": "object",
+        "required": ["my_team", "opponent_team", "legend_profile", "ruleset"],
+        "properties": {
+          "my_team": { "$ref": "#/components/schemas/Team" },
+          "opponent_team": { "$ref": "#/components/schemas/Team" },
+          "legend_profile": { "$ref": "#/components/schemas/LegendProfile" },
+          "ruleset": { "$ref": "#/components/schemas/Ruleset" }
+        },
+        "additionalProperties": false
       },
       "Match": {
         "type": "object",
         "required": [
           "id", "my_team_id", "opponent_team_id", "my_team_score", "opponent_team_score",
-          "current_time", "prev_time", "match_status", "event_counter", "pending_action"
+          "current_time", "prev_time", "match_status", "event_counter", "pending_action",
+          "seed", "engine_version", "ruleset_version", "initial_state", "revision"
         ],
         "properties": {
           "id": { "$ref": "#/components/schemas/Identifier" },
@@ -405,6 +754,8 @@
           "player_participation": { "$ref": "#/components/schemas/PlayerParticipation" },
           "action_team": { "$ref": "#/components/schemas/ActionTeam" },
           "event_counter": { "type": "integer", "minimum": 0 },
+          "action_counter": { "type": "integer", "minimum": 0 },
+          "decision_counter": { "type": "integer", "minimum": 0 },
           "field_state_id": { "type": ["string", "null"], "minLength": 1 },
           "pending_action": {
             "oneOf": [{ "$ref": "#/components/schemas/PendingAction" }, { "type": "null" }]
@@ -416,6 +767,7 @@
           "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
           "engine_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
           "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
+          "initial_state": { "$ref": "#/components/schemas/ReplayInitialState" },
           "revision": { "type": "integer", "minimum": 0, "x-overgoal-m1-required": true }
         },
         "additionalProperties": true
@@ -431,7 +783,7 @@
           "numerical_advantage": { "type": "integer", "minimum": -2, "maximum": 2 },
           "quality_band": { "type": "string", "enum": ["SAFE", "PROGRESSIVE", "RISKY"] },
           "previous_outcome": { "type": ["string", "null"] },
-          "carrier_player_id": { "type": ["string", "null"] },
+          "carrier_player_id": { "$ref": "#/components/schemas/Identifier" },
           "possession_state": { "type": "string" },
           "ball_x": { "$ref": "#/components/schemas/Coordinate" },
           "ball_y": { "$ref": "#/components/schemas/Coordinate" }
@@ -511,6 +863,7 @@
         ],
         "properties": {
           "id": { "$ref": "#/components/schemas/Identifier" },
+          "action_sequence": { "type": "integer", "minimum": 1 },
           "match_id": { "$ref": "#/components/schemas/Identifier" },
           "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
           "action_type": { "$ref": "#/components/schemas/PlayableSceneType" },
@@ -518,7 +871,7 @@
           "my_team_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/FieldPlayer" } },
           "opponent_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/FieldPlayer" } },
           "legend_player_id": { "$ref": "#/components/schemas/Identifier" },
-          "carrier_player_id": { "type": ["string", "null"] },
+          "carrier_player_id": { "$ref": "#/components/schemas/Identifier" },
           "distance_to_goal": { "type": "number", "minimum": 0, "maximum": 100 },
           "ball_x": { "$ref": "#/components/schemas/Coordinate" },
           "ball_y": { "$ref": "#/components/schemas/Coordinate" },
@@ -566,6 +919,7 @@
         ],
         "properties": {
           "id": { "$ref": "#/components/schemas/Identifier" },
+          "action_sequence": { "type": "integer", "minimum": 1 },
           "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
           "action_type": { "$ref": "#/components/schemas/PlayableSceneType" },
           "scene_type": { "$ref": "#/components/schemas/PlayableSceneType" },
@@ -687,6 +1041,8 @@
           "energy_modifier": { "type": "number", "minimum": 0 },
           "follow_up_scene": { "$ref": "#/components/schemas/PlayableSceneType" },
           "follow_up_context": { "$ref": "#/components/schemas/MatchContext" },
+          "follow_up_bound_reached": { "type": "boolean" },
+          "follow_up_limit": { "type": "integer", "const": 8 },
           "flight_path": { "type": "array", "items": { "$ref": "#/components/schemas/FlightPoint" } },
           "flight_outcome": { "type": "string" },
           "final_point": { "$ref": "#/components/schemas/FlightPoint" },
@@ -774,13 +1130,20 @@
       },
       "LastDecision": {
         "type": "object",
-        "required": ["id", "match_id", "minute", "action", "action_team", "decision_data", "field_state_id", "timestamp"],
+        "required": [
+          "id", "match_id", "sequence", "minute", "action", "action_team", "action_id",
+          "action_version", "decision_version", "decision_data", "field_state_id", "timestamp"
+        ],
         "properties": {
           "id": { "$ref": "#/components/schemas/Identifier" },
           "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "sequence": { "type": "integer", "minimum": 1 },
           "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
           "action": { "$ref": "#/components/schemas/PlayableSceneType" },
           "action_team": { "$ref": "#/components/schemas/ActionTeam" },
+          "action_id": { "$ref": "#/components/schemas/Identifier" },
+          "action_version": { "type": "integer", "minimum": 1 },
+          "decision_version": { "type": "integer", "minimum": 1 },
           "decision_data": { "type": "object", "additionalProperties": true },
           "field_state_id": { "$ref": "#/components/schemas/Identifier" },
           "timestamp": { "type": "number", "minimum": 0 }
@@ -823,7 +1186,11 @@
             "additionalProperties": false
           },
           "ruleset": { "$ref": "#/components/schemas/Ruleset" },
-          "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true }
+          "seed": {
+            "allOf": [{ "$ref": "#/components/schemas/SimulationSeed" }],
+            "description": "Optional client compatibility metadata recorded as requested_seed. The server generates the authoritative match seed.",
+            "x-overgoal-m1-required": true
+          }
         },
         "additionalProperties": false
       },
@@ -934,7 +1301,7 @@
       },
       "ProcessMatchActionRequest": {
         "type": "object",
-        "required": ["match_id", "match_decision"],
+        "required": ["match_id", "action_id", "match_decision"],
         "properties": {
           "match_id": { "$ref": "#/components/schemas/Identifier" },
           "action_id": { "$ref": "#/components/schemas/Identifier", "x-overgoal-m1-required": true },
@@ -968,18 +1335,202 @@
         },
         "additionalProperties": false
       },
+      "ReadinessResponse": {
+        "type": "object",
+        "required": ["status", "timestamp"],
+        "properties": {
+          "status": { "type": "string", "const": "ready" },
+          "timestamp": { "type": "string", "format": "date-time" }
+        },
+        "additionalProperties": false
+      },
+      "AuthChallengeRequest": {
+        "type": "object",
+        "required": ["action", "chain_id", "account_address"],
+        "properties": {
+          "action": { "type": "string", "enum": ["CREATE_SESSION", "AUTHORIZE_RECOVERY", "RECOVER_PRINCIPAL"] },
+          "chain_id": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+          "account_address": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+          "replacement_chain_id": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+          "replacement_account_address": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+          "recovery_id": { "type": "string", "pattern": "^0x[0-9a-f]{32}$" }
+        },
+        "additionalProperties": false
+      },
+      "AuthProofRequest": {
+        "type": "object",
+        "required": ["challenge_id", "signature"],
+        "properties": {
+          "challenge_id": { "type": "string", "pattern": "^0x[0-9a-f]{32}$" },
+          "signature": {
+            "type": "object",
+            "required": ["r", "s"],
+            "properties": {
+              "r": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+              "s": { "type": "string", "pattern": "^0x[0-9a-f]+$" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "AuthChallengeResponse": {
+        "type": "object",
+        "required": ["challenge_id", "action", "account_address", "chain_id", "expires_at", "typed_data"],
+        "properties": {
+          "challenge_id": { "type": "string", "pattern": "^0x[0-9a-f]{32}$" },
+          "action": { "type": "string", "enum": ["CREATE_SESSION", "AUTHORIZE_RECOVERY", "RECOVER_PRINCIPAL"] },
+          "account_address": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+          "chain_id": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+          "expires_at": { "type": "string", "format": "date-time" },
+          "typed_data": { "type": "object", "minProperties": 4 }
+        },
+        "additionalProperties": false
+      },
+      "AuthSessionResponse": {
+        "type": "object",
+        "required": ["session", "legend", "response_context"],
+        "properties": {
+          "session": {
+            "type": "object",
+            "required": ["issued_at", "idle_expires_at", "absolute_expires_at", "subject"],
+            "properties": {
+              "issued_at": { "type": "string", "format": "date-time" },
+              "idle_expires_at": { "type": "string", "format": "date-time" },
+              "absolute_expires_at": { "type": "string", "format": "date-time" },
+              "subject": {
+                "type": "object",
+                "required": ["provider", "chain_id", "account_address"],
+                "properties": {
+                  "provider": { "const": "starknet" },
+                  "chain_id": { "type": "string", "pattern": "^0x[0-9a-f]+$" },
+                  "account_address": { "type": "string", "pattern": "^0x[0-9a-f]+$" }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          },
+          "legend": {
+            "oneOf": [
+              { "type": "object", "required": ["legend_id"], "properties": { "legend_id": { "$ref": "#/components/schemas/Identifier" } }, "additionalProperties": false },
+              { "type": "null" }
+            ]
+          },
+          "response_context": {
+            "type": "object",
+            "required": ["cookie_csrf_token"],
+            "properties": { "cookie_csrf_token": { "type": ["string", "null"] } },
+            "additionalProperties": false
+          },
+          "session_credential": { "type": "string", "pattern": "^0x[0-9a-f]{64}$", "x-overgoal-sensitive-returned-once": true }
+        },
+        "additionalProperties": false
+      },
+      "AuthRecoveryResponse": {
+        "type": "object",
+        "required": ["recovery_id", "status"],
+        "properties": {
+          "recovery_id": { "type": "string", "pattern": "^0x[0-9a-f]{32}$" },
+          "status": { "const": "PENDING" }
+        },
+        "additionalProperties": false
+      },
       "ErrorResponse": {
         "type": "object",
-        "required": ["error"],
+        "required": ["error", "code", "status"],
         "properties": {
-          "error": { "type": "string", "minLength": 1 },
-          "code": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
+          "error": { "type": "string", "minLength": 1, "maxLength": 256 },
+          "code": {
+            "type": "string",
+            "enum": ["MALFORMED_JSON", "VALIDATION_ERROR", "INVALID_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "RESOURCE_NOT_FOUND", "INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE", "VALIDATION_FAILED", "RATE_LIMITED", "NOT_READY", "INTERNAL_ERROR"],
+            "x-overgoal-m1-required": true,
+            "x-overgoal-public-safe": true
+          },
           "status": { "type": "integer", "minimum": 400, "maximum": 599, "x-overgoal-m1-required": true },
-          "details": { "type": ["object", "null"], "additionalProperties": true },
-          "request_id": { "type": "string" },
+          "details": {
+            "type": ["object", "null"],
+            "properties": {
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["REQUEST_VALIDATION_FAILED", "UNKNOWN_REQUEST_FIELD", "MISSING_REQUIRED_FIELD", "INVALID_REQUEST_SHAPE", "INVALID_REQUEST_STATE", "INVALID_FIELD_RELATION", "INVALID_FIELD_RANGE", "INVALID_FIELD_FORMAT", "INVALID_FIELD_TYPE"]
+                },
+                "maxItems": 32
+              }
+            },
+            "additionalProperties": false,
+            "x-overgoal-public-safe": true
+          },
+          "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
           "retryable": { "type": "boolean" }
         },
-        "additionalProperties": true
+        "additionalProperties": false,
+        "unevaluatedProperties": false
+      },
+      "BadRequestErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "enum": ["MALFORMED_JSON", "INVALID_REQUEST", "INVALID_MATCH_TRANSITION"] }, "status": { "const": 400 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "UnauthorizedErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "const": "UNAUTHORIZED" }, "status": { "const": 401 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "ForbiddenErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "const": "FORBIDDEN" }, "status": { "const": 403 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "NotFoundErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "const": "RESOURCE_NOT_FOUND" }, "status": { "const": 404 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "ConflictErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "enum": ["INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE"] }, "status": { "const": 409 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "ValidationErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "enum": ["VALIDATION_ERROR", "VALIDATION_FAILED"] }, "status": { "const": 422 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "InternalErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "const": "INTERNAL_ERROR" }, "status": { "const": 500 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "RateLimitedErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "const": "RATE_LIMITED" }, "status": { "const": 429 } } }
+        ],
+        "unevaluatedProperties": false
+      },
+      "NotReadyErrorResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ErrorResponse" },
+          { "properties": { "code": { "const": "NOT_READY" }, "status": { "const": 503 } } }
+        ],
+        "unevaluatedProperties": false
       }
     }
   }

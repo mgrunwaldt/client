@@ -9,7 +9,9 @@
   "events": [{ "match_id": "match-fixture-1", "event_id": 18, "action": "MATCH_END", "minute": 90, "team": "NEUTRAL", "description": "Match finished.", "my_team_score": 2, "opponent_team_score": 1, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": true, "meta": null }],
   "match": {
     "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
-    "current_time": 90, "prev_time": 89, "match_status": "FINISHED", "event_counter": 18, "pending_action": null
+    "current_time": 90, "prev_time": 89, "match_status": "FINISHED", "event_counter": 18, "revision": 1, "pending_action": null,
+    "seed": "fixture-seed-1", "engine_version": "match-engine/1", "ruleset_version": "nss-match-v2/1",
+    "initial_state": { "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" }, "opponent_team": { "id": "team_2", "name": "Cartridge City", "offense": 85, "defense": 68, "intensity": 72, "set_pieces": 77, "chemistry": 70, "formation": "4-2-3-1" }, "legend_profile": { "stamina": 78, "energy": 78, "shoot": 74, "dribble": 76, "speed": 77, "passing": 73, "heading": 69, "defense": 58, "intelligence": 72, "yellow_cards": 0, "red_card": false, "simulation_attempts": 0, "substitutions": 0 }, "ruleset": { "rebound_play_enabled": true } }
   },
   "decision_result": {
     "description": "A defender catches you and possession is lost.",

@@ -1,3 +1,5 @@
 {
-  "error": ""
+  "error": "Wrong public status.",
+  "code": "UNAUTHORIZED",
+  "status": 400
 }

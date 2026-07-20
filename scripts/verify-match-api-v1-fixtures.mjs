@@ -13,11 +13,12 @@ import {
 } from "./match-api-v1-fixture-invariants.mjs";
 
 const SOURCE_REPOSITORY = "https://github.com/overgoal/match_server";
-const SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
+const CONTRACT_SOURCE_REVISION = "9918cbc1beb502f0675895b9fbe64d77a96127dc";
+const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const EXPECTED_FIXTURE_MANIFEST_SHA256 =
-  "4d5abfb8b6dec3f7dbf3278796a74be88bd41c8af1e03a4d4c1ec34db62b2969";
+  "5bc7905b27edca848ee9f6bc82b04e8fb9838c12f66dce36c6c659307d980008";
 const EXPECTED_MIRROR_TREE_SHA256 =
-  "06a8174f8d1b1e3ff2bc4f4d003235e13ccd3f8eedcb4fa8ebe72f35463e8991";
+  "c8e3c1ddfb73e9c2b89dbd288b48e657762dc7b06e2ab9a4c31571a2ee442eec";
 const EXPECTED_REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 
@@ -171,15 +172,8 @@ async function validateMirroredContract(fixtureRoot, reproduction) {
     }
   }
 
-  const reproductionValidation = validator.validate(
-    "MatchProgressResponse",
-    reproduction,
-  );
-  if (!reproductionValidation.valid) {
-    failures.push(
-      `self-pass reproduction: ${formatSchemaErrors(reproductionValidation.errors)}`,
-    );
-  }
+  // This separately sealed M0 packet preserves a historical engine defect and
+  // is not a fixture for the current M1 response schema.
   try {
     assertCanonicalFixtureRelations({
       choiceMatrix,
@@ -217,11 +211,11 @@ async function readSealedReproduction(reproductionRoot) {
 
   if (
     manifest.source?.repository !== SOURCE_REPOSITORY ||
-    manifest.source?.revision !== SOURCE_REVISION ||
+    manifest.source?.revision !== REPRODUCTION_SOURCE_REVISION ||
     manifest.source?.packet_path !== "self-pass-follow-up-response.json"
   ) {
     throw new Error(
-      "Match API v1 reproduction source provenance does not match the pinned contract",
+      "Match API v1 reproduction source provenance does not match its pinned source",
     );
   }
 
@@ -268,7 +262,7 @@ const manifest = JSON.parse(manifestContents);
 
 if (
   manifest.source?.repository !== SOURCE_REPOSITORY ||
-  manifest.source?.revision !== SOURCE_REVISION ||
+  manifest.source?.revision !== CONTRACT_SOURCE_REVISION ||
   manifest.source?.contract_path !== "contracts/match-api/v1"
 ) {
   throw new Error(
@@ -317,5 +311,5 @@ const reproduction = await readSealedReproduction(reproductionRoot);
 await validateMirroredContract(fixtureRoot, reproduction);
 
 console.log(
-  `Match API v1 fixtures verified: ${manifestFiles.length} files from ${SOURCE_REPOSITORY}@${SOURCE_REVISION}`,
+  `Match API v1 fixtures verified: ${manifestFiles.length} files from ${SOURCE_REPOSITORY}@${CONTRACT_SOURCE_REVISION}`,
 );

@@ -1,3 +1,5 @@
 {
-  "error": "Match is not waiting for decision. Current status: HALFTIME"
+  "error": "Match is not waiting for decision.",
+  "code": "INVALID_MATCH_TRANSITION",
+  "status": 400
 }

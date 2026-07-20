@@ -156,11 +156,15 @@ The mirror includes canonical `openapi.json`; AJV 2020-12 with `ajv-formats`
 checks all declared payloads against its schemas, route associations, and
 declared formats. Its canonical source is
 `overgoal/match_server` revision
-`b9d96f8e3d2e584d52329c4a90abdd770e3b88c7`. Runtime source must not import
-these fixtures. The self-pass packet under `tests/fixtures/reproductions` has
+`9918cbc1beb502f0675895b9fbe64d77a96127dc`. The mirror includes the final
+Auth Boundary v1 challenge/proof requests and challenge/session responses;
+tests validate their route associations, schemas, two-field proof shape, file
+hashes, and aggregate tree seal. Runtime source must not import these fixtures.
+The self-pass packet under `tests/fixtures/reproductions` has
 its own source-revision/hash manifest plus an independently hardcoded manifest
-seal. It is client hydration input only; the server harness owns executable
-engine reproduction and causal correctness.
+seal. It preserves a historical M0 packet rather than claiming conformance to
+the current M1 response schema. It is client hydration input only; the server
+harness owns executable engine reproduction and causal correctness.
 
 The browser smoke builds the normal production bundle, including Dojo SDK
 initialization and `DojoSdkProvider`, starts an owned Vite preview on an

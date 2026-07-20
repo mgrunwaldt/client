@@ -1,0 +1,5 @@
+{
+  "error": "A playable Legend mapping is required for this account.",
+  "code": "LEGEND_MAPPING_REQUIRED",
+  "status": 409
+}

@@ -15,35 +15,60 @@ the challenge ID and `{ r, s }` proof. No owner, principal, session, or test
 identity header is sent by the client.
 
 When a connected wallet reloads a protected route, the client first hydrates
-the existing session for safe CSRF recovery, then establishes a fresh signed
-session for that wallet before rendering protected match state. The frozen
-public session summary does not contain a wallet subject, so treating cookie
-hydration alone as wallet proof would permit an old browser cookie to be shown
-under a newly selected account.
+the existing session for safe CSRF recovery. A matching session subject is
+rendered without another wallet signature. A mismatched subject is logged out
+before the connected wallet establishes a fresh signed session, so an old
+account's match state is never exposed after an account switch.
 
 ## Server Envelope Confirmation
 
-The frozen Auth Boundary v1 machine contract defines request fields, routes,
-transport, and session-context semantics, but not success JSON envelopes. The
-client currently requires the following narrow envelopes from the M1 server:
+The client boundary follows the Match API v1 OpenAPI and fixtures pinned at
+`9918cbc1beb502f0675895b9fbe64d77a96127dc`:
 
 ```ts
-POST /auth/v1/challenges -> {
-  challenge: { challenge_id: string; typed_data: TypedData }
+POST /auth/v1/challenges
+request -> {
+  action: "CREATE_SESSION"
+  chain_id: string
+  account_address: string
+}
+response -> {
+  challenge_id: string
+  action: "CREATE_SESSION"
+  account_address: string
+  chain_id: string
+  expires_at: string
+  typed_data: TypedData
 }
 
-POST /auth/v1/sessions -> {
-  session: { legend?: { id?: string; display_name?: string } | null }
-  transport?: { kind?: "cookie" | "bearer"; bearer_credential?: string }
+POST /auth/v1/sessions
+request -> {
+  challenge_id: string
+  signature: { r: string; s: string }
 }
 
-GET /auth/v1/session -> {
-  session: { legend?: { id?: string; display_name?: string } | null }
+POST /auth/v1/sessions and GET /auth/v1/session
+response -> {
+  session: {
+    issued_at: string
+    idle_expires_at: string
+    absolute_expires_at: string
+    subject: {
+      provider: "starknet"
+      chain_id: string
+      account_address: string
+    }
+  }
+  legend: { legend_id: string } | null
   response_context: { cookie_csrf_token: string | null }
+  session_credential?: string
 }
 ```
 
 `typed_data` is deliberately server-supplied because the server is the source
 of trusted audience, deployment, origin, timestamps, and challenge bindings.
-If the parallel M1 server publishes a different response envelope, change this
-typed boundary and its fixtures together; do not add fallback endpoint shapes.
+The proof does not repeat account or chain authority: the server resolves both
+from its stored challenge. `session_credential` is returned once only for
+bearer creation and remains in memory. Cookie creation and hydration expose the
+session-bound CSRF token in `response_context`; bearer hydration exposes null
+and never returns the credential again.

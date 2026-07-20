@@ -23,9 +23,10 @@ import { createMatchApiV1SchemaValidator } from "../scripts/match-api-v1-schema-
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
+const CONTRACT_SOURCE_REVISION = "9918cbc1beb502f0675895b9fbe64d77a96127dc";
+const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "4d5abfb8b6dec3f7dbf3278796a74be88bd41c8af1e03a4d4c1ec34db62b2969";
+  "5bc7905b27edca848ee9f6bc82b04e8fb9838c12f66dce36c6c659307d980008";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(
@@ -156,10 +157,10 @@ describe("Match API v1 test fixture mirror", () => {
 
     expect(manifest.source).toEqual({
       repository: "https://github.com/overgoal/match_server",
-      revision: SOURCE_REVISION,
+      revision: CONTRACT_SOURCE_REVISION,
       contract_path: "contracts/match-api/v1",
       description:
-        "Test-only mirror of the M0-I4 canonical Match API v1 fixtures. Runtime modules must not import this directory.",
+        "Test-only mirror of the M1 authenticated-owner Match API v1 contract. Runtime modules must not import this directory.",
     });
     expect(sha256(manifestContents.toString())).toBe(FIXTURE_MANIFEST_SHA256);
 
@@ -167,6 +168,72 @@ describe("Match API v1 test fixture mirror", () => {
       .filter((file) => file !== "fixture-manifest.json")
       .sort();
     expect(Object.keys(manifest.sha256).sort()).toEqual(actualFiles);
+    expect(actualFiles).toHaveLength(49);
+  });
+
+  it("seals and validates the complete Auth Boundary v1 fixture set", async () => {
+    const seal = await readFixture<FixtureManifest>("fixture-manifest.json");
+    const contractManifest = await readFixture<{
+      fixtures: Array<{
+        file: string;
+        schema: string;
+        operation?: { method: string; path: string; body: string };
+      }>;
+    }>("manifest.json");
+    const authFiles = [
+      "player-client/auth-challenge-request.json",
+      "player-client/auth-proof-request.json",
+      "server/auth-challenge-response.json",
+      "server/auth-session-response.json",
+    ];
+    const authFixtures = contractManifest.fixtures.filter((fixture) =>
+      authFiles.includes(fixture.file),
+    );
+
+    expect(authFixtures).toEqual([
+      expect.objectContaining({
+        file: "server/auth-challenge-response.json",
+        schema: "AuthChallengeResponse",
+        operation: expect.objectContaining({
+          method: "POST",
+          path: "/auth/v1/challenges",
+          body: "response",
+        }),
+      }),
+      expect.objectContaining({
+        file: "server/auth-session-response.json",
+        schema: "AuthSessionResponse",
+        operation: expect.objectContaining({
+          method: "POST",
+          path: "/auth/v1/sessions",
+          body: "response",
+        }),
+      }),
+      expect.objectContaining({
+        file: "player-client/auth-challenge-request.json",
+        schema: "AuthChallengeRequest",
+        operation: expect.objectContaining({
+          method: "POST",
+          path: "/auth/v1/challenges",
+          body: "request",
+        }),
+      }),
+      expect.objectContaining({
+        file: "player-client/auth-proof-request.json",
+        schema: "AuthProofRequest",
+        operation: expect.objectContaining({
+          method: "POST",
+          path: "/auth/v1/sessions",
+          body: "request",
+        }),
+      }),
+    ]);
+    expect(authFiles.every((file) => seal.sha256[file])).toBe(true);
+
+    const proof = await readFixture<Record<string, unknown>>(
+      "player-client/auth-proof-request.json",
+    );
+    expect(Object.keys(proof).sort()).toEqual(["challenge_id", "signature"]);
   });
 
   it("validates every mirrored payload against the mirrored OpenAPI schemas", async () => {
@@ -270,7 +337,7 @@ describe("Match API v1 test fixture mirror", () => {
 
     expect(manifest.source).toEqual({
       repository: "https://github.com/overgoal/match_server",
-      revision: SOURCE_REVISION,
+      revision: REPRODUCTION_SOURCE_REVISION,
       packet_path: "self-pass-follow-up-response.json",
       description:
         "Frozen M0 self-pass follow-up response packet for client hydration only.",
