@@ -10,6 +10,7 @@ import type {
   BackendTimelineEvent,
 } from "../src/lib/backend-match";
 import { createMatchCommand } from "../src/lib/backend-match";
+import { MatchApiContractError } from "../src/match/api-v1/errors";
 import { useMatchSessionStore } from "../src/match/session-store";
 import { readFixture } from "./match-api-v1-fixtures";
 
@@ -65,6 +66,8 @@ function responseForScene(
     my_team_score: 0,
     opponent_team_score: 0,
     current_time: scene.minute,
+    prev_time: 0,
+    revision: 0,
     match_status: "WAITING_FOR_DECISION",
     pending_action: scene,
   };
@@ -149,7 +152,7 @@ describe("match session store hydration", () => {
     useMatchSessionStore.getState().setPlaybackMinute(37);
 
     useMatchSessionStore.getState().hydrateMatchSession({
-      match: { ...response.match, id: "new-match" },
+      match: response.match,
       myTeam: teams.my_team,
       opponentTeam: teams.opponent_team,
       timelineEvents: response.events,
@@ -224,7 +227,7 @@ describe("match session store hydration", () => {
     });
 
     useMatchSessionStore.getState().hydrateMatchSession({
-      match: { ...response.match, id: "undefined-fallback-match" },
+      match: response.match,
       myTeam: teams.my_team,
       opponentTeam: teams.opponent_team,
       timelineEvents: response.events,
@@ -302,6 +305,16 @@ describe("match session store hydration", () => {
       myTeam: teams.my_team,
       opponentTeam: teams.opponent_team,
     });
+    useMatchSessionStore.getState().beginStartCommand(
+      createMatchCommand(
+        "start",
+        { match_id: waiting.match.id },
+        {
+          matchId: waiting.match.id,
+          revision: waiting.match.revision,
+        },
+      ),
+    );
     useMatchSessionStore.getState().setStartResponse(waiting);
     expect(useMatchSessionStore.getState()).toMatchObject({
       pendingAction: { scene_type: "OPEN_PLAY" },
@@ -309,6 +322,22 @@ describe("match session store hydration", () => {
       playbackStatus: "timeline_playing",
     });
 
+    useMatchSessionStore.getState().setPlaybackMinute(waiting.minute);
+    useMatchSessionStore.getState().markSceneReady();
+    useMatchSessionStore.getState().beginActionCommand(
+      createMatchCommand(
+        "action",
+        {
+          match_id: waiting.match.id,
+          action_id: waiting.pending_action?.id,
+        },
+        {
+          matchId: waiting.match.id,
+          revision: waiting.match.revision,
+          actionId: waiting.pending_action?.id ?? null,
+        },
+      ),
+    );
     useMatchSessionStore.getState().setActionResponse(halftime);
     expect(useMatchSessionStore.getState()).toMatchObject({
       pendingAction: null,
@@ -316,6 +345,46 @@ describe("match session store hydration", () => {
       playbackMinute: 12,
       playbackStatus: "field_ready",
       phase: "result_playback",
+    });
+  });
+
+  it("uses the authoritative top-level field state when the action omits its embedded copy", async () => {
+    const scene = await readFixture<SceneFixture>("scenes/open-play.json");
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const response = responseForScene(scene, 1);
+    const pendingWithoutField = { ...scene, field_state: undefined };
+    response.pending_action = pendingWithoutField;
+    response.match = {
+      ...response.match,
+      pending_action: pendingWithoutField,
+    };
+
+    useMatchSessionStore.getState().setCreatedMatch({
+      match: {
+        ...response.match,
+        match_status: "NOT_STARTED",
+        pending_action: null,
+      },
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+    });
+    useMatchSessionStore.getState().beginStartCommand(
+      createMatchCommand(
+        "start",
+        { match_id: response.match.id },
+        {
+          matchId: response.match.id,
+          revision: response.match.revision,
+        },
+      ),
+    );
+    useMatchSessionStore.getState().setStartResponse(response);
+
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      pendingAction: { field_state: { id: scene.field_state.id } },
+      fieldState: { id: scene.field_state.id },
     });
   });
 
@@ -364,7 +433,7 @@ describe("match session store hydration", () => {
       {
         match_id: response.match.id,
         action_id: scene.id,
-        match_decision: { choice: "KICK", seed: 42 },
+        match_decision: { choice: "KICK", power: 42 },
       },
       {
         matchId: response.match.id,
@@ -383,5 +452,66 @@ describe("match session store hydration", () => {
     });
 
     expect(useMatchSessionStore.getState().pendingCommand).toEqual(command);
+  });
+
+  it("enters creating before the create request is sent", () => {
+    const command = createMatchCommand(
+      "create",
+      { my_team_id: "team_1", opponent_team_id: "team_2" },
+      { idempotencyKey: "create-key" },
+    );
+
+    useMatchSessionStore.getState().beginCreateCommand(command);
+
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      phase: "creating",
+      loading: true,
+      pendingCommand: command,
+    });
+  });
+
+  it("returns false when a command guard rejects transport dispatch", () => {
+    const command = createMatchCommand(
+      "action",
+      { match_id: "stale-match", action_id: "stale-action" },
+      {
+        matchId: "stale-match",
+        revision: 1,
+        actionId: "stale-action",
+      },
+    );
+
+    expect(useMatchSessionStore.getState().beginActionCommand(command)).toBe(
+      false,
+    );
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      phase: "recoverable_error",
+      loading: false,
+      diagnostic: { kind: "illegal_transition" },
+    });
+  });
+
+  it("preserves structured contract diagnostics for recoverable UI handling", () => {
+    useMatchSessionStore.getState().setError(
+      new MatchApiContractError("Unsupported provider payload.", {
+        apiVersion: "2",
+        requestId: "request-contract",
+        retryAfterSeconds: null,
+      }),
+    );
+
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      phase: "recoverable_error",
+      route: "main",
+      diagnostic: {
+        kind: "contract",
+        message: "Unsupported provider payload.",
+        retryable: true,
+        metadata: {
+          apiVersion: "2",
+          requestId: "request-contract",
+        },
+      },
+    });
   });
 });

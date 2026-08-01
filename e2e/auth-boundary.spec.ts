@@ -22,6 +22,10 @@ const wallets = JSON.parse(encodedWallets) as LocalCiWallet[];
 const chainId = `0x${sepolia.id.toString(16)}`;
 const csrfToken = "0x" + "c".repeat(64);
 const cookieName = "__Host-overgoal_session";
+const matchApiHeaders = {
+  "Match-API-Version": "1",
+  "X-Request-Id": "request-auth-e2e",
+};
 
 function sessionResponse(accountAddress: string, csrf: string | null) {
   return {
@@ -147,6 +151,7 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
       hydrated = true;
       return route.fulfill({
         status: 200,
+        headers: matchApiHeaders,
         contentType: "application/json",
         body: JSON.stringify(sessionResponse(activeAddress!, csrfToken)),
       });
@@ -166,6 +171,7 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
     if (request.method() === "GET" && pathname === "/api/teams") {
       return route.fulfill({
         status: 200,
+        headers: matchApiHeaders,
         contentType: "application/json",
         body: JSON.stringify({
           teams: [
@@ -196,6 +202,7 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
       expect(request.headers()["idempotency-key"]).toBeTruthy();
       return route.fulfill({
         status: 201,
+        headers: matchApiHeaders,
         contentType: "application/json",
         body: JSON.stringify({
           id: "match-owner-a",
@@ -206,8 +213,15 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
             my_team_score: 0,
             opponent_team_score: 0,
             current_time: 0,
+            prev_time: 0,
             revision: 1,
             match_status: "NOT_STARTED",
+            pending_action: null,
+            event_counter: 0,
+            seed: "auth-e2e-seed",
+            engine_version: "match-engine/1",
+            ruleset_version: "nss-match-v2/1",
+            initial_state: {},
           },
           my_team: {
             id: "team-1",
@@ -230,6 +244,7 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
     if (request.method() === "GET" && pathname === "/api/match/match-owner-a") {
       return route.fulfill({
         status: 404,
+        headers: matchApiHeaders,
         contentType: "application/json",
         body: JSON.stringify({ error: "Match not found", code: "NOT_FOUND" }),
       });

@@ -19,6 +19,7 @@ export type MatchSessionPhase =
   | "creating"
   | "created"
   | "starting"
+  | "resuming"
   | "timeline_playback"
   | "scene_ready"
   | "submitting"
@@ -63,6 +64,7 @@ export interface MatchTransitionLoaderState {
 
 export interface MatchSessionData {
   phase: MatchSessionPhase;
+  recoveryPhase: MatchSessionPhase | null;
   route: MatchSessionRoute;
   match: BackendMatch | null;
   myTeam: BackendTeam | null;
@@ -90,7 +92,7 @@ export interface HydratedMatchSession {
 
 export type MatchSessionEvent =
   | { type: "RESET" }
-  | { type: "CREATE_REQUESTED"; command?: MatchCommand }
+  | { type: "CREATE_REQUESTED"; command: MatchCommand }
   | {
       type: "MATCH_CREATED";
       payload: {
@@ -102,6 +104,7 @@ export type MatchSessionEvent =
   | { type: "COMMAND_RETAINED"; command: MatchCommand }
   | { type: "COMMAND_CLEARED" }
   | { type: "START_REQUESTED"; command: MatchCommand }
+  | { type: "RESUME_REQUESTED"; command: MatchCommand }
   | { type: "ACTION_REQUESTED"; command: MatchCommand }
   | { type: "HYDRATED"; payload: HydratedMatchSession }
   | {

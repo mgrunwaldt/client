@@ -17,13 +17,14 @@ field positions, outcomes, or the next scene.
 | ------------------------------- | -------------------------------------------------- | -------------------------- |
 | `created`                       | `NOT_STARTED`                                      | Prematch                   |
 | `starting`                      | Start command in flight                            | Prematch                   |
+| `resuming`                      | Resume command in flight from `HALFTIME`           | Timeline                   |
 | `timeline_playback`             | `IN_PROGRESS` or `WAITING_FOR_DECISION`            | Timeline                   |
 | `scene_ready`                   | Timeline reached an advertised known pending scene | Field                      |
 | `submitting`                    | Action command in flight                           | Field                      |
 | `result_playback`               | Accepted action response, before acknowledgement   | Field                      |
 | `halftime`                      | `HALFTIME`                                         | Timeline lifecycle surface |
 | `finished`                      | `FINISHED`                                         | Timeline lifecycle surface |
-| `legend_unavailable_simulation` | `IN_PROGRESS` with `NOT_PARTICIPATING`             | Timeline lifecycle surface |
+| `legend_unavailable_simulation` | `IN_PROGRESS` with `OBSERVING`                     | Timeline lifecycle surface |
 | `recoverable_error`             | Transport, stale command, or illegal transition    | Safe diagnostic surface    |
 | `unsupported_contract`          | Unknown Match API status or scene                  | Safe diagnostic surface    |
 
@@ -34,12 +35,15 @@ authoritative match state.
 
 - `MATCH_CREATED` accepts only `NOT_STARTED`.
 - `START_REQUESTED` is legal only from `created`.
+- `RESUME_REQUESTED` is legal only from `halftime`.
 - `ACTION_REQUESTED` is legal only from `scene_ready` and must match the
   current authoritative action ID.
 - Hydration accepts backend snapshots, validates every known status, and only
   preserves Timeline playback for the same match.
 - A command response with a lower revision or another match ID is ignored into
   a recoverable stale-command diagnostic.
+- A command response is accepted only while its matching start, resume, or
+  action command is in flight.
 - Action responses enter `result_playback`; `RESULT_ACKNOWLEDGED` returns to
   the backend-derived lifecycle phase. This makes result hold a presentation
   concern without changing backend chronology.

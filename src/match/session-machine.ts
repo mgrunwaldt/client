@@ -31,6 +31,7 @@ export const SCENE_SUPPORT = {
 
 const initialData: MatchSessionData = {
   phase: "idle",
+  recoveryPhase: null,
   route: "main",
   match: null,
   myTeam: null,
@@ -75,6 +76,7 @@ function routeForPhase(phase: MatchSessionPhase): MatchSessionRoute {
     case "result_playback":
       return "field";
     case "timeline_playback":
+    case "resuming":
     case "halftime":
     case "finished":
     case "legend_unavailable_simulation":
@@ -116,9 +118,27 @@ function diagnosticState(
   diagnostic: MatchSessionDiagnostic,
   phase: MatchSessionPhase = "recoverable_error",
 ) {
+  const recoveryPhase = (() => {
+    switch (state.phase) {
+      case "creating":
+        return "idle" as const;
+      case "starting":
+        return "created" as const;
+      case "resuming":
+        return "halftime" as const;
+      case "submitting":
+        return "scene_ready" as const;
+      case "recoverable_error":
+      case "unsupported_contract":
+        return state.recoveryPhase;
+      default:
+        return state.phase;
+    }
+  })();
   return withPhase(
     {
       ...state,
+      recoveryPhase,
       diagnostic,
       error: diagnostic.message,
     },
@@ -153,13 +173,140 @@ function unsupportedScene(state: MatchSessionData, scene: string) {
 function commandMatchesCurrentScene(
   pending: BackendPendingAction | null,
   command: MatchSessionData["pendingCommand"],
+  matchRevision: number,
 ) {
   return Boolean(
     pending &&
       command &&
       command.operation === "action" &&
       command.matchId === pending.field_state?.match_id &&
-      command.actionId === pending.id,
+      command.actionId === pending.id &&
+      command.revision !== null &&
+      command.revision >= matchRevision,
+  );
+}
+
+function pendingActionContractError(
+  match: BackendMatch,
+  pendingAction: BackendPendingAction,
+) {
+  const advertised = match.pending_action;
+  const fieldState = pendingAction.field_state;
+  if (advertised && advertised.id !== pendingAction.id) {
+    return "The match and response advertise different pending actions.";
+  }
+  if (!fieldState) {
+    return "A playable pending action requires an authoritative field state.";
+  }
+  if (
+    fieldState.id !== pendingAction.field_state_id ||
+    fieldState.match_id !== match.id ||
+    fieldState.minute !== pendingAction.minute ||
+    fieldState.action_type !== pendingAction.action_type ||
+    pendingAction.minute !== match.current_time
+  ) {
+    return "The pending action does not match its authoritative field state.";
+  }
+
+  const players = [
+    ...fieldState.my_team_positions,
+    ...fieldState.opponent_positions,
+  ];
+  const owners = players.filter((player) => player.has_ball === true);
+  if (
+    owners.length !== 1 ||
+    owners[0].id !== fieldState.carrier_player_id ||
+    !players.some((player) => player.id === fieldState.legend_player_id) ||
+    fieldState.context?.carrier_player_id !== fieldState.carrier_player_id
+  ) {
+    return "The field state contains inconsistent player or ball ownership.";
+  }
+
+  const expectedChoices = SCENE_SUPPORT[
+    pendingAction.scene_type as keyof typeof SCENE_SUPPORT
+  ] as readonly string[];
+  const actualChoices = pendingAction.available_choices.map(
+    (choice) => choice.id,
+  );
+  if (
+    actualChoices.length !== expectedChoices.length ||
+    new Set(actualChoices).size !== actualChoices.length ||
+    expectedChoices.some((choice) => !actualChoices.includes(choice))
+  ) {
+    return `Scene ${pendingAction.scene_type} advertises an invalid choice set.`;
+  }
+  return null;
+}
+
+function pendingActionsAgree(
+  advertised: BackendPendingAction | null,
+  supplied: BackendPendingAction | null,
+) {
+  if (!advertised || !supplied) return advertised === supplied;
+  const fieldsAgree =
+    !advertised.field_state ||
+    !supplied.field_state ||
+    contractValuesAgree(advertised.field_state, supplied.field_state);
+  return (
+    advertised.id === supplied.id &&
+    advertised.minute === supplied.minute &&
+    advertised.action_type === supplied.action_type &&
+    advertised.scene_type === supplied.scene_type &&
+    advertised.action_team === supplied.action_team &&
+    advertised.field_state_id === supplied.field_state_id &&
+    advertised.contract_version === supplied.contract_version &&
+    advertised.available_choices.map((choice) => choice.id).join("\u0000") ===
+      supplied.available_choices.map((choice) => choice.id).join("\u0000") &&
+    fieldsAgree
+  );
+}
+
+function contractValuesAgree(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => contractValuesAgree(value, right[index]))
+    );
+  }
+  if (
+    typeof left === "object" &&
+    left !== null &&
+    typeof right === "object" &&
+    right !== null
+  ) {
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const leftKeys = Object.keys(leftRecord).sort();
+    const rightKeys = Object.keys(rightRecord).sort();
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every(
+        (key, index) =>
+          key === rightKeys[index] &&
+          contractValuesAgree(leftRecord[key], rightRecord[key]),
+      )
+    );
+  }
+  return false;
+}
+
+function sameRevisionHydrationAgrees(
+  state: MatchSessionData,
+  payload: HydratedMatchSession,
+) {
+  const incomingPendingAction =
+    payload.pendingAction === undefined
+      ? payload.match.pending_action
+      : payload.pendingAction;
+  return (
+    state.match?.match_status === payload.match.match_status &&
+    state.match.current_time === payload.match.current_time &&
+    state.match.my_team_score === payload.match.my_team_score &&
+    state.match.opponent_team_score === payload.match.opponent_team_score &&
+    pendingActionsAgree(state.pendingAction, incomingPendingAction)
   );
 }
 
@@ -172,7 +319,7 @@ function phaseForMatch(
     case "NOT_STARTED":
       return "created" as const;
     case "IN_PROGRESS":
-      return match.player_participation === "NOT_PARTICIPATING"
+      return match.player_participation === "OBSERVING"
         ? ("legend_unavailable_simulation" as const)
         : ("timeline_playback" as const);
     case "WAITING_FOR_DECISION":
@@ -193,14 +340,21 @@ function applyAuthoritativeSnapshot(
     playbackMinute?: number;
   },
 ): MatchSessionData {
+  if (
+    payload.pendingAction !== undefined &&
+    !pendingActionsAgree(payload.match.pending_action, payload.pendingAction)
+  ) {
+    return diagnosticState(state, {
+      kind: "contract",
+      message: "Hydrated match and pending action disagree.",
+      retryable: true,
+    });
+  }
   const pendingAction =
     payload.pendingAction === undefined
       ? (payload.match.pending_action ?? null)
       : payload.pendingAction;
-  const match =
-    payload.match.pending_action === pendingAction
-      ? payload.match
-      : { ...payload.match, pending_action: pendingAction };
+  const match = payload.match;
   const phase = phaseForMatch(match, pendingAction);
   if (!phase) {
     return pendingAction
@@ -214,6 +368,19 @@ function applyAuthoritativeSnapshot(
   if (pendingAction && !isKnownPlayableScene(pendingAction.scene_type)) {
     return unsupportedScene(state, pendingAction.scene_type);
   }
+  if (pendingAction) {
+    const contractError = pendingActionContractError(
+      payload.match,
+      pendingAction,
+    );
+    if (contractError) {
+      return diagnosticState(state, {
+        kind: "contract",
+        message: contractError,
+        retryable: true,
+      });
+    }
+  }
   const sameMatch = state.match?.id === match.id;
   const preservePlayback =
     options.preservePlayback &&
@@ -225,6 +392,7 @@ function applyAuthoritativeSnapshot(
   const pendingCommand = commandMatchesCurrentScene(
     pendingAction,
     state.pendingCommand,
+    match.revision,
   )
     ? state.pendingCommand
     : null;
@@ -260,13 +428,31 @@ function responsePayload(
   response: BackendMatchResponse,
 ): HydratedMatchSession | null {
   if (!state.myTeam || !state.opponentTeam) return null;
+  const pendingAction =
+    response.pending_action &&
+    !response.pending_action.field_state &&
+    response.field_state
+      ? { ...response.pending_action, field_state: response.field_state }
+      : response.pending_action;
   return {
     match: response.match,
     myTeam: state.myTeam,
     opponentTeam: state.opponentTeam,
     timelineEvents: response.events,
-    pendingAction: response.pending_action,
+    pendingAction,
   };
+}
+
+function commandMatchesMatch(
+  state: MatchSessionData,
+  command: NonNullable<MatchSessionData["pendingCommand"]>,
+) {
+  return Boolean(
+    state.match &&
+      command.matchId === state.match.id &&
+      typeof state.match.revision === "number" &&
+      command.revision === state.match.revision,
+  );
 }
 
 function responseIsStale(
@@ -284,6 +470,21 @@ function responseIsStale(
   );
 }
 
+function responseMatchesPendingCommand(
+  state: MatchSessionData,
+  source: "start" | "resume" | "action",
+) {
+  const expectedPhase = {
+    start: "starting",
+    resume: "resuming",
+    action: "submitting",
+  } as const;
+  return (
+    state.phase === expectedPhase[source] &&
+    state.pendingCommand?.operation === source
+  );
+}
+
 export function matchSessionReducer(
   state: MatchSessionData,
   event: MatchSessionEvent,
@@ -292,10 +493,18 @@ export function matchSessionReducer(
     case "RESET":
       return createInitialMatchSession();
     case "CREATE_REQUESTED":
+      if (state.phase !== "idle" || event.command.operation !== "create") {
+        return diagnosticState(state, {
+          kind: "illegal_transition",
+          message: "A match can only be created from the idle state.",
+          retryable: true,
+        });
+      }
       return withPhase(
         {
           ...state,
-          pendingCommand: event.command ?? null,
+          pendingCommand: event.command,
+          recoveryPhase: null,
           diagnostic: null,
           error: null,
         },
@@ -321,6 +530,7 @@ export function matchSessionReducer(
           timelineEvents: [],
           playbackMinute: 0,
           pendingCommand: null,
+          recoveryPhase: null,
           decisionResult: null,
           diagnostic: null,
           error: null,
@@ -344,7 +554,12 @@ export function matchSessionReducer(
     case "COMMAND_CLEARED":
       return { ...state, pendingCommand: null };
     case "START_REQUESTED":
-      if (state.phase !== "created") {
+      if (
+        state.phase !== "created" ||
+        event.command.operation !== "start" ||
+        event.command.actionId !== null ||
+        !commandMatchesMatch(state, event.command)
+      ) {
         return diagnosticState(state, {
           kind: "illegal_transition",
           message: "A match can only start from the prematch state.",
@@ -352,8 +567,26 @@ export function matchSessionReducer(
         });
       }
       return withPhase({ ...state, pendingCommand: event.command }, "starting");
+    case "RESUME_REQUESTED":
+      if (
+        state.phase !== "halftime" ||
+        event.command.operation !== "resume" ||
+        event.command.actionId !== null ||
+        !commandMatchesMatch(state, event.command)
+      ) {
+        return diagnosticState(state, {
+          kind: "illegal_transition",
+          message: "A match can only resume from halftime.",
+          retryable: true,
+        });
+      }
+      return withPhase({ ...state, pendingCommand: event.command }, "resuming");
     case "ACTION_REQUESTED":
-      if (state.phase !== "scene_ready") {
+      if (
+        state.phase !== "scene_ready" ||
+        event.command.operation !== "action" ||
+        !commandMatchesMatch(state, event.command)
+      ) {
         return diagnosticState(state, {
           kind: "illegal_transition",
           message: "A scene can only be submitted when it is ready.",
@@ -372,11 +605,51 @@ export function matchSessionReducer(
         "submitting",
       );
     case "HYDRATED":
+      if (
+        state.match?.id === event.payload.match.id &&
+        state.pendingCommand &&
+        ["starting", "resuming", "submitting"].includes(state.phase) &&
+        event.payload.match.revision < state.match.revision
+      ) {
+        return state;
+      }
+      if (
+        state.match?.id === event.payload.match.id &&
+        state.pendingCommand &&
+        ["starting", "resuming", "submitting"].includes(state.phase) &&
+        event.payload.match.revision === state.match.revision
+      ) {
+        const validated = applyAuthoritativeSnapshot(state, event.payload, {
+          preservePlayback: true,
+          resultPlayback: false,
+        });
+        if (
+          validated.phase === "recoverable_error" ||
+          validated.phase === "unsupported_contract"
+        ) {
+          return validated;
+        }
+        return sameRevisionHydrationAgrees(state, event.payload)
+          ? state
+          : diagnosticState(state, {
+              kind: "contract",
+              message:
+                "A same-revision hydration snapshot changed authoritative match state.",
+              retryable: true,
+            });
+      }
       return applyAuthoritativeSnapshot(state, event.payload, {
         preservePlayback: true,
         resultPlayback: false,
       });
     case "COMMAND_RESOLVED": {
+      if (!responseMatchesPendingCommand(state, event.source)) {
+        return diagnosticState(state, {
+          kind: "illegal_transition",
+          message: `A ${event.source} response requires its matching command to be in flight.`,
+          retryable: true,
+        });
+      }
       if (responseIsStale(state, event.response)) {
         return diagnosticState(state, {
           kind: "stale_command",
@@ -406,8 +679,15 @@ export function matchSessionReducer(
         resultPlayback,
         playbackMinute: event.response.prev_time,
       });
+      if (
+        next.phase === "recoverable_error" ||
+        next.phase === "unsupported_contract"
+      ) {
+        return next;
+      }
       return {
         ...next,
+        recoveryPhase: null,
         pendingCommand: null,
         decisionResult: resultPlayback
           ? (event.response.decision_result ?? null)
@@ -441,12 +721,23 @@ export function matchSessionReducer(
     case "ERROR_RECORDED":
       return diagnosticState(state, event.diagnostic);
     case "ERROR_CLEARED":
-      if (state.phase !== "recoverable_error")
+      if (
+        state.phase !== "recoverable_error" &&
+        state.phase !== "unsupported_contract"
+      )
         return { ...state, diagnostic: null, error: null };
-      if (!state.match) return createInitialMatchSession();
       return withPhase(
-        { ...state, diagnostic: null, error: null },
-        "timeline_playback",
+        {
+          ...state,
+          recoveryPhase: null,
+          diagnostic: null,
+          error: null,
+        },
+        state.recoveryPhase ??
+          (state.match
+            ? phaseForMatch(state.match, state.pendingAction)
+            : "idle") ??
+          "timeline_playback",
       );
     case "EFFORT_CHANGED":
       return { ...state, effort: event.effort };

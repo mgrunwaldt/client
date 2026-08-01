@@ -185,8 +185,10 @@ describe("auth session client", () => {
         my_team_score: 0,
         opponent_team_score: 0,
         current_time: 0,
+        prev_time: 0,
         revision: 1,
         match_status: "NOT_STARTED",
+        pending_action: null,
       },
       myTeam: { id: "team_1", name: "A", offense: 1, defense: 1, intensity: 1 },
       opponentTeam: {

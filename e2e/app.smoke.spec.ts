@@ -196,6 +196,10 @@ test("renders a complete backend player scene without a fatal error", async ({
   fieldState.opponent_positions = opponentPositions;
   fieldState.legend_player_id = "team_1_ST_10";
   fieldState.carrier_player_id = "team_1_ST_10";
+  fieldState.context = {
+    ...fieldState.context,
+    carrier_player_id: "team_1_ST_10",
+  };
   fieldState.ball_x = 52;
   fieldState.ball_y = 55.2;
   response.field_state = structuredClone(fieldState);

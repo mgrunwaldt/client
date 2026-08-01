@@ -87,9 +87,7 @@ export default function PreMatchScreen() {
         });
       } catch (error) {
         if (cancelled) return;
-        const message =
-          error instanceof Error ? error.message : "Failed to load match.";
-        setError(message);
+        setError(error);
         setLoading(false);
       }
     };
@@ -139,7 +137,11 @@ export default function PreMatchScreen() {
               { match_id: matchId },
               { matchId, revision: matchSnapshot.revision ?? null },
             );
-      beginStartCommand(command);
+      if (!beginStartCommand(command)) {
+        if (progressTimer) window.clearInterval(progressTimer);
+        useMatchSessionStore.getState().hideTransitionLoader();
+        return;
+      }
       const response = await startBackendMatch(matchSnapshot, command);
       if (progressTimer) {
         window.clearInterval(progressTimer);
@@ -158,9 +160,7 @@ export default function PreMatchScreen() {
       if (progressTimer) {
         window.clearInterval(progressTimer);
       }
-      const message =
-        error instanceof Error ? error.message : "Failed to start match.";
-      setError(message);
+      setError(error);
       setLoading(false);
       useMatchSessionStore.getState().hideTransitionLoader();
     }

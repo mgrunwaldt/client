@@ -5,6 +5,7 @@ import { Countdown } from "../../../../components/ui/countdown";
 import {
   type BackendTeam,
   createBackendMatch,
+  createMatchCommand,
   defaultLegendProfile,
   fetchBackendTeams,
 } from "../../../../lib/backend-match";
@@ -43,6 +44,10 @@ export default function MenuFooter() {
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
   const loading = useMatchSessionStore((state) => state.loading);
+  const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
+  const beginCreateCommand = useMatchSessionStore(
+    (state) => state.beginCreateCommand,
+  );
 
   const handleCreateMatch = async () => {
     try {
@@ -55,12 +60,18 @@ export default function MenuFooter() {
         throw new Error("Could not select backend teams for match creation.");
       }
 
-      const created = await createBackendMatch({
+      const body = {
         my_team_id: homeTeam.id,
         opponent_team_id: awayTeam.id,
         player_profile: defaultLegendProfile(),
         ruleset: { rebound_play_enabled: true },
-      });
+      };
+      const command =
+        pendingCommand?.operation === "create"
+          ? pendingCommand
+          : createMatchCommand("create", body);
+      if (!beginCreateCommand(command)) return;
+      const created = await createBackendMatch(body, command);
 
       setCreatedMatch({
         match: created.match,
@@ -69,9 +80,7 @@ export default function MenuFooter() {
       });
       navigate(`/pre-match/${created.match.id}`);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to create match.";
-      setError(message);
+      setError(error);
       setLoading(false);
     }
   };

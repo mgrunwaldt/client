@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useAuthSessionStore } from "../src/auth/session-store";
 import {
   type BackendMatch,
+  type BackendMatchResponse,
   type BackendTeam,
   createBackendMatch,
   createMatchCommand,
@@ -46,8 +47,10 @@ const currentMatch: BackendMatch = {
   my_team_score: 0,
   opponent_team_score: 0,
   current_time: 12,
+  prev_time: 11,
   revision: 7,
   match_status: "WAITING_FOR_DECISION",
+  pending_action: null,
 };
 
 describe("backend match client", () => {
@@ -155,7 +158,7 @@ describe("backend match client", () => {
       {
         match_id: currentMatch.id,
         action_id: "action-open-1",
-        match_decision: { choice: "KICK", seed: 42 },
+        match_decision: { choice: "KICK", power: 42 },
       },
       {
         matchId: currentMatch.id,
@@ -175,14 +178,14 @@ describe("backend match client", () => {
       processBackendMatchAction(
         currentMatch,
         "action-open-1",
-        { choice: "KICK", seed: 99 },
+        { choice: "KICK", power: 99 },
         command,
       ),
     ).rejects.toThrow("network disconnected");
     await processBackendMatchAction(
       currentMatch,
       "action-open-1",
-      { choice: "KICK", seed: 100 },
+      { choice: "KICK", power: 100 },
       command,
     );
 
@@ -196,7 +199,7 @@ describe("backend match client", () => {
       requestBody(fetchMock.mock.calls[1]),
     );
     expect(requestBody(fetchMock.mock.calls[1])).toMatchObject({
-      match_decision: { seed: 42 },
+      match_decision: { power: 42 },
     });
   });
 
@@ -252,6 +255,55 @@ describe("backend match client", () => {
     await expect(fetchBackendTeams()).rejects.toMatchObject({
       metadata: { apiVersion: "2", requestId: "request-fixture" },
     });
+  });
+
+  it("rejects a response whose pending action and field state disagree", async () => {
+    const response = await readFixture<BackendMatchResponse>(
+      "server/waiting-open-play-response.json",
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ...response,
+        field_state: { ...response.field_state, match_id: "another-match" },
+      }),
+    );
+
+    await expect(startBackendMatch(currentMatch)).rejects.toBeInstanceOf(
+      MatchApiContractError,
+    );
+  });
+
+  it("rejects incomplete match revisions and unsupported scene contract versions", async () => {
+    const waiting = await readFixture<BackendMatchResponse>(
+      "server/waiting-open-play-response.json",
+    );
+    const missingRevision = structuredClone(waiting) as unknown as {
+      match: Record<string, unknown>;
+    };
+    delete missingRevision.match.revision;
+    const futureContract = structuredClone(waiting);
+    if (
+      !futureContract.pending_action ||
+      !futureContract.match.pending_action
+    ) {
+      throw new Error("Waiting fixture must include its pending action.");
+    }
+    futureContract.pending_action.contract_version = 3;
+    futureContract.match.pending_action.contract_version = 3;
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(missingRevision))
+      .mockResolvedValueOnce(jsonResponse(futureContract));
+
+    await expect(
+      processBackendMatchAction(currentMatch, "action-open-1", {
+        choice: "KICK",
+      }),
+    ).rejects.toBeInstanceOf(MatchApiContractError);
+    await expect(
+      processBackendMatchAction(currentMatch, "action-open-1", {
+        choice: "KICK",
+      }),
+    ).rejects.toBeInstanceOf(MatchApiContractError);
   });
 
   it("preserves structured retry metadata and uses bearer transport without cookie CSRF", async () => {

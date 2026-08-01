@@ -171,7 +171,6 @@ function buildKickPayload(
     curve,
     selection_quality: inferSelectionQuality(power, curve, intentHint),
     intent_hint: intentHint,
-    seed: Date.now(),
   };
 }
 
@@ -860,7 +859,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 actionId: pendingAction.id,
               },
             );
-      beginActionCommand(command);
+      if (!beginActionCommand(command)) return;
       const response = await processBackendMatchAction(
         match,
         pendingAction.id,
@@ -881,7 +880,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       const message =
         error instanceof Error ? error.message : "Failed to submit kick.";
       setSubmitError(message);
-      setError(message);
+      setError(error);
       setLoading(false);
     } finally {
       setIsSubmitting(false);

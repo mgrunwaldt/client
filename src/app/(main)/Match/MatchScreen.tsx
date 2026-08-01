@@ -92,9 +92,7 @@ export default function MatchScreen() {
         });
       } catch (error) {
         if (cancelled) return;
-        const message =
-          error instanceof Error ? error.message : "Failed to load match.";
-        setError(message);
+        setError(error);
         setLoading(false);
       }
     };
@@ -191,8 +189,9 @@ export default function MatchScreen() {
   );
 
   const lastScoreEvent = visibleBackendEvents[visibleBackendEvents.length - 1];
-  const homeScore = lastScoreEvent?.my_team_score ?? 0;
-  const awayScore = lastScoreEvent?.opponent_team_score ?? 0;
+  const homeScore = lastScoreEvent?.my_team_score ?? match?.my_team_score ?? 0;
+  const awayScore =
+    lastScoreEvent?.opponent_team_score ?? match?.opponent_team_score ?? 0;
 
   return (
     <div className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white">

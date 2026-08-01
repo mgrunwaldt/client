@@ -106,10 +106,10 @@ export interface BackendMatch {
   my_team_score: number;
   opponent_team_score: number;
   current_time: number;
-  prev_time?: number;
-  revision?: number;
+  prev_time: number;
+  revision: number;
   match_status: string;
-  pending_action?: BackendPendingAction | null;
+  pending_action: BackendPendingAction | null;
   player_participation?: string;
   [key: string]: unknown;
 }
@@ -206,17 +206,17 @@ export const BackendFieldStateSchema: z.ZodType<BackendFieldState> = z
   .object({
     id: identifier,
     match_id: identifier,
-    minute: z.number().int().min(1).max(90),
+    minute: z.number().int().min(1).max(89),
     action_type: z.string().trim().min(1),
     scene_family: z.string().trim().min(1),
     my_team_positions: z.array(BackendFieldPlayerSchema).min(1),
     opponent_positions: z.array(BackendFieldPlayerSchema).min(1),
-    legend_player_id: identifier.nullable().optional(),
-    carrier_player_id: identifier.nullable().optional(),
+    legend_player_id: identifier,
+    carrier_player_id: identifier,
     distance_to_goal: z.number().finite().min(0).max(100),
     ball_x: coordinate,
     ball_y: coordinate,
-    context: z.record(z.string(), z.unknown()).optional(),
+    context: z.record(z.string(), z.unknown()),
     dribble_pattern: z.unknown().optional(),
   })
   .passthrough();
@@ -224,7 +224,7 @@ export const BackendFieldStateSchema: z.ZodType<BackendFieldState> = z
 export const BackendPendingActionSchema: z.ZodType<BackendPendingAction> = z
   .object({
     id: identifier,
-    minute: z.number().int().min(1).max(90),
+    minute: z.number().int().min(1).max(89),
     action_type: z.string().trim().min(1),
     scene_type: z.string().trim().min(1),
     action_team: actionTeam,
@@ -244,8 +244,15 @@ export const BackendPendingActionSchema: z.ZodType<BackendPendingAction> = z
           .passthrough(),
       )
       .min(1),
-    context: z.record(z.string(), z.unknown()).optional(),
-    contract_version: z.number().int().positive(),
+    context: z.record(z.string(), z.unknown()),
+    origin: z
+      .object({
+        previous_action_id: identifier,
+        previous_outcome: z.string().trim().min(1),
+      })
+      .passthrough()
+      .nullable(),
+    contract_version: z.literal(2),
   })
   .passthrough();
 
@@ -257,12 +264,22 @@ export const BackendMatchSchema: z.ZodType<BackendMatch> = z
     my_team_score: z.number().int().min(0),
     opponent_team_score: z.number().int().min(0),
     current_time: z.number().int().min(0).max(90),
-    prev_time: z.number().int().min(0).max(90).optional(),
-    revision: z.number().int().min(0).optional(),
+    prev_time: z.number().int().min(0).max(90),
+    revision: z.number().int().min(0),
     // Unknown status values are syntactically valid API data. The state machine
     // turns them into a recoverable diagnostic instead of allowing a blank UI.
     match_status: z.string().trim().min(1),
-    pending_action: BackendPendingActionSchema.nullable().optional(),
+    pending_action: BackendPendingActionSchema.nullable(),
+    event_counter: z.number().int().min(0),
+    seed: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9._:-]+$/),
+    engine_version: z.string().trim().min(1),
+    ruleset_version: z.string().trim().min(1),
+    initial_state: z.record(z.string(), z.unknown()),
     player_participation: z.string().trim().min(1).optional(),
   })
   .passthrough();
@@ -272,7 +289,7 @@ export const BackendTimelineEventSchema: z.ZodType<BackendTimelineEvent> = z
     match_id: identifier,
     event_id: z.number().int().min(0),
     action: z.string().trim().min(1),
-    minute: z.number().int().min(0).max(90),
+    minute: z.number().int().min(1).max(90),
     team: actionTeam,
     description: z.string(),
     my_team_score: z.number().int().min(0),
@@ -309,7 +326,80 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
     match: BackendMatchSchema,
     decision_result: BackendDecisionResultSchema.optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((response, context) => {
+    if (response.status !== response.match.match_status) {
+      context.addIssue({
+        code: "custom",
+        message: "Response status must match match.match_status.",
+        path: ["status"],
+      });
+    }
+    if (response.minute !== response.match.current_time) {
+      context.addIssue({
+        code: "custom",
+        message: "Response minute must match the authoritative match.",
+        path: ["minute"],
+      });
+    }
+
+    const pendingAction = response.pending_action;
+    const matchPendingAction = response.match.pending_action;
+    if (pendingAction?.id !== matchPendingAction?.id) {
+      context.addIssue({
+        code: "custom",
+        message: "Response and match pending actions must agree.",
+        path: ["pending_action"],
+      });
+    }
+    if (!pendingAction) {
+      if (response.field_state !== null) {
+        context.addIssue({
+          code: "custom",
+          message: "A field state requires a pending action.",
+          path: ["field_state"],
+        });
+      }
+      return;
+    }
+
+    const embeddedField = pendingAction.field_state;
+    const fieldState = embeddedField ?? response.field_state;
+    if (!fieldState) {
+      context.addIssue({
+        code: "custom",
+        message: "A pending action requires a field state.",
+        path: ["field_state"],
+      });
+      return;
+    }
+    if (
+      embeddedField &&
+      response.field_state &&
+      (response.field_state.id !== embeddedField.id ||
+        response.field_state.match_id !== embeddedField.match_id ||
+        response.field_state.minute !== embeddedField.minute ||
+        response.field_state.action_type !== embeddedField.action_type)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Embedded and top-level field states must agree.",
+        path: ["field_state"],
+      });
+    }
+    if (
+      fieldState.id !== pendingAction.field_state_id ||
+      fieldState.match_id !== response.match.id ||
+      fieldState.minute !== pendingAction.minute ||
+      fieldState.action_type !== pendingAction.action_type
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Pending action and field state identifiers must agree.",
+        path: ["pending_action"],
+      });
+    }
+  });
 
 export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
   .object({
