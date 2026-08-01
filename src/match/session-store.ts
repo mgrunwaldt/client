@@ -1,47 +1,33 @@
 import { create } from "zustand";
 
-import {
-  BackendFieldState,
+import type { MatchCommand } from "./api-v1/adapter";
+import type {
   BackendMatch,
   BackendMatchResponse,
-  BackendPendingAction,
   BackendTeam,
-  BackendTimelineEvent,
-  type MatchCommand,
-} from "../lib/backend-match";
+} from "./api-v1/contract";
+import {
+  createInitialMatchSession,
+  matchSessionReducer,
+} from "./session-machine";
+import type {
+  EffortLevel,
+  HydratedMatchSession,
+  MatchSessionData,
+  MatchSessionDiagnostic,
+  MatchTransitionLoaderState,
+  Playstyle,
+} from "./session-types";
 
-export type EffortLevel = "low" | "medium" | "high";
-export type Playstyle = "defense" | "balanced" | "offensive";
-export type MatchPlaybackStatus =
-  | "idle"
-  | "created"
-  | "timeline_playing"
-  | "timeline_ready_for_field"
-  | "field_ready";
-
-export interface MatchTransitionLoaderState {
-  visible: boolean;
-  title: string;
-  subtitle: string;
-  progress: number;
-}
-
-interface MatchSessionState {
-  match: BackendMatch | null;
-  myTeam: BackendTeam | null;
-  opponentTeam: BackendTeam | null;
-  pendingAction: BackendPendingAction | null;
-  fieldState: BackendFieldState | null;
-  timelineEvents: BackendTimelineEvent[];
-  playbackMinute: number;
-  playbackStatus: MatchPlaybackStatus;
-  effort: EffortLevel;
-  playstyle: Playstyle;
-  loading: boolean;
-  error: string | null;
-  pendingCommand: MatchCommand | null;
-  transitionLoader: MatchTransitionLoaderState;
-}
+export type {
+  EffortLevel,
+  MatchPlaybackStatus,
+  MatchSessionData,
+  MatchSessionDiagnostic,
+  MatchSessionPhase,
+  MatchSessionRoute,
+  Playstyle,
+} from "./session-types";
 
 interface MatchSessionActions {
   resetMatchSession: () => void;
@@ -59,37 +45,29 @@ interface MatchSessionActions {
     myTeam: BackendTeam;
     opponentTeam: BackendTeam;
   }) => void;
+  beginStartCommand: (command: MatchCommand) => void;
+  beginActionCommand: (command: MatchCommand) => void;
   setStartResponse: (response: BackendMatchResponse) => void;
   setActionResponse: (response: BackendMatchResponse) => void;
-  hydrateMatchSession: (payload: {
-    match: BackendMatch;
-    myTeam: BackendTeam;
-    opponentTeam: BackendTeam;
-    timelineEvents: BackendTimelineEvent[];
-    pendingAction?: BackendPendingAction | null;
-  }) => void;
+  acknowledgeDecisionResult: () => void;
+  hydrateMatchSession: (payload: HydratedMatchSession) => void;
   setPlaybackMinute: (minute: number) => void;
-  setPlaybackStatus: (status: MatchPlaybackStatus) => void;
+  markSceneReady: () => void;
   setEffort: (effort: EffortLevel) => void;
   setPlaystyle: (playstyle: Playstyle) => void;
 }
 
-type MatchSessionStore = MatchSessionState & MatchSessionActions;
+interface MatchSessionUiState {
+  loading: boolean;
+  transitionLoader: MatchTransitionLoaderState;
+}
 
-const initialState: MatchSessionState = {
-  match: null,
-  myTeam: null,
-  opponentTeam: null,
-  pendingAction: null,
-  fieldState: null,
-  timelineEvents: [],
-  playbackMinute: 0,
-  playbackStatus: "idle",
-  effort: "medium",
-  playstyle: "balanced",
+type MatchSessionStore = MatchSessionData &
+  MatchSessionUiState &
+  MatchSessionActions;
+
+const initialUiState: MatchSessionUiState = {
   loading: false,
-  error: null,
-  pendingCommand: null,
   transitionLoader: {
     visible: false,
     title: "Loading",
@@ -98,41 +76,54 @@ const initialState: MatchSessionState = {
   },
 };
 
-function mergeTimelineEvents(
-  existing: BackendTimelineEvent[],
-  incoming: BackendTimelineEvent[],
+function loadingForPhase(phase: MatchSessionData["phase"]) {
+  return phase === "creating" || phase === "starting" || phase === "submitting";
+}
+
+function updateSession(
+  set: (
+    partial:
+      | Partial<MatchSessionStore>
+      | ((state: MatchSessionStore) => Partial<MatchSessionStore>),
+  ) => void,
+  event: Parameters<typeof matchSessionReducer>[1],
 ) {
-  const merged = new Map<string, BackendTimelineEvent>();
-
-  [...existing, ...incoming].forEach((event) => {
-    merged.set(`${event.match_id}_${event.event_id}`, event);
-  });
-
-  return Array.from(merged.values()).sort((left, right) => {
-    if (left.minute !== right.minute) {
-      return left.minute - right.minute;
-    }
-    return left.event_id - right.event_id;
+  set((state) => {
+    const next = matchSessionReducer(state, event);
+    return {
+      ...next,
+      loading: loadingForPhase(next.phase),
+    };
   });
 }
 
-function playbackStatusFromResponse(
-  response: BackendMatchResponse,
-): MatchPlaybackStatus {
-  if (response.pending_action) {
-    return "timeline_playing";
-  }
-
-  return response.minute > response.prev_time ? "timeline_playing" : "idle";
+function diagnosticFromMessage(error: string): MatchSessionDiagnostic {
+  return {
+    kind: "network",
+    message: error,
+    retryable: true,
+  };
 }
 
 export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
-  ...initialState,
-  resetMatchSession: () => set(initialState),
+  ...createInitialMatchSession(),
+  ...initialUiState,
+  resetMatchSession: () =>
+    set({ ...createInitialMatchSession(), ...initialUiState }),
   setLoading: (loading) => set({ loading }),
-  setError: (error) => set({ error }),
-  retainPendingCommand: (pendingCommand) => set({ pendingCommand }),
-  clearPendingCommand: () => set({ pendingCommand: null }),
+  setError: (error) => {
+    if (error === null) {
+      updateSession(set, { type: "ERROR_CLEARED" });
+      return;
+    }
+    updateSession(set, {
+      type: "ERROR_RECORDED",
+      diagnostic: diagnosticFromMessage(error),
+    });
+  },
+  retainPendingCommand: (command) =>
+    updateSession(set, { type: "COMMAND_RETAINED", command }),
+  clearPendingCommand: () => updateSession(set, { type: "COMMAND_CLEARED" }),
   showTransitionLoader: (payload) =>
     set((state) => ({
       transitionLoader: {
@@ -153,116 +144,36 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
     })),
   hideTransitionLoader: () =>
     set((state) => ({
-      transitionLoader: {
-        ...state.transitionLoader,
-        visible: false,
-      },
+      transitionLoader: { ...state.transitionLoader, visible: false },
     })),
-  setCreatedMatch: ({ match, myTeam, opponentTeam }) =>
-    set({
-      match,
-      myTeam,
-      opponentTeam,
-      pendingAction: null,
-      fieldState: null,
-      timelineEvents: [],
-      playbackMinute: 0,
-      playbackStatus: "created",
-      loading: false,
-      error: null,
-      pendingCommand: null,
-    }),
+  setCreatedMatch: (payload) =>
+    updateSession(set, { type: "MATCH_CREATED", payload }),
+  beginStartCommand: (command) =>
+    updateSession(set, { type: "START_REQUESTED", command }),
+  beginActionCommand: (command) =>
+    updateSession(set, { type: "ACTION_REQUESTED", command }),
   setStartResponse: (response) =>
-    set((state) => ({
-      match: response.match,
-      myTeam: state.myTeam,
-      opponentTeam: state.opponentTeam,
-      pendingAction: response.pending_action,
-      fieldState:
-        response.pending_action?.field_state || response.field_state || null,
-      timelineEvents: mergeTimelineEvents([], response.events || []),
-      playbackMinute: response.prev_time,
-      playbackStatus: playbackStatusFromResponse(response),
-      loading: false,
-      error: null,
-      pendingCommand: null,
-    })),
-  setActionResponse: (response) =>
-    set((state) => ({
-      match: response.match,
-      myTeam: state.myTeam,
-      opponentTeam: state.opponentTeam,
-      pendingAction: response.pending_action,
-      fieldState:
-        response.pending_action?.field_state || response.field_state || null,
-      timelineEvents: mergeTimelineEvents(
-        state.timelineEvents,
-        response.events || [],
-      ),
-      playbackMinute: response.prev_time,
-      playbackStatus: playbackStatusFromResponse(response),
-      loading: false,
-      error: null,
-      pendingCommand: null,
-    })),
-  hydrateMatchSession: ({
-    match,
-    myTeam,
-    opponentTeam,
-    timelineEvents,
-    pendingAction: hydratedPendingAction,
-  }) =>
-    set((state) => {
-      const pendingAction =
-        hydratedPendingAction === undefined
-          ? (match.pending_action ?? null)
-          : hydratedPendingAction;
-      const hydratedMatch =
-        match.pending_action === pendingAction
-          ? match
-          : { ...match, pending_action: pendingAction };
-      const isWaitingForDecision =
-        match.match_status === "WAITING_FOR_DECISION" && pendingAction !== null;
-      const isSameMatch = state.match?.id === match.id;
-      // A snapshot is authoritative. Lifecycle stops must not retain a field from
-      // the preceding decision while the singleton remains mounted.
-      const fieldState = isWaitingForDecision
-        ? pendingAction.field_state || null
-        : null;
-      const shouldPlayTimeline =
-        isWaitingForDecision &&
-        (!isSameMatch || state.playbackStatus === "idle");
-
-      return {
-        match: hydratedMatch,
-        myTeam,
-        opponentTeam,
-        pendingAction,
-        fieldState,
-        timelineEvents,
-        playbackMinute: isWaitingForDecision
-          ? shouldPlayTimeline
-            ? 0
-            : state.playbackMinute
-          : match.current_time,
-        playbackStatus: isWaitingForDecision
-          ? shouldPlayTimeline
-            ? "timeline_playing"
-            : state.playbackStatus
-          : "idle",
-        loading: false,
-        error: null,
-        pendingCommand:
-          state.pendingCommand?.matchId === match.id &&
-          state.pendingCommand.actionId === pendingAction?.id
-            ? state.pendingCommand
-            : null,
-      };
+    updateSession(set, {
+      type: "COMMAND_RESOLVED",
+      response,
+      source: "start",
     }),
-  setPlaybackMinute: (playbackMinute) => set({ playbackMinute }),
-  setPlaybackStatus: (playbackStatus) => set({ playbackStatus }),
-  setEffort: (effort) => set({ effort }),
-  setPlaystyle: (playstyle) => set({ playstyle }),
+  setActionResponse: (response) =>
+    updateSession(set, {
+      type: "COMMAND_RESOLVED",
+      response,
+      source: "action",
+    }),
+  acknowledgeDecisionResult: () =>
+    updateSession(set, { type: "RESULT_ACKNOWLEDGED" }),
+  hydrateMatchSession: (payload) =>
+    updateSession(set, { type: "HYDRATED", payload }),
+  setPlaybackMinute: (minute) =>
+    updateSession(set, { type: "TIMELINE_TICK", minute }),
+  markSceneReady: () => updateSession(set, { type: "SCENE_READY" }),
+  setEffort: (effort) => updateSession(set, { type: "EFFORT_CHANGED", effort }),
+  setPlaystyle: (playstyle) =>
+    updateSession(set, { type: "PLAYSTYLE_CHANGED", playstyle }),
 }));
 
 if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {

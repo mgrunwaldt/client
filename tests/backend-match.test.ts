@@ -9,15 +9,25 @@ import {
   defaultLegendProfile,
   fetchBackendMatch,
   fetchBackendTeams,
+  MatchApiContractError,
   processBackendMatchAction,
   startBackendMatch,
 } from "../src/lib/backend-match";
 import { readFixture } from "./match-api-v1-fixtures";
 
-function jsonResponse(body: unknown, status = 200) {
+function jsonResponse(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Match-API-Version": "1",
+      "X-Request-Id": "request-fixture",
+      ...headers,
+    },
   });
 }
 
@@ -227,5 +237,45 @@ describe("backend match client", () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(error, 400));
 
     await expect(startBackendMatch(currentMatch)).rejects.toThrow(error.error);
+  });
+
+  it("rejects malformed or version-mismatched provider responses before they reach UI state", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ teams: "not-an-array" }, 200))
+      .mockResolvedValueOnce(
+        jsonResponse({ teams: [] }, 200, { "Match-API-Version": "2" }),
+      );
+
+    await expect(fetchBackendTeams()).rejects.toBeInstanceOf(
+      MatchApiContractError,
+    );
+    await expect(fetchBackendTeams()).rejects.toMatchObject({
+      metadata: { apiVersion: "2", requestId: "request-fixture" },
+    });
+  });
+
+  it("preserves structured retry metadata and uses bearer transport without cookie CSRF", async () => {
+    const rateLimited = await readFixture("server/rate-limited-response.json");
+    useAuthSessionStore.getState().setAuthenticated({
+      walletAddress: "0x2",
+      chainId: "0x534e5f5345504f4c4941",
+      session: {},
+      transport: "bearer",
+      bearerCredential: "opaque-bearer",
+    });
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(rateLimited, 429, { "Retry-After": "3" }),
+    );
+
+    await expect(fetchBackendMatch("match-fixture-1")).rejects.toMatchObject({
+      status: 429,
+      code: "RATE_LIMITED",
+      retryable: true,
+      metadata: { retryAfterSeconds: 3 },
+    });
+    expect(requestHeader(fetchMock.mock.calls[0], "Authorization")).toBe(
+      "Bearer opaque-bearer",
+    );
+    expect(requestHeader(fetchMock.mock.calls[0], "X-CSRF-Token")).toBeNull();
   });
 });

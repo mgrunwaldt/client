@@ -26,6 +26,7 @@ import GameModel from "../../components/models/in-game/GameModel";
 import Stadium from "../../components/models/in-game/Stadium";
 import {
   type BackendFieldPlayer,
+  type BackendFieldState,
   type BackendMatchResponse,
   createMatchCommand,
   processBackendMatchAction,
@@ -632,11 +633,14 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const setActionResponse = useMatchSessionStore(
     (state) => state.setActionResponse,
   );
+  const acknowledgeDecisionResult = useMatchSessionStore(
+    (state) => state.acknowledgeDecisionResult,
+  );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
   const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
-  const retainPendingCommand = useMatchSessionStore(
-    (state) => state.retainPendingCommand,
+  const beginActionCommand = useMatchSessionStore(
+    (state) => state.beginActionCommand,
   );
   const [releasedAimDraft, setReleasedAimDraft] = useState<BallAimDraft | null>(
     null,
@@ -646,6 +650,8 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stagedKickResult, setStagedKickResult] =
     useState<StagedKickResult | null>(null);
+  const [resolvedSceneFieldState, setResolvedSceneFieldState] =
+    useState<BackendFieldState | null>(null);
   const [animatedBallFieldPosition, setAnimatedBallFieldPosition] = useState<{
     x: number;
     y: number;
@@ -666,7 +672,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     stagedKickResult?.response.pending_action?.field_state
       ? stagedKickResult.response.pending_action.field_state
       : null;
-  const displayFieldState = stagedFieldState || fieldState;
+  // Keep the submitted scene visible during authoritative trajectory playback.
+  // A same-minute follow-up replaces it only after the flight completes.
+  const displayFieldState =
+    stagedFieldState || resolvedSceneFieldState || fieldState;
   const myPlayers = displayFieldState?.my_team_positions || [];
   const opponentPlayers = displayFieldState?.opponent_positions || [];
   const legendPlayer =
@@ -713,6 +722,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       animationFrameRef.current = null;
     }
     setStagedKickResult(null);
+    setResolvedSceneFieldState(null);
     setAnimatedBallFieldPosition(null);
     setIsResultAnimating(false);
   };
@@ -850,14 +860,17 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 actionId: pendingAction.id,
               },
             );
-      retainPendingCommand(command);
+      beginActionCommand(command);
       const response = await processBackendMatchAction(
         match,
         pendingAction.id,
         payload,
         command,
       );
+      const submittedFieldState = fieldState;
+      setActionResponse(response);
       setReleasedAimDraft(null);
+      setResolvedSceneFieldState(submittedFieldState);
       setStagedKickResult({
         response,
         submittedPayload: payload,
@@ -880,7 +893,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       return;
     }
 
-    setActionResponse(stagedKickResult.response);
+    acknowledgeDecisionResult();
     clearStagedKickResult();
     navigate(`/match/${match.id}`);
   };

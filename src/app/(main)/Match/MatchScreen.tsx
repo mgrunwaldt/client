@@ -53,9 +53,8 @@ export default function MatchScreen() {
   const setPlaybackMinute = useMatchSessionStore(
     (state) => state.setPlaybackMinute,
   );
-  const setPlaybackStatus = useMatchSessionStore(
-    (state) => state.setPlaybackStatus,
-  );
+  const markSceneReady = useMatchSessionStore((state) => state.markSceneReady);
+  const phase = useMatchSessionStore((state) => state.phase);
   const hydrateMatchSession = useMatchSessionStore(
     (state) => state.hydrateMatchSession,
   );
@@ -134,11 +133,7 @@ export default function MatchScreen() {
     }
 
     if (playbackMinute >= targetMinute) {
-      if (pendingAction) {
-        setPlaybackStatus("timeline_ready_for_field");
-      } else {
-        setPlaybackStatus("idle");
-      }
+      if (pendingAction) markSceneReady();
       return;
     }
 
@@ -159,17 +154,16 @@ export default function MatchScreen() {
     playbackMinute,
     playbackStatus,
     setPlaybackMinute,
-    setPlaybackStatus,
+    markSceneReady,
     targetMinute,
   ]);
 
   useEffect(() => {
-    if (playbackStatus !== "timeline_ready_for_field") {
+    if (phase !== "scene_ready") {
       return;
     }
 
     fieldTransitionTimeout.current = window.setTimeout(() => {
-      setPlaybackStatus("field_ready");
       navigate("/game");
     }, 2000);
 
@@ -178,7 +172,7 @@ export default function MatchScreen() {
         window.clearTimeout(fieldTransitionTimeout.current);
       }
     };
-  }, [navigate, playbackStatus, setPlaybackStatus]);
+  }, [navigate, phase]);
 
   const visibleBackendEvents = useMemo(
     () => timelineEvents.filter((event) => event.minute <= playbackMinute),

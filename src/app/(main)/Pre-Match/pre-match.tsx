@@ -47,8 +47,8 @@ export default function PreMatchScreen() {
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
-  const retainPendingCommand = useMatchSessionStore(
-    (state) => state.retainPendingCommand,
+  const beginStartCommand = useMatchSessionStore(
+    (state) => state.beginStartCommand,
   );
   const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
   const showTransitionLoader = useMatchSessionStore(
@@ -139,7 +139,7 @@ export default function PreMatchScreen() {
               { match_id: matchId },
               { matchId, revision: matchSnapshot.revision ?? null },
             );
-      retainPendingCommand(command);
+      beginStartCommand(command);
       const response = await startBackendMatch(matchSnapshot, command);
       if (progressTimer) {
         window.clearInterval(progressTimer);
