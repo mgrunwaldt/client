@@ -1,4 +1,5 @@
 import { authenticatedRequestInit, matchApiBaseUrl } from "../../auth/api";
+import { joinMatchApiPath } from "../../auth/api-config";
 import {
   BackendCreateMatchResponseSchema,
   BackendErrorEnvelopeSchema,
@@ -113,7 +114,7 @@ async function request<T>(
   const authenticatedInit = authenticatedRequestInit(init, unsafe);
   const headers = new Headers(authenticatedInit.headers);
   headers.set("Content-Type", "application/json");
-  const response = await fetch(`${matchApiBaseUrl()}${path}`, {
+  const response = await fetch(joinMatchApiPath(matchApiBaseUrl(), path), {
     ...authenticatedInit,
     headers,
   });

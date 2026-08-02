@@ -69,8 +69,17 @@ cp .env.example .env.production.local
 For local development, keep `VITE_MATCH_API_BASE_URL=/api` and
 `VITE_MATCH_API_PROXY_TARGET=http://localhost:3100`. Vite proxies `/api/*`
 to the backend, so the browser uses one origin even when the client is served
-over HTTPS. Use `VITE_MATCH_API_BASE_URL` only for a deployed backend URL that
-already supports the required browser security policy.
+over HTTPS.
+
+For a deployed reverse proxy, keep `/api`. The client uses the server-managed
+cookie and retains only its CSRF token in memory. A direct staging or production
+API URL must be HTTPS, for example
+`VITE_MATCH_API_BASE_URL=https://match.staging.overgoal.example/api`. Direct
+origins deliberately use bearer transport: the browser requests it with
+`Overgoal-Session-Transport: bearer`, sends no credentialed CORS requests, and
+keeps the returned bearer token in memory only. An invalid direct URL is
+reported as an API configuration error instead of silently falling back to a
+different endpoint. Plain HTTP remains valid only for localhost development.
 
 All `VITE_` values are included in browser code. Do not put private keys,
 tokens, or production secrets in `.env` files or `VITE_` variables. The client
@@ -117,9 +126,10 @@ pnpm preview
 `pnpm preview` serves the production build over HTTP by default. With generated
 certificates and `VITE_LOCAL_HTTPS=true` in `.env.production.local`,
 `pnpm preview:https` serves it over HTTPS. Vite preview does not proxy `/api`;
-set `VITE_MATCH_API_BASE_URL` to a reachable deployed backend before running
-`pnpm build`, or use `pnpm dev` for local proxying. Vite embeds public variables
-at build time; changing them after `pnpm build` does not update the bundle.
+configure a same-origin reverse proxy or set `VITE_MATCH_API_BASE_URL` to a
+reachable direct HTTPS backend before running `pnpm build`. Vite embeds public
+variables at build time; changing them after `pnpm build` does not update the
+bundle.
 
 ## Quality Gates
 
