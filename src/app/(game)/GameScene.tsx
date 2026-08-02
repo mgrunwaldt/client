@@ -38,6 +38,10 @@ import {
   isCanonicalKickScene,
   parseKickControlEnvelope,
 } from "../../match/kick-input";
+import {
+  authoritativeContinuationFieldState,
+  authoritativeFacingTarget,
+} from "../../match/receiver-control";
 import { useMatchSessionStore } from "../../match/session-store";
 import { BallAimSurface } from "./BallAimSurface";
 import { KickContactDialog } from "./KickContactDialog";
@@ -56,7 +60,6 @@ const VISIBLE_FIELD_CENTER_Y = 28.5;
 const STADIUM_Z_CALIBRATION = -10;
 const OPPONENT_NEAR_BALL_DISTANCE = 10;
 const PLAYER_TRAJECTORY_TRACK_DISTANCE = 10;
-const RECEIVER_CONTROL_BALL_OFFSET_Y = 1.1;
 const PLAYER_TRACK_TURN_SPEED = 9;
 const DEFAULT_STRIKE_CONTACT = { x: 0.45, y: -0.15 };
 const RESULT_HOLD_MS = 2_500;
@@ -118,27 +121,6 @@ function minDistanceToFlightPath(
     best = Math.min(best, distanceInField(player, point));
   });
   return best;
-}
-
-function resolveControlledBallPosition(
-  response: BackendMatchResponse,
-  fallbackPoint: { x: number; y: number } | null,
-) {
-  const decisionResult = response.decision_result;
-  if (
-    decisionResult?.flight_outcome === "TEAMMATE_CONTROL" &&
-    decisionResult.receiver
-  ) {
-    return {
-      x: decisionResult.receiver.x,
-      y: Math.min(
-        100,
-        decisionResult.receiver.y + RECEIVER_CONTROL_BALL_OFFSET_Y,
-      ),
-    };
-  }
-
-  return fallbackPoint;
 }
 
 type StagedKickResult = {
@@ -464,14 +446,16 @@ function buildModelVariant(player: BackendFieldPlayer, isTeammate: boolean) {
 
 function PlayerLabel({
   player,
+  legendPlayerId,
   isTeammate,
   worldPosition,
 }: {
   player: BackendFieldPlayer;
+  legendPlayerId: string | null;
   isTeammate: boolean;
   worldPosition: [number, number, number];
 }) {
-  if (!player.is_legend) {
+  if (player.id !== legendPlayerId) {
     return null;
   }
 
@@ -483,7 +467,9 @@ function PlayerLabel({
         isTeammate ? "bg-black/65 text-[#d8ff6f]" : "bg-black/65 text-[#9fd1ff]"
       }`}
     >
-      YOU
+      <span data-testid="legend-player-label" data-player-id={player.id}>
+        YOU
+      </span>
     </Html>
   );
 }
@@ -545,12 +531,14 @@ function BackendPlayerModel({
   ballFieldPosition,
   stagedDecisionResult,
   isResultAnimating,
+  legendPlayerId,
 }: {
   player: BackendFieldPlayer;
   isTeammate: boolean;
   ballFieldPosition: { x: number; y: number };
   stagedDecisionResult?: BackendMatchResponse["decision_result"];
   isResultAnimating: boolean;
+  legendPlayerId: string | null;
 }) {
   const worldPosition = fieldToWorld(player.x, player.y);
   const renderWorldPosition: [number, number, number] = [
@@ -576,25 +564,23 @@ function BackendPlayerModel({
   const opponentNearBall =
     !isTeammate &&
     distanceInField(player, ballFieldPosition) <= OPPONENT_NEAR_BALL_DISTANCE;
-  const backendFacingTarget =
-    typeof player.facing_target_x === "number" &&
-    typeof player.facing_target_y === "number"
-      ? { x: player.facing_target_x, y: player.facing_target_y }
-      : null;
-  const rotationY =
-    shouldTrackBall && (isResultAnimating || player.id === involvedPlayerId)
+  const backendFacingTarget = authoritativeFacingTarget(
+    player,
+    stagedDecisionResult?.receiver_control,
+  );
+  const rotationY = backendFacingTarget
+    ? rotationTowardsFieldTarget(player, backendFacingTarget)
+    : shouldTrackBall && (isResultAnimating || player.id === involvedPlayerId)
       ? rotationTowardsFieldTarget(player, ballFieldPosition)
-      : backendFacingTarget
-        ? rotationTowardsFieldTarget(player, backendFacingTarget)
-        : isTeammate
-          ? Math.PI
-          : opponentNearBall
-            ? rotationTowardsFieldTarget(player, ballFieldPosition)
-            : player.role === "GK"
+      : isTeammate
+        ? Math.PI
+        : opponentNearBall
+          ? rotationTowardsFieldTarget(player, ballFieldPosition)
+          : player.role === "GK"
+            ? 0
+            : player.y < ballFieldPosition.y
               ? 0
-              : player.y < ballFieldPosition.y
-                ? 0
-                : Math.PI;
+              : Math.PI;
   const groupRef = useRef<THREE.Group>(null);
   const currentRotationRef = useRef(rotationY);
 
@@ -629,6 +615,7 @@ function BackendPlayerModel({
       </group>
       <PlayerLabel
         player={player}
+        legendPlayerId={legendPlayerId}
         isTeammate={isTeammate}
         worldPosition={renderWorldPosition}
       />
@@ -700,32 +687,29 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     },
     [],
   );
-  const hasImmediateFollowUpFieldState =
-    Boolean(stagedKickResult?.response.pending_action?.field_state) &&
-    stagedKickResult?.response.pending_action?.minute ===
-      (stagedKickResult?.response.prev_time ??
-        pendingAction?.minute ??
-        match?.current_time ??
-        0);
+  const continuationFieldState = stagedKickResult
+    ? authoritativeContinuationFieldState(stagedKickResult.response)
+    : null;
   const stagedFieldState =
-    !isResultAnimating &&
-    hasImmediateFollowUpFieldState &&
-    stagedKickResult?.response.pending_action?.field_state
-      ? stagedKickResult.response.pending_action.field_state
+    !isResultAnimating && continuationFieldState
+      ? continuationFieldState
       : null;
   // Keep the submitted scene visible during authoritative trajectory playback.
-  // A same-minute follow-up replaces it only after the flight completes.
+  // The authoritative continuation replaces it only after the flight completes.
   const displayFieldState =
     stagedFieldState || resolvedSceneFieldState || fieldState;
   const myPlayers = displayFieldState?.my_team_positions || [];
   const opponentPlayers = displayFieldState?.opponent_positions || [];
-  const legendPlayer =
-    myPlayers.find((player) => player.is_legend) ||
-    (displayFieldState?.legend_player_id
-      ? myPlayers.find(
-          (player) => player.id === displayFieldState.legend_player_id,
-        ) || null
-      : null);
+  const legendPlayer = displayFieldState?.legend_player_id
+    ? myPlayers.find(
+        (player) => player.id === displayFieldState.legend_player_id,
+      ) || null
+    : null;
+  const carrierPlayer = displayFieldState?.carrier_player_id
+    ? myPlayers.find(
+        (player) => player.id === displayFieldState.carrier_player_id,
+      ) || null
+    : null;
   const penaltyNonparticipantCount =
     displayFieldState?.scene_family === "PENALTY"
       ? myPlayers.length +
@@ -833,21 +817,17 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           animationFrameRef.current = window.requestAnimationFrame(tick);
         } else {
           animationFrameRef.current = null;
-          const rawFinalPoint = response.decision_result?.final_point
+          const authoritativeFinalPoint = response.decision_result?.final_point
             ? {
                 x: response.decision_result.final_point.x,
                 y: response.decision_result.final_point.y,
                 z: response.decision_result.final_point.z,
               }
             : point;
-          const resolvedFinalPoint = resolveControlledBallPosition(
-            response,
-            rawFinalPoint || null,
-          );
           setAnimatedBallFlightPoint(
-            resolvedFinalPoint
-              ? { ...resolvedFinalPoint, z: rawFinalPoint?.z ?? 0 }
-              : null,
+            authoritativeContinuationFieldState(response)
+              ? null
+              : authoritativeFinalPoint,
           );
           setIsResultAnimating(false);
         }
@@ -858,6 +838,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     }
 
     // Canonical kick scenes never fabricate a trajectory when the server omits one.
+    if (authoritativeContinuationFieldState(response)) {
+      setAnimatedBallFlightPoint(null);
+    }
     setIsResultAnimating(false);
   };
 
@@ -1003,6 +986,38 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       data-scene-family={displayFieldState?.scene_family ?? ""}
       data-ball-x={displayFieldState?.ball_x ?? ""}
       data-ball-y={displayFieldState?.ball_y ?? ""}
+      data-carrier-player-id={displayFieldState?.carrier_player_id ?? ""}
+      data-carrier-player-x={carrierPlayer?.x ?? ""}
+      data-carrier-player-y={carrierPlayer?.y ?? ""}
+      data-carrier-has-ball={
+        carrierPlayer?.has_ball === true ? "true" : "false"
+      }
+      data-carrier-facing-target-x={carrierPlayer?.facing_target_x ?? ""}
+      data-carrier-facing-target-y={carrierPlayer?.facing_target_y ?? ""}
+      data-carrier-facing-target-player-id={
+        carrierPlayer?.facing_target_player_id ?? ""
+      }
+      data-carrier-carry-offset-m={carrierPlayer?.carry_offset_m ?? ""}
+      data-result-receiver-id={stagedDecisionResult?.receiver?.id ?? ""}
+      data-result-receiver-x={stagedDecisionResult?.receiver?.x ?? ""}
+      data-result-receiver-y={stagedDecisionResult?.receiver?.y ?? ""}
+      data-result-control-carrier-id={
+        stagedDecisionResult?.receiver_control?.carrier_player_id ?? ""
+      }
+      data-result-facing-target-x={
+        stagedDecisionResult?.receiver_control?.facing_target_x ?? ""
+      }
+      data-result-facing-target-y={
+        stagedDecisionResult?.receiver_control?.facing_target_y ?? ""
+      }
+      data-result-facing-target-player-id={
+        stagedDecisionResult?.receiver_control?.facing_target_player_id ?? ""
+      }
+      data-result-carry-offset-m={
+        stagedDecisionResult?.receiver_control?.carry_offset_m ?? ""
+      }
+      data-result-minute={stagedKickResult?.response.prev_time ?? ""}
+      data-continuation-minute={stagedKickResult?.response.minute ?? ""}
       data-penalty-nonparticipant-count={penaltyNonparticipantCount ?? ""}
       data-render-ready={isCanvasReady ? "true" : "false"}
       data-kick-contract-supported={kickControlEnvelope ? "true" : "false"}
@@ -1012,22 +1027,26 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       aria-hidden={!active}
     >
       <FieldBackdrop />
-      <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
-        <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
-          {pendingAction?.title || "Field"}
-        </div>
-        <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
-          <div className="font-bold">
-            {myTeam?.name || "My Team"} vs {opponentTeam?.name || "Opponent"}
+      {!stagedKickResult && (
+        <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
+          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
+            {pendingAction?.title || "Field"}
           </div>
-          <div>{pendingAction?.description || "Waiting for field state."}</div>
-        </div>
-        {!fieldState && (
-          <div className="max-w-sm rounded-xl bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-sm">
-            No backend field state is available for this screen yet.
+          <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
+            <div className="font-bold">
+              {myTeam?.name || "My Team"} vs {opponentTeam?.name || "Opponent"}
+            </div>
+            <div>
+              {pendingAction?.description || "Waiting for field state."}
+            </div>
           </div>
-        )}
-      </div>
+          {!displayFieldState && (
+            <div className="max-w-sm rounded-xl bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-sm">
+              No backend field state is available for this screen yet.
+            </div>
+          )}
+        </div>
+      )}
 
       <Canvas
         gl={{
@@ -1095,6 +1114,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 ballFieldPosition={ballFieldPosition}
                 stagedDecisionResult={stagedDecisionResult}
                 isResultAnimating={isResultAnimating}
+                legendPlayerId={displayFieldState?.legend_player_id ?? null}
               />
             ))}
             {opponentPlayers.map((player) => (
@@ -1105,6 +1125,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 ballFieldPosition={ballFieldPosition}
                 stagedDecisionResult={stagedDecisionResult}
                 isResultAnimating={isResultAnimating}
+                legendPlayerId={displayFieldState?.legend_player_id ?? null}
               />
             ))}
             <Preload all />

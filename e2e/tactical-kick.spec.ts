@@ -8,6 +8,10 @@ import {
 import { sepolia } from "@starknet-react/chains";
 import sharp from "sharp";
 
+import {
+  controlledKickResponse,
+  controlledResultExpectation,
+} from "../tests/fixtures/tactical-kick-scenes/controlled-result";
 import cornerScene from "../tests/fixtures/tactical-kick-scenes/corner.json" with { type: "json" };
 import freeKickScene from "../tests/fixtures/tactical-kick-scenes/free-kick.json" with { type: "json" };
 import openPlayScene from "../tests/fixtures/tactical-kick-scenes/open-play.json" with { type: "json" };
@@ -653,13 +657,16 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
 }, testInfo) => {
   test.slow();
   const submittedRequests: unknown[] = [];
+  const authoritativeResponse = resolvedKickResponse();
+  const authoritativeResultMinute =
+    canonicalScene("OPEN_PLAY").pending_action.minute;
   await context.route("**/api/processMatchAction", async (route) => {
     submittedRequests.push(route.request().postDataJSON());
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
-      body: JSON.stringify(resolvedKickResponse()),
+      body: JSON.stringify(authoritativeResponse),
     });
   });
 
@@ -700,6 +707,14 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
     (button as HTMLButtonElement).click();
   });
   await expect(page.getByTestId("kick-result")).toBeVisible();
+  await expect(
+    page.getByText(`${authoritativeResultMinute}' · OPEN_PLAY`, {
+      exact: true,
+    }),
+  ).toBeVisible();
+  const resultCopy = await page.locator("body").innerText();
+  expect(resultCopy).not.toContain("Waiting for field state.");
+  expect(resultCopy).not.toContain("No backend field state");
   expect(submittedRequests).toHaveLength(1);
   expect(submittedRequests[0]).toMatchObject({
     match_decision: {
@@ -723,14 +738,165 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
   expect(JSON.stringify(submittedRequests[0])).not.toMatch(
     /seed|selection_quality|intent_hint|target|curve|lift/u,
   );
-  await page.waitForTimeout(1_000);
-  await expect(page.getByTestId("kick-result")).toBeVisible();
   if (testInfo.project.name === "mobile-chromium") {
     await page.getByTestId("kick-result").tap({ force: true });
   } else {
     await page.getByTestId("kick-result").click({ force: true });
   }
   await expect(page).toHaveURL(/\/match\/match-open_play$/u);
+});
+
+test("plays authoritative teammate control and its later continuation field state", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.slow();
+  const response = controlledKickResponse();
+  const expectation = controlledResultExpectation;
+  await context.route("**/api/processMatchAction", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(response),
+    });
+  });
+
+  await authenticateForContinuation(page);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await reverseDragFromBall(
+    page,
+    target,
+    testInfo.project.name === "mobile-chromium",
+  );
+  await page.getByTestId("kick-submit").click();
+
+  const result = page.getByTestId("kick-result");
+  const field = page.getByTestId("game-field");
+  await expect(result).toBeVisible();
+  await expect(
+    page.getByText(`${expectation.actionMinute}' · OPEN_PLAY`, { exact: true }),
+  ).toBeVisible();
+  await expect(result.getByText("Resolved", { exact: true })).toBeVisible();
+  const renderedState = await field.evaluate((element) => ({
+    resultMinute: element.getAttribute("data-result-minute"),
+    continuationMinute: element.getAttribute("data-continuation-minute"),
+    receiverId: element.getAttribute("data-result-receiver-id"),
+    receiverX: element.getAttribute("data-result-receiver-x"),
+    receiverY: element.getAttribute("data-result-receiver-y"),
+    controlCarrierId: element.getAttribute("data-result-control-carrier-id"),
+    carrierId: element.getAttribute("data-carrier-player-id"),
+    carrierX: element.getAttribute("data-carrier-player-x"),
+    carrierY: element.getAttribute("data-carrier-player-y"),
+    carrierHasBall: element.getAttribute("data-carrier-has-ball"),
+    resultFacingX: element.getAttribute("data-result-facing-target-x"),
+    resultFacingY: element.getAttribute("data-result-facing-target-y"),
+    resultFacingPlayerId: element.getAttribute(
+      "data-result-facing-target-player-id",
+    ),
+    carrierFacingX: element.getAttribute("data-carrier-facing-target-x"),
+    carrierFacingY: element.getAttribute("data-carrier-facing-target-y"),
+    carrierFacingPlayerId: element.getAttribute(
+      "data-carrier-facing-target-player-id",
+    ),
+    resultCarryOffset: element.getAttribute("data-result-carry-offset-m"),
+    carrierCarryOffset: element.getAttribute("data-carrier-carry-offset-m"),
+    ballX: element.getAttribute("data-ball-x"),
+    ballY: element.getAttribute("data-ball-y"),
+    legendPlayerId: document
+      .querySelector('[data-testid="legend-player-label"]')
+      ?.getAttribute("data-player-id"),
+    bodyCopy: document.body.innerText,
+  }));
+  expect(renderedState).toMatchObject({
+    resultMinute: String(expectation.actionMinute),
+    continuationMinute: String(expectation.continuationMinute),
+    receiverId: expectation.receiverId,
+    receiverX: String(expectation.receiverPosition.x),
+    receiverY: String(expectation.receiverPosition.y),
+    controlCarrierId: expectation.receiverId,
+    carrierId: expectation.receiverId,
+    carrierX: String(expectation.receiverPosition.x),
+    carrierY: String(expectation.receiverPosition.y),
+    carrierHasBall: "true",
+    resultFacingX: String(expectation.facingTarget.x),
+    resultFacingY: String(expectation.facingTarget.y),
+    resultFacingPlayerId: expectation.facingTarget.playerId,
+    carrierFacingX: String(expectation.facingTarget.x),
+    carrierFacingY: String(expectation.facingTarget.y),
+    carrierFacingPlayerId: expectation.facingTarget.playerId,
+    resultCarryOffset: String(expectation.carryOffsetM),
+    carrierCarryOffset: String(expectation.carryOffsetM),
+    ballX: String(expectation.ballPosition.x),
+    ballY: String(expectation.ballPosition.y),
+    legendPlayerId: canonicalScene("OPEN_PLAY").field_state.legend_player_id,
+  });
+  expect(expectation.continuationMinute).toBeGreaterThan(
+    expectation.actionMinute,
+  );
+  expect(renderedState.legendPlayerId).not.toBe(expectation.receiverId);
+  expect(renderedState.bodyCopy).not.toMatch(/(^|\n)Field($|\n)/u);
+  expect(renderedState.bodyCopy).not.toContain("Waiting for field state.");
+  expect(renderedState.bodyCopy).not.toContain("No backend field state");
+
+  if (testInfo.project.name === "mobile-chromium") {
+    await result.tap({ force: true });
+  } else {
+    await result.click({ force: true });
+  }
+  await expect(page).toHaveURL(/\/match\/match-open_play$/u);
+});
+
+test("fails safely when teammate control is missing its authoritative contract", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.slow();
+  const response = controlledKickResponse();
+  const malformedDecisionResult = {
+    ...response.decision_result,
+    receiver_control: undefined,
+  };
+  await context.route("**/api/processMatchAction", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify({
+        ...response,
+        decision_result: malformedDecisionResult,
+      }),
+    });
+  });
+
+  await authenticateForContinuation(page);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await reverseDragFromBall(
+    page,
+    target,
+    testInfo.project.name === "mobile-chromium",
+  );
+  await page.getByTestId("kick-submit").click();
+
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText(
+    "invalid success response",
+  );
+  await expect(page.getByTestId("kick-result")).toHaveCount(0);
+  await expect(page.getByTestId("game-field")).toHaveAttribute(
+    "data-ball-y",
+    sceneExpectations.OPEN_PLAY.ballPosition[1],
+  );
 });
 
 test("captures continuous tactical arrow visuals at short, maximum, diagonal, and edge pulls", async ({

@@ -21,6 +21,7 @@ export {
   type BackendMatchResponse,
   type BackendMatchSnapshot,
   type BackendPendingAction,
+  type BackendReceiverControl,
   type BackendTeam,
   type BackendTimelineEvent,
 } from "../match/api-v1/contract";

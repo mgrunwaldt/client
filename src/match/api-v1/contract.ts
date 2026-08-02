@@ -70,7 +70,17 @@ export interface BackendFieldPlayer {
   has_ball?: boolean;
   facing_target_x?: number;
   facing_target_y?: number;
+  facing_target_player_id?: string | null;
+  carry_offset_m?: number;
   [key: string]: unknown;
+}
+
+export interface BackendReceiverControl {
+  carrier_player_id: string;
+  facing_target_x: number;
+  facing_target_y: number;
+  facing_target_player_id: string | null;
+  carry_offset_m: number;
 }
 
 export interface BackendFlightPoint {
@@ -94,6 +104,10 @@ export interface BackendFieldState {
   distance_to_goal: number;
   ball_x: number;
   ball_y: number;
+  facing_target_x?: number;
+  facing_target_y?: number;
+  facing_target_player_id?: string | null;
+  carry_offset_m?: number;
   context?: Record<string, unknown>;
   dribble_pattern?: unknown;
   [key: string]: unknown;
@@ -163,6 +177,7 @@ export interface BackendDecisionResult {
   final_point?: BackendFlightPoint;
   receiver?: BackendFieldPlayer;
   interceptor?: BackendFieldPlayer;
+  receiver_control?: BackendReceiverControl;
   [key: string]: unknown;
 }
 
@@ -236,8 +251,20 @@ export const BackendFieldPlayerSchema: z.ZodType<BackendFieldPlayer> = z
     has_ball: z.boolean().optional(),
     facing_target_x: coordinate.optional(),
     facing_target_y: coordinate.optional(),
+    facing_target_player_id: identifier.nullable().optional(),
+    carry_offset_m: z.number().finite().min(0).max(2).optional(),
   })
   .passthrough();
+
+export const BackendReceiverControlSchema: z.ZodType<BackendReceiverControl> = z
+  .object({
+    carrier_player_id: identifier,
+    facing_target_x: coordinate,
+    facing_target_y: coordinate,
+    facing_target_player_id: identifier.nullable(),
+    carry_offset_m: z.number().finite().min(0).max(2),
+  })
+  .strict();
 
 export const BackendFlightPointSchema: z.ZodType<BackendFlightPoint> = z
   .object({
@@ -262,6 +289,10 @@ export const BackendFieldStateSchema: z.ZodType<BackendFieldState> = z
     distance_to_goal: z.number().finite().min(0).max(100),
     ball_x: coordinate,
     ball_y: coordinate,
+    facing_target_x: coordinate.optional(),
+    facing_target_y: coordinate.optional(),
+    facing_target_player_id: identifier.nullable().optional(),
+    carry_offset_m: z.number().finite().min(0).max(2).optional(),
     context: z.record(z.string(), z.unknown()),
     dribble_pattern: z.unknown().optional(),
   })
@@ -406,8 +437,39 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
     final_point: BackendFlightPointSchema.optional(),
     receiver: BackendFieldPlayerSchema.optional(),
     interceptor: BackendFieldPlayerSchema.optional(),
+    receiver_control: BackendReceiverControlSchema.optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((result, context) => {
+    if (result.flight_outcome !== "TEAMMATE_CONTROL" && !result.receiver) {
+      return;
+    }
+    if (!result.receiver) {
+      context.addIssue({
+        code: "custom",
+        message: "Teammate control requires an authoritative receiver.",
+        path: ["receiver"],
+      });
+    }
+    if (!result.receiver_control) {
+      context.addIssue({
+        code: "custom",
+        message: "Teammate control requires authoritative receiver control.",
+        path: ["receiver_control"],
+      });
+      return;
+    }
+    if (
+      result.receiver &&
+      result.receiver.id !== result.receiver_control.carrier_player_id
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Receiver control must identify the authoritative receiver.",
+        path: ["receiver_control", "carrier_player_id"],
+      });
+    }
+  });
 
 export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
   .object({
@@ -439,6 +501,22 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
       });
     }
 
+    const decisionResult = response.decision_result;
+    const receiverControl = decisionResult?.receiver_control;
+    const isPossessionHandoff =
+      decisionResult?.flight_outcome === "TEAMMATE_CONTROL" &&
+      decisionResult.success &&
+      (decisionResult.outcome_type === "KICK_TO_OPEN_PLAY" ||
+        decisionResult.outcome_type === "KICK_TO_BETTER_OPEN_PLAY");
+    if (isPossessionHandoff && response.minute <= response.prev_time) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "A possession continuation must advance beyond the action minute.",
+        path: ["minute"],
+      });
+    }
+
     const pendingAction = response.pending_action;
     const matchPendingAction = response.match.pending_action;
     if (pendingAction?.id !== matchPendingAction?.id) {
@@ -454,6 +532,14 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
           code: "custom",
           message: "A field state requires a pending action.",
           path: ["field_state"],
+        });
+      }
+      if (isPossessionHandoff) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "A successful teammate handoff requires an authoritative continuation.",
+          path: ["pending_action"],
         });
       }
       return;
@@ -493,6 +579,53 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
         code: "custom",
         message: "Pending action and field state identifiers must agree.",
         path: ["pending_action"],
+      });
+    }
+    if (!isPossessionHandoff || !receiverControl) {
+      return;
+    }
+
+    const carrier = fieldState.my_team_positions.find(
+      (player) => player.id === receiverControl.carrier_player_id,
+    );
+    if (
+      fieldState.carrier_player_id !== receiverControl.carrier_player_id ||
+      !carrier
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The continuation field state must carry the authoritative receiver.",
+        path: ["field_state", "carrier_player_id"],
+      });
+      return;
+    }
+    if (
+      carrier.facing_target_x !== receiverControl.facing_target_x ||
+      carrier.facing_target_y !== receiverControl.facing_target_y ||
+      carrier.facing_target_player_id !==
+        receiverControl.facing_target_player_id ||
+      carrier.carry_offset_m !== receiverControl.carry_offset_m
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The continuation carrier must preserve authoritative receiver control.",
+        path: ["field_state", "my_team_positions"],
+      });
+    }
+    if (
+      fieldState.facing_target_x !== receiverControl.facing_target_x ||
+      fieldState.facing_target_y !== receiverControl.facing_target_y ||
+      fieldState.facing_target_player_id !==
+        receiverControl.facing_target_player_id ||
+      fieldState.carry_offset_m !== receiverControl.carry_offset_m
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "The continuation field state must expose authoritative receiver control.",
+        path: ["field_state"],
       });
     }
   });
