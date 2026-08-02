@@ -771,7 +771,10 @@ describe("match session reducer", () => {
 
     const wrongChoices = {
       ...scene,
-      available_choices: scene.available_choices.slice(0, 1),
+      available_choices: [
+        ...scene.available_choices,
+        { ...scene.available_choices[0], id: "UNSUPPORTED" },
+      ],
     };
     const invalidChoices = matchSessionReducer(createInitialMatchSession(), {
       type: "HYDRATED",
@@ -821,7 +824,10 @@ describe("match session reducer", () => {
     state = matchSessionReducer(state, { type: "ACTION_REQUESTED", command });
     const invalidPending = {
       ...scene,
-      available_choices: scene.available_choices.slice(0, 1),
+      available_choices: [
+        ...scene.available_choices,
+        { ...scene.available_choices[0], id: "UNSUPPORTED" },
+      ],
     };
     state = matchSessionReducer(state, {
       type: "COMMAND_RESOLVED",

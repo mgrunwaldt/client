@@ -33,6 +33,13 @@ import {
   processBackendMatchAction,
 } from "../../lib/backend-match";
 import {
+  createDribbleSubmissionGate,
+  DRIBBLE_LANES,
+  type DribbleDecision,
+  type DribbleLane,
+  parseDribblePattern,
+} from "../../match/dribble-input";
+import {
   buildCanonicalKickDecision,
   createKickSubmissionGate,
   isCanonicalKickScene,
@@ -44,6 +51,7 @@ import {
 } from "../../match/receiver-control";
 import { useMatchSessionStore } from "../../match/session-store";
 import { BallAimSurface } from "./BallAimSurface";
+import { DribbleControls } from "./DribbleControls";
 import { KickContactDialog } from "./KickContactDialog";
 import {
   createRenderReadinessState,
@@ -532,6 +540,7 @@ function BackendPlayerModel({
   stagedDecisionResult,
   isResultAnimating,
   legendPlayerId,
+  visualFieldXOffset = 0,
 }: {
   player: BackendFieldPlayer;
   isTeammate: boolean;
@@ -539,8 +548,9 @@ function BackendPlayerModel({
   stagedDecisionResult?: BackendMatchResponse["decision_result"];
   isResultAnimating: boolean;
   legendPlayerId: string | null;
+  visualFieldXOffset?: number;
 }) {
-  const worldPosition = fieldToWorld(player.x, player.y);
+  const worldPosition = fieldToWorld(player.x + visualFieldXOffset, player.y);
   const renderWorldPosition: [number, number, number] = [
     worldPosition[0],
     worldPosition[1],
@@ -633,6 +643,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   } = useProgress();
   const match = useMatchSessionStore((state) => state.match);
   const phase = useMatchSessionStore((state) => state.phase);
+  const diagnostic = useMatchSessionStore((state) => state.diagnostic);
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
@@ -670,9 +681,14 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   } | null>(null);
   const [isResultAnimating, setIsResultAnimating] = useState(false);
   const [readySceneKey, setReadySceneKey] = useState("");
+  const [dribbleLane, setDribbleLane] = useState<{
+    actionId: string;
+    lane: DribbleLane;
+  } | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const resultTimerRef = useRef<number | null>(null);
   const kickSubmissionGateRef = useRef(createKickSubmissionGate());
+  const dribbleSubmissionGateRef = useRef(createDribbleSubmissionGate());
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
   const handleRenderReadiness = useCallback(
     (sceneKey: string, ready: boolean) => {
@@ -717,10 +733,26 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         (legendPlayer ? 1 : 0) -
         opponentPlayers.filter((player) => player.role === "GK").length
       : null;
+  const isDribbleScene = pendingAction?.scene_type === "DRIBBLE";
+  const parsedDribblePattern = isDribbleScene
+    ? parseDribblePattern(displayFieldState?.dribble_pattern)
+    : { pattern: null, error: null };
+  const dribblePattern = parsedDribblePattern.pattern;
+  const activeDribbleLane =
+    dribbleLane?.actionId === pendingAction?.id
+      ? dribbleLane?.lane
+      : dribblePattern?.starting_lane;
+  const dribbleVisualFieldXOffset =
+    isDribbleScene && !stagedKickResult && activeDribbleLane
+      ? (DRIBBLE_LANES.indexOf(activeDribbleLane) - 1) * 4
+      : 0;
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
     : { x: 50, y: VISIBLE_FIELD_CENTER_Y };
-  const ballFieldPosition = animatedBallFlightPoint || baseBallFieldPosition;
+  const ballFieldPosition = animatedBallFlightPoint || {
+    x: baseBallFieldPosition.x + dribbleVisualFieldXOffset,
+    y: baseBallFieldPosition.y,
+  };
   const [ballX, , logicalBallZ] = displayFieldState
     ? fieldToWorld(ballFieldPosition.x, ballFieldPosition.y)
     : [0, BALL_Y, 0];
@@ -752,6 +784,20 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     isCanonicalKickScene(pendingAction?.scene_type) &&
     pendingAction.available_choices.some((choice) => choice.id === "KICK") &&
     Boolean(kickControlEnvelope);
+  const canDribble =
+    isCanvasReady &&
+    !stagedKickResult &&
+    phase === "scene_ready" &&
+    pendingAction?.action_team === "MY_TEAM" &&
+    isDribbleScene &&
+    Boolean(dribblePattern) &&
+    pendingAction.available_choices.length === 2 &&
+    pendingAction.available_choices.some(
+      (choice) => choice.id === "DRIBBLE_RUN",
+    ) &&
+    pendingAction.available_choices.some(
+      (choice) => choice.id === "SIMULATE_FOUL",
+    );
   const displayedKickDecision =
     releasedAimDraft && kickControlEnvelope
       ? buildCanonicalKickDecision(
@@ -937,6 +983,65 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     }
   };
 
+  const handleDribbleDecision = async (decision: DribbleDecision) => {
+    if (!match?.id || !pendingAction || !dribblePattern) {
+      return;
+    }
+    if (!dribbleSubmissionGateRef.current.begin(pendingAction.id)) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setLoading(true);
+      setError(null);
+      const command =
+        pendingCommand?.operation === "action" &&
+        pendingCommand.matchId === match.id &&
+        pendingCommand.actionId === pendingAction.id
+          ? pendingCommand
+          : createMatchCommand(
+              "action",
+              {
+                match_id: match.id,
+                action_id: pendingAction.id,
+                match_decision: decision,
+              },
+              {
+                matchId: match.id,
+                revision: match.revision ?? null,
+                actionId: pendingAction.id,
+              },
+            );
+      if (!beginActionCommand(command)) {
+        dribbleSubmissionGateRef.current.reset(pendingAction.id);
+        return;
+      }
+      const submittedFieldState = fieldState;
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        decision,
+        command,
+      );
+      setActionResponse(response);
+      setResolvedSceneFieldState(submittedFieldState);
+      setStagedKickResult({ response, sceneType: pendingAction.scene_type });
+      setLoading(false);
+      startBallPlayback(response);
+    } catch (error) {
+      dribbleSubmissionGateRef.current.reset(pendingAction.id);
+      const message =
+        error instanceof Error ? error.message : "Failed to submit dribble.";
+      setSubmitError(message);
+      setError(error);
+      setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleNextAction = () => {
     if (!match?.id || !stagedKickResult) {
       return;
@@ -1041,8 +1146,21 @@ export default function GameScene({ active = true }: { active?: boolean }) {
             </div>
           </div>
           {!displayFieldState && (
-            <div className="max-w-sm rounded-xl bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-sm">
-              No backend field state is available for this screen yet.
+            <div
+              role="alert"
+              className="max-w-sm rounded-xl bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-sm"
+            >
+              {diagnostic?.message ||
+                "No backend field state is available for this screen yet."}
+              {diagnostic?.retryable && (
+                <button
+                  type="button"
+                  className="mt-2 block font-bold text-cyan-200 underline underline-offset-4"
+                  onClick={() => window.location.reload()}
+                >
+                  Refresh match
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1115,6 +1233,12 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 stagedDecisionResult={stagedDecisionResult}
                 isResultAnimating={isResultAnimating}
                 legendPlayerId={displayFieldState?.legend_player_id ?? null}
+                visualFieldXOffset={
+                  isDribbleScene &&
+                  player.id === displayFieldState?.legend_player_id
+                    ? dribbleVisualFieldXOffset
+                    : 0
+                }
               />
             ))}
             {opponentPlayers.map((player) => (
@@ -1156,6 +1280,28 @@ export default function GameScene({ active = true }: { active?: boolean }) {
             interacting.
           </div>
         )}
+      {isCanvasReady &&
+        isDribbleScene &&
+        !dribblePattern &&
+        !stagedKickResult && (
+          <div
+            role="alert"
+            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+          >
+            {parsedDribblePattern.error}
+          </div>
+        )}
+      {canDribble && pendingAction && dribblePattern && (
+        <DribbleControls
+          key={pendingAction.id}
+          pattern={dribblePattern}
+          disabled={isSubmitting}
+          onLaneChange={(lane) => {
+            setDribbleLane({ actionId: pendingAction.id, lane });
+          }}
+          onSubmit={handleDribbleDecision}
+        />
+      )}
       {releasedAimDraft && kickControlEnvelope && (
         <KickContactDialog
           envelope={kickControlEnvelope}

@@ -38,6 +38,7 @@ if (!allowsBrowserTestBridge) {
   const browserTestMarkers = [
     "__OVERGOAL_E2E_SET_MATCH_RESPONSE__",
     "__OVERGOAL_E2E_SWITCH_LOCAL_CI_WALLET__",
+    "__OVERGOAL_E2E_DRIBBLE_ADVANCE__",
   ];
   const bridgeChunks = (
     await Promise.all(

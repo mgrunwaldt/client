@@ -6,6 +6,7 @@ import {
   isKnownMatchStatus,
   isKnownPlayableScene,
 } from "./api-v1/contract";
+import { parseDribblePattern } from "./dribble-input";
 import type {
   HydratedMatchSession,
   MatchPlaybackStatus,
@@ -17,7 +18,7 @@ import type {
 } from "./session-types";
 
 export const SCENE_SUPPORT = {
-  OPEN_PLAY: ["KICK", "DRIBBLE"],
+  OPEN_PLAY: ["KICK"],
   DRIBBLE: ["DRIBBLE_RUN", "SIMULATE_FOUL"],
   FREE_KICK: ["KICK"],
   CORNER: ["KICK"],
@@ -228,12 +229,29 @@ function pendingActionContractError(
   const actualChoices = pendingAction.available_choices.map(
     (choice) => choice.id,
   );
+  // Sealed pre-M2 replays advertised DRIBBLE inside OPEN_PLAY. Keep those
+  // persisted responses readable, but never expose this as a current scene
+  // capability or generate it from current contracts.
+  const isLegacyOpenPlay =
+    pendingAction.scene_type === "OPEN_PLAY" &&
+    actualChoices.length === 2 &&
+    actualChoices[0] === "KICK" &&
+    actualChoices[1] === "DRIBBLE";
+  const acceptedChoices = isLegacyOpenPlay
+    ? ["KICK", "DRIBBLE"]
+    : expectedChoices;
   if (
-    actualChoices.length !== expectedChoices.length ||
+    actualChoices.length !== acceptedChoices.length ||
     new Set(actualChoices).size !== actualChoices.length ||
-    expectedChoices.some((choice) => !actualChoices.includes(choice))
+    acceptedChoices.some((choice) => !actualChoices.includes(choice))
   ) {
     return `Scene ${pendingAction.scene_type} advertises an invalid choice set.`;
+  }
+  if (pendingAction.scene_type === "DRIBBLE") {
+    const parsed = parseDribblePattern(fieldState.dribble_pattern);
+    if (!parsed.pattern) {
+      return parsed.error;
+    }
   }
   return null;
 }

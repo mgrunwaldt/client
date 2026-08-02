@@ -1,5 +1,9 @@
 {
   "match_id": "match-fixture-1",
   "action_id": "action-dribble-1",
-  "match_decision": { "choice": "SIMULATE_FOUL", "selection_quality": 63, "seed": 424245 }
+  "match_decision": {
+    "choice": "SIMULATE_FOUL",
+    "lane_trace": [{ "at_second": 0, "lane": "RIGHT" }],
+    "simulate_at_second": 2.97
+  }
 }

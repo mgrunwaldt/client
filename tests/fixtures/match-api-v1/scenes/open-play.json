@@ -9,8 +9,7 @@
   "description": "Your team carries the same possession into the next phase.",
   "field_state_id": "field-open-1",
   "available_choices": [
-    { "id": "KICK", "label": "Kick", "description": "Aim a pass or shot.", "input_schema": { "required": ["choice", "kick_input"], "kick_input_version": 1 } },
-    { "id": "DRIBBLE", "label": "Dribble", "description": "Launch the dribble scene.", "input_schema": { "required": ["choice", "target_lane", "selection_quality", "seed"], "target_lane_values": ["LEFT", "CENTER", "RIGHT"] } }
+    { "id": "KICK", "label": "Kick", "description": "Aim a pass or shot.", "input_schema": { "required": ["choice", "kick_input"], "kick_input_version": 1 } }
   ],
   "control_envelope": { "version": 1, "input_mapping_version": "kick-v1", "minimum_power": 0.16, "maximum_power": 0.94, "maximum_curve": 0.882, "maximum_lift": 0.893, "contact_radius": 0.953 },
   "context": { "seed": 12001, "distance_to_goal": 24.5, "side_of_pitch": "RIGHT", "pressure": 63, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": "SIMILAR", "possession_state": "PASS_RECEIVED", "carrier_player_id": "team_1_ST_10" },

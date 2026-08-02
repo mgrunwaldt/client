@@ -10,14 +10,15 @@
   "match": {
     "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
     "current_time": 90, "prev_time": 89, "match_status": "FINISHED", "event_counter": 18, "revision": 1, "pending_action": null,
-    "seed": "fixture-seed-1", "engine_version": "match-engine/2", "ruleset_version": "nss-match-v2/1",
+    "seed": "fixture-seed-1", "engine_version": "match-engine/3", "ruleset_version": "nss-match-v2/1",
     "initial_state": { "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" }, "opponent_team": { "id": "team_2", "name": "Cartridge City", "offense": 85, "defense": 68, "intensity": 72, "set_pieces": 77, "chemistry": 70, "formation": "4-2-3-1" }, "legend_profile": { "stamina": 78, "energy": 78, "shoot": 74, "dribble": 76, "speed": 77, "passing": 73, "heading": 69, "defense": 58, "intelligence": 72, "yellow_cards": 0, "red_card": false, "simulation_attempts": 0, "substitutions": 0 }, "ruleset": { "rebound_play_enabled": true } }
   },
   "decision_result": {
     "description": "You beat the pressure and keep driving forward.",
     "success": true,
-    "outcome_type": "DRIBBLE_SUCCESS",
+    "outcome_type": "DRIBBLE_SURVIVAL",
     "energy_modifier": 1.2,
+    "resulting_attack_position": { "ball_x": 50, "ball_y": 30.1, "distance_to_goal": 31.61, "gain_m": 11.66 },
     "dribble_resolution": {
       "survived": true,
       "collision": null,

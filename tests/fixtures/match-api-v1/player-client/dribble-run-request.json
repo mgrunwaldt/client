@@ -8,8 +8,6 @@
       { "at_second": 2, "lane": "CENTER" },
       { "at_second": 4, "lane": "LEFT" },
       { "at_second": 6, "lane": "CENTER" }
-    ],
-    "selection_quality": 82,
-    "seed": 424244
+    ]
   }
 }

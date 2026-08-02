@@ -30,7 +30,6 @@
     { "consumer": "player-client", "file": "player-client/create-match-request.json", "schema": "CreateMatchRequest", "operation": { "method": "POST", "path": "/createMatch", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/match-command-request.json", "schema": "MatchCommandRequest", "operation": { "method": "POST", "path": "/startMatch", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/kick-decision-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },
-    { "consumer": "player-client", "file": "player-client/dribble-start-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/dribble-run-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/simulate-foul-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/random-event-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },

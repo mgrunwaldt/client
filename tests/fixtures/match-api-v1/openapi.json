@@ -789,8 +789,8 @@
           "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
           "engine_version": {
             "type": "string",
-            "enum": ["match-engine/1", "match-engine/2"],
-            "description": "match-engine/2 supports live mutation. Persisted match-engine/1 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
+            "enum": ["match-engine/1", "match-engine/2", "match-engine/3"],
+            "description": "match-engine/3 supports live mutation. Persisted match-engine/1 and match-engine/2 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
             "x-overgoal-m1-required": true
           },
           "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
@@ -881,11 +881,14 @@
       },
       "DefenderWave": {
         "type": "object",
-        "required": ["at_second", "lane", "speed"],
+        "required": ["id", "at_second", "lane", "speed", "foul_chance", "booking_chance"],
         "properties": {
+          "id": { "type": "string", "pattern": "^wave-[1-8]$" },
           "at_second": { "type": "number", "minimum": 0, "maximum": 8 },
           "lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
-          "speed": { "$ref": "#/components/schemas/Rating" }
+          "speed": { "$ref": "#/components/schemas/Rating" },
+          "foul_chance": { "type": "number", "minimum": 0, "maximum": 100 },
+          "booking_chance": { "type": "number", "minimum": 0, "maximum": 100 }
         },
         "additionalProperties": false
       },
@@ -901,8 +904,10 @@
       },
       "DribblePattern": {
         "type": "object",
-        "required": ["duration_seconds", "starting_lane", "lane_switch_seconds", "lanes", "defender_waves", "simulate_foul_window"],
+        "required": ["version", "input_mapping_version", "duration_seconds", "starting_lane", "lane_switch_seconds", "lanes", "parameters", "defender_waves", "pressure_windows"],
         "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "input_mapping_version": { "type": "string", "const": "dribble-lanes-v1" },
           "duration_seconds": { "type": "number", "const": 8 },
           "starting_lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
           "lane_switch_seconds": { "type": "number", "minimum": 0.4, "maximum": 1.15 },
@@ -916,15 +921,45 @@
             "minItems": 3,
             "maxItems": 3
           },
-          "defender_waves": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/DefenderWave" } },
-          "simulate_foul_window": {
+          "parameters": {
             "type": "object",
-            "required": ["enabled", "recommended_after_second"],
+            "required": ["speed", "dribble", "stamina", "energy", "energy_ratio", "pressure", "switching_score", "defender_count", "lane_forgiveness", "pressure_lane_radius", "pressure_window_seconds", "close_down_resistance", "resulting_attack_gain_m", "simulation_chance_percent", "simulation_attempts_before_scene"],
             "properties": {
-              "enabled": { "type": "boolean" },
-              "recommended_after_second": { "type": "number", "minimum": 0, "maximum": 8 }
+              "speed": { "$ref": "#/components/schemas/Rating" },
+              "dribble": { "$ref": "#/components/schemas/Rating" },
+              "stamina": { "$ref": "#/components/schemas/Rating" },
+              "energy": { "$ref": "#/components/schemas/Rating" },
+              "energy_ratio": { "$ref": "#/components/schemas/Rating" },
+              "pressure": { "$ref": "#/components/schemas/Rating" },
+              "switching_score": { "$ref": "#/components/schemas/Rating" },
+              "defender_count": { "type": "integer", "minimum": 4, "maximum": 8 },
+              "lane_forgiveness": { "type": "number", "minimum": 0, "maximum": 1 },
+              "pressure_lane_radius": { "type": "number", "minimum": 0, "maximum": 1 },
+              "pressure_window_seconds": { "type": "number", "minimum": 0, "maximum": 2 },
+              "close_down_resistance": { "$ref": "#/components/schemas/Rating" },
+              "resulting_attack_gain_m": { "type": "number", "minimum": 0, "maximum": 20 },
+              "simulation_chance_percent": { "type": "integer", "minimum": 35, "maximum": 65 },
+              "simulation_attempts_before_scene": { "type": "integer", "minimum": 0, "maximum": 99 }
             },
             "additionalProperties": false
+          },
+          "defender_waves": { "type": "array", "minItems": 4, "maxItems": 8, "items": { "$ref": "#/components/schemas/DefenderWave" } },
+          "pressure_windows": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "required": ["id", "wave_index", "lane", "start_second", "end_second"],
+              "properties": {
+                "id": { "type": "string", "pattern": "^pressure-[1-8]$" },
+                "wave_index": { "type": "integer", "minimum": 0, "maximum": 7 },
+                "lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
+                "start_second": { "type": "number", "minimum": 0, "maximum": 8 },
+                "end_second": { "type": "number", "minimum": 0, "maximum": 8 }
+              },
+              "additionalProperties": false
+            }
           }
         },
         "additionalProperties": false
@@ -941,7 +976,7 @@
           "match_id": { "$ref": "#/components/schemas/Identifier" },
           "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
           "action_type": { "$ref": "#/components/schemas/PlayableSceneType" },
-          "scene_family": { "type": "string", "enum": ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY", "RANDOM_EVENT"] },
+          "scene_family": { "type": "string", "enum": ["OPEN_PLAY", "DRIBBLE", "FREE_KICK", "CORNER", "PENALTY", "RANDOM_EVENT"] },
           "my_team_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/FieldPlayer" } },
           "opponent_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/FieldPlayer" } },
           "legend_player_id": { "$ref": "#/components/schemas/Identifier" },
@@ -964,7 +999,6 @@
         "properties": {
           "required": { "type": "array", "items": { "type": "string" } },
           "optional": { "type": "array", "items": { "type": "string" } },
-          "target_lane_values": { "type": "array", "items": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] } },
           "lane_trace_values": { "type": "array", "items": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] } },
           "lane_trace_point_fields": { "type": "array", "items": { "type": "string", "enum": ["at_second", "lane"] } },
           "kick_input_version": { "type": "integer", "const": 1 }
@@ -1025,7 +1059,7 @@
       "OpenPlayPendingAction": {
         "allOf": [
           { "$ref": "#/components/schemas/PendingActionBase" },
-          { "type": "object", "required": ["control_envelope"], "properties": { "scene_type": { "const": "OPEN_PLAY" }, "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" } }, "x-overgoal-choice-ids": ["KICK", "DRIBBLE"] }
+          { "type": "object", "required": ["control_envelope"], "properties": { "scene_type": { "const": "OPEN_PLAY" }, "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" } }, "x-overgoal-choice-ids": ["KICK"] }
         ]
       },
       "DribblePendingAction": {
@@ -1139,13 +1173,16 @@
           "automatic_follow_up": { "$ref": "#/components/schemas/AutomaticKickFollowUp" },
           "kick_resolution": { "$ref": "#/components/schemas/KickResolution" },
           "foul": { "$ref": "#/components/schemas/KickFoul" },
-          "dribble_resolution": { "$ref": "#/components/schemas/DribbleResolution" }
+          "dribble_resolution": { "$ref": "#/components/schemas/DribbleResolution" },
+          "dribble_foul": { "$ref": "#/components/schemas/DribbleFoulResolution" },
+          "simulation_resolution": { "$ref": "#/components/schemas/SimulationResolution" },
+          "resulting_attack_position": { "$ref": "#/components/schemas/DribbleAttackPosition" }
         },
         "allOf": [
           {
             "if": {
               "required": ["outcome_type"],
-              "properties": { "outcome_type": { "const": "DRIBBLE_SUCCESS" } }
+              "properties": { "outcome_type": { "const": "DRIBBLE_SURVIVAL" } }
             },
             "then": {
               "required": ["dribble_resolution"],
@@ -1162,7 +1199,7 @@
           {
             "if": {
               "required": ["outcome_type"],
-              "properties": { "outcome_type": { "const": "DRIBBLE_FAILED" } }
+              "properties": { "outcome_type": { "const": "DRIBBLE_COLLISION_LOSS" } }
             },
             "then": {
               "required": ["dribble_resolution"],
@@ -1219,6 +1256,49 @@
         },
         "additionalProperties": false
       },
+      "DribbleFoulResolution": {
+        "type": "object",
+        "required": ["kind", "awarded", "set_piece", "foul_chance", "foul_roll", "defender_booking", "booking_chance", "booking_roll", "wave_id"],
+        "properties": {
+          "kind": { "const": "ORDINARY_FOUL" },
+          "awarded": { "type": "boolean" },
+          "set_piece": { "type": ["string", "null"], "enum": ["FREE_KICK", "PENALTY", null] },
+          "foul_chance": { "type": "number", "minimum": 0, "maximum": 100 },
+          "foul_roll": { "type": "number", "minimum": 0, "maximum": 100 },
+          "defender_booking": { "type": "boolean" },
+          "booking_chance": { "type": "number", "minimum": 0, "maximum": 100 },
+          "booking_roll": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+          "wave_id": { "type": "string", "pattern": "^wave-[1-8]$" }
+        },
+        "additionalProperties": false
+      },
+      "SimulationResolution": {
+        "type": "object",
+        "required": ["attempted_at_second", "pressure_window_id", "attempt_number", "chance_percent", "roll", "awarded", "booked"],
+        "properties": {
+          "attempted_at_second": { "type": "number", "minimum": 0, "maximum": 8 },
+          "pressure_window_id": { "type": "string", "pattern": "^pressure-[1-8]$" },
+          "attempt_number": { "type": "integer", "minimum": 1, "maximum": 100 },
+          "chance_percent": { "type": "integer", "minimum": 35, "maximum": 65 },
+          "roll": { "type": "number", "minimum": 0, "maximum": 100 },
+          "awarded": { "type": "boolean" },
+          "booked": { "type": "boolean" },
+          "booking_chance": { "type": "number", "minimum": 0, "maximum": 100 },
+          "booking_roll": { "type": "number", "minimum": 0, "maximum": 100 }
+        },
+        "additionalProperties": false
+      },
+      "DribbleAttackPosition": {
+        "type": "object",
+        "required": ["ball_x", "ball_y", "distance_to_goal", "gain_m"],
+        "properties": {
+          "ball_x": { "$ref": "#/components/schemas/Coordinate" },
+          "ball_y": { "$ref": "#/components/schemas/Coordinate" },
+          "distance_to_goal": { "type": "number", "minimum": 0, "maximum": 105 },
+          "gain_m": { "type": "number", "minimum": 0, "maximum": 20 }
+        },
+        "additionalProperties": false
+      },
       "LastDecision": {
         "type": "object",
         "required": [
@@ -1234,7 +1314,7 @@
           "action_team": { "$ref": "#/components/schemas/ActionTeam" },
           "action_id": { "$ref": "#/components/schemas/Identifier" },
           "action_version": { "type": "integer", "minimum": 1 },
-          "decision_version": { "type": "integer", "minimum": 1, "maximum": 2 },
+          "decision_version": { "type": "integer", "minimum": 1, "maximum": 3 },
           "decision_data": { "type": "object", "additionalProperties": true },
           "field_state_id": { "$ref": "#/components/schemas/Identifier" },
           "timestamp": { "type": "number", "minimum": 0 }
@@ -1486,20 +1566,9 @@
         },
         "additionalProperties": false
       },
-      "DribbleStartDecision": {
-        "type": "object",
-        "required": ["choice", "target_lane", "selection_quality", "seed"],
-        "properties": {
-          "choice": { "const": "DRIBBLE" },
-          "target_lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
-          "selection_quality": { "$ref": "#/components/schemas/Rating" },
-          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
-        },
-        "additionalProperties": false
-      },
       "DribbleRunDecision": {
         "type": "object",
-        "required": ["choice", "lane_trace", "selection_quality", "seed"],
+        "required": ["choice", "lane_trace"],
         "properties": {
           "choice": { "const": "DRIBBLE_RUN" },
           "lane_trace": {
@@ -1508,22 +1577,22 @@
             "maxItems": 64,
             "description": "Movement-input timestamps. The final selected lane is held through second 8 without an endpoint marker; each movement must finish within the advertised duration.",
             "items": { "$ref": "#/components/schemas/LaneTracePoint" }
-          },
-          "selection_quality": {
-            "allOf": [{ "$ref": "#/components/schemas/Rating" }],
-            "description": "Compatibility UI metadata only. It does not affect authoritative dribble probability or outcome."
-          },
-          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+          }
         },
         "additionalProperties": false
       },
       "SimulateFoulDecision": {
         "type": "object",
-        "required": ["choice", "selection_quality", "seed"],
+        "required": ["choice", "lane_trace", "simulate_at_second"],
         "properties": {
           "choice": { "const": "SIMULATE_FOUL" },
-          "selection_quality": { "$ref": "#/components/schemas/Rating" },
-          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+          "lane_trace": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "items": { "$ref": "#/components/schemas/LaneTracePoint" }
+          },
+          "simulate_at_second": { "type": "number", "minimum": 0, "maximum": 8 }
         },
         "additionalProperties": false
       },
@@ -1547,7 +1616,6 @@
       "MatchDecision": {
         "oneOf": [
           { "$ref": "#/components/schemas/KickDecision" },
-          { "$ref": "#/components/schemas/DribbleStartDecision" },
           { "$ref": "#/components/schemas/DribbleRunDecision" },
           { "$ref": "#/components/schemas/SimulateFoulDecision" },
           { "$ref": "#/components/schemas/NarrativeDecision" }

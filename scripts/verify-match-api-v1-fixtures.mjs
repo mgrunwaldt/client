@@ -15,12 +15,12 @@ import {
 const SOURCE_REPOSITORY = "https://github.com/mgrunwaldt/match_server";
 const REPRODUCTION_SOURCE_REPOSITORY =
   "https://github.com/overgoal/match_server";
-const CONTRACT_SOURCE_REVISION = "d140b818a2c10d86476fcf34befd56616560f8a5";
+const CONTRACT_SOURCE_REVISION = "97ff980d0ef4bd3a69cd3b56dae5efe7d09949ad";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const EXPECTED_FIXTURE_MANIFEST_SHA256 =
-  "1ed227c87069e2750df98af526d1559de82244848199b27327c4c0b6aaa8e832";
+  "b59022ab760cd6f6b5239e95f79b9a3af15ab80a6873c393c4cb4a0a37556c15";
 const EXPECTED_MIRROR_TREE_SHA256 =
-  "5fb89bf0eb32577a6e95521111fc16f7e28251c8347502eab87a67ba18c566b9";
+  "96161a6400775913dc9da5208b30847ac9085049f8c6404411870d325a3926e3";
 const EXPECTED_REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 
@@ -182,6 +182,7 @@ async function validateMirroredContract(fixtureRoot, reproduction) {
       file: "self-pass-follow-up-response.json",
       schemaName: "MatchProgressResponse",
       value: reproduction,
+      allowLegacyOpenPlayDribbleChoice: true,
     });
   } catch (error) {
     failures.push(
