@@ -65,15 +65,21 @@ export function createLocalCiConnector(
     await disconnect();
   };
 
-  Object.defineProperty(globalThis, "__OVERGOAL_E2E_SWITCH_LOCAL_CI_WALLET__", {
-    configurable: true,
-    value: (accountIndex: number) => {
-      const fixture = fixtures[accountIndex];
-      if (!fixture) throw new Error("Unknown LOCAL_CI wallet index.");
-      connector.switchAccount(accountIndex);
-      return fixture.address;
-    },
-  });
+  if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
+    Object.defineProperty(
+      globalThis,
+      "__OVERGOAL_E2E_SWITCH_LOCAL_CI_WALLET__",
+      {
+        configurable: true,
+        value: (accountIndex: number) => {
+          const fixture = fixtures[accountIndex];
+          if (!fixture) throw new Error("Unknown LOCAL_CI wallet index.");
+          connector.switchAccount(accountIndex);
+          return fixture.address;
+        },
+      },
+    );
+  }
   connectorSingleton = connector;
   connectorFixtureKey = fixtureKey;
   return connector;

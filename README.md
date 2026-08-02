@@ -154,6 +154,9 @@ pnpm typecheck
 pnpm test:unit
 pnpm exec playwright install --with-deps chromium
 pnpm test:browser
+OVERGOAL_REAL_SERVER_ROOT=/path/to/match_server \
+  OVERGOAL_REAL_SERVER_NODE=/path/to/node-v24.18.0 \
+  pnpm test:browser:real-server
 pnpm test:browser:stale-port
 pnpm test:browser:signal
 pnpm build
@@ -189,6 +192,23 @@ Corepack/pnpm package script, terminates its active process group while
 Playwright is running, then proves the runner PID, package-script, preview, and
 Playwright process groups are gone and the preview port can be rebound. The
 smoke confirms application mounting and fatal-error handling only.
+
+`pnpm test:browser:real-server` is the distinct M2-I2 deployment smoke. It
+requires a trusted Match API checkout with its existing Node 24 dependencies;
+the command does not install or rebuild either package. The runner validates
+that checkout's declared exact Node runtime and LOCAL_CI production-repository
+launcher, refuses to kill or reuse occupied listeners, and uses only ports
+`4176` (production client preview) and `3444` (actual Match API). If either port
+is already occupied, stop that listener before running the smoke.
+
+The runner creates private ephemeral TLS, SQLite, wallet, and auth-material
+state outside both repositories. It drives the real signed LOCAL_CI
+challenge/session path, then create/start through the first Timeline state over
+`https://127.0.0.1:3444`. The production bundle embeds that direct API URL,
+Vite preview has no proxy, and browser assertions require the exact CORS origin,
+preflight, opaque bearer, absence of cookies, command headers, and Match API v1
+responses. Cleanup terminates only runner-owned process groups and deletes all
+ephemeral credentials and build output, including on signals or child failure.
 
 The build keeps every JavaScript chunk below Vite's 500 kB warning boundary
 and verifies that the login static graph excludes the game route. The Chromium

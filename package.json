@@ -13,6 +13,7 @@
     "test:fixtures": "node scripts/verify-match-api-v1-fixtures.mjs",
     "test:policy": "vitest run tests/ci-policy.test.mjs",
     "test:browser": "env -u NO_COLOR node scripts/run-playwright.mjs",
+    "test:browser:real-server": "env -u NO_COLOR node scripts/run-real-server-smoke.mjs",
     "test:browser:stale-port": "env -u NO_COLOR node scripts/verify-playwright-stale-port.mjs",
     "test:browser:signal": "env -u NO_COLOR node scripts/verify-playwright-signal-cleanup.mjs",
     "bundle:verify": "node scripts/verify-bundle.mjs",
