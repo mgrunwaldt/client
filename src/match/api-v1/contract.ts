@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import {
   type KickControlEnvelope,
-  parseKickControlEnvelope,
+  KickControlEnvelopeSchema,
 } from "../kick-input";
 
 export const MATCH_API_MAJOR_VERSION = "1";
@@ -290,20 +290,7 @@ export const BackendPendingActionSchema: z.ZodType<BackendPendingAction> = z
           .passthrough(),
       )
       .min(1),
-    control_envelope: z
-      .unknown()
-      .transform((value, context) => {
-        const envelope = parseKickControlEnvelope(value);
-        if (!envelope) {
-          context.addIssue({
-            code: "custom",
-            message: "A control_envelope must use the canonical kick contract.",
-          });
-          return z.NEVER;
-        }
-        return envelope;
-      })
-      .optional(),
+    control_envelope: KickControlEnvelopeSchema.optional(),
     context: z.record(z.string(), z.unknown()),
     origin: z
       .object({

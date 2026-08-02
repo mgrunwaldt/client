@@ -283,14 +283,37 @@ async function previewAimArrow(
   };
   const end = { x: start.x + offset.x, y: start.y + offset.y };
 
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(end.x, end.y);
+  const mobile = testInfo.project.name === "mobile-chromium";
+  const touchSession = mobile ? await page.context().newCDPSession(page) : null;
+  if (touchSession) {
+    await touchSession.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [start],
+    });
+    await touchSession.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [end],
+    });
+  } else {
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y);
+  }
   await expect(page.getByRole("dialog")).toHaveCount(0);
   // Let React and R3F paint the same final drag state used for both the
   // attachment and the committed visual baseline.
   await page.waitForTimeout(250);
-  await captureTacticalEvidence(page, testInfo, `kick-arrow-${name}`);
+  const fullViewport = await captureTacticalEvidence(
+    page,
+    testInfo,
+    `kick-arrow-${name}`,
+  );
+  if (name === "maximum") {
+    expect(fullViewport).toMatchSnapshot(
+      "kick-arrow-maximum-full-viewport.png",
+      { maxDiffPixelRatio: 0.002 },
+    );
+  }
   const viewport = page.viewportSize();
   if (!viewport) throw new Error("The tactical viewport is not measurable.");
   const clipWidth = Math.min(360, viewport.width);
@@ -314,7 +337,15 @@ async function previewAimArrow(
   expect(screenshot).toMatchSnapshot(`kick-arrow-${name}.png`, {
     maxDiffPixelRatio: 0.002,
   });
-  await page.mouse.up();
+  if (touchSession) {
+    await touchSession.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    await touchSession.detach();
+  } else {
+    await page.mouse.up();
+  }
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
 }
@@ -369,7 +400,11 @@ async function captureTacticalEvidence(
       for (let x = 0; x < info.width; x += 1) {
         const offset = (y * info.width + x) * info.channels;
         const [red, green, blue, alpha] = data.subarray(offset, offset + 4);
-        if (alpha < 250 || (red >= 245 && green >= 245 && blue >= 245)) {
+        if (
+          alpha < 250 ||
+          (red >= 245 && green >= 245 && blue >= 245) ||
+          (red <= 10 && green <= 10 && blue <= 10)
+        ) {
           blankPixels += 1;
         }
       }
@@ -435,12 +470,18 @@ async function waitForRenderableTacticalScene(
 
 function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
   const response = canonicalScene(sceneType);
+  const actionMinute = response.pending_action.minute;
+  const continuationMinute = actionMinute + 1;
   return Object.assign(response, {
+    minute: continuationMinute,
+    prev_time: actionMinute,
     status: "IN_PROGRESS",
     pending_action: null,
     field_state: null,
     match: {
       ...response.match,
+      current_time: continuationMinute,
+      prev_time: actionMinute,
       match_status: "IN_PROGRESS",
       pending_action: null,
     },
@@ -460,42 +501,150 @@ function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
 }
 
 test("renders each canonical tactical scene with preloaded field assets", async ({
-  page,
+  context,
 }, testInfo) => {
   test.slow();
   // Each isolated page must preload the actual stadium and 22-player assets.
   // The production preview deliberately serves these large assets without a
   // cache lifetime, so this matrix can exceed Playwright's default slow limit.
   test.setTimeout(240_000);
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
-
   const sceneTypes = ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"] as const;
-  for (const [index, sceneType] of sceneTypes.entries()) {
-    const scenePage = index === 0 ? page : await page.context().newPage();
-    if (index > 0) {
+  for (const sceneType of sceneTypes) {
+    const scenePage = await context.newPage();
+    try {
       await scenePage.goto("/game");
       await scenePage.waitForFunction(
         () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
       );
+      await hydrateScene(scenePage, canonicalScene(sceneType));
+      await expect(
+        scenePage.getByText(sceneExpectations[sceneType].title, {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        scenePage.getByTestId("game-field").locator("canvas"),
+      ).toBeVisible();
+      await waitForRenderableTacticalScene(scenePage, sceneType);
+      await captureTacticalEvidence(
+        scenePage,
+        testInfo,
+        `tactical-${sceneType.toLowerCase()}`,
+      );
+    } finally {
+      await scenePage.close();
     }
-    await hydrateScene(scenePage, canonicalScene(sceneType));
-    await expect(
-      scenePage.getByText(sceneExpectations[sceneType].title, { exact: true }),
-    ).toBeVisible();
-    await expect(
-      scenePage.getByTestId("game-field").locator("canvas"),
-    ).toBeVisible();
-    await waitForRenderableTacticalScene(scenePage, sceneType);
-    await captureTacticalEvidence(
-      scenePage,
-      testInfo,
-      `tactical-${sceneType.toLowerCase()}`,
-    );
-    if (scenePage !== page) await scenePage.close();
   }
+});
+
+test("requires fresh complete frames after resize and orientation change", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/game");
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+  await waitForRenderableTacticalScene(page, "OPEN_PLAY");
+  const field = page.getByTestId("game-field");
+
+  await page.evaluate(() => {
+    const target = document.querySelector('[data-testid="game-field"]');
+    if (!target) throw new Error("Field readiness target is unavailable");
+    document.body.dataset.readinessHistory =
+      target.getAttribute("data-render-ready") ?? "";
+    new MutationObserver(() => {
+      document.body.dataset.readinessHistory += `,${target.getAttribute("data-render-ready")}`;
+    }).observe(target, {
+      attributeFilter: ["data-render-ready"],
+      attributes: true,
+    });
+  });
+
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Tactical viewport is unavailable");
+  await page.setViewportSize({
+    width: viewport.height,
+    height: viewport.width,
+  });
+  await expect
+    .poll(() => page.locator("body").getAttribute("data-readiness-history"))
+    .toContain("false");
+  await expect(field).toHaveAttribute("data-render-ready", "true", {
+    timeout: FIELD_READY_TIMEOUT_MS,
+  });
+  await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
+  await expect(page.getByTestId("ball-aim-target")).toBeVisible();
+});
+
+test("fails safely before interaction for an unsupported kick envelope", async ({
+  page,
+}) => {
+  await page.goto("/game");
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  const unsupported = canonicalScene("OPEN_PLAY");
+  Object.assign(unsupported.pending_action.control_envelope, {
+    selection_quality: 0.9,
+  });
+  await hydrateScene(page, unsupported);
+
+  const field = page.getByTestId("game-field");
+  await expect(field).toHaveAttribute("data-render-ready", "true", {
+    timeout: FIELD_READY_TIMEOUT_MS,
+  });
+  await expect(field).toHaveAttribute("data-kick-contract-supported", "false");
+  await expect(page.getByTestId("ball-aim-target")).toHaveCount(0);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "unsupported kick controls" }),
+  ).toBeVisible();
+});
+
+test("keeps keyboard focus inside the contact dialog and restores the aim target", async ({
+  page,
+}, testInfo) => {
+  test.slow();
+  await page.goto("/game");
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await reverseDragFromBall(
+    page,
+    target,
+    testInfo.project.name === "mobile-chromium",
+  );
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(page.getByRole("gridcell", { selected: true })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(
+    page.getByRole("gridcell", { name: "Center contact", exact: true }),
+  ).toBeFocused();
+  await expect(page.getByText(/^Center contact, x /u)).toBeAttached();
+
+  const submit = page.getByTestId("kick-submit");
+  await submit.focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Close" })).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(submit).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(target).toBeFocused();
+
+  await reverseDragFromBall(
+    page,
+    target,
+    testInfo.project.name === "mobile-chromium",
+  );
+  await page.getByRole("button", { name: "Close" }).click();
+  await expect(target).toBeFocused();
 });
 
 test("submits one canonical reverse-drag kick and plays the authoritative result", async ({
@@ -527,10 +676,13 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
     target,
     testInfo.project.name === "mobile-chromium",
   );
-  await expect(page.getByRole("dialog")).toBeVisible();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
+  await expect(page.getByRole("gridcell", { selected: true })).toBeFocused();
   await expect(
     page.getByText(
-      /Server power range: 16% -94%; short pulls use the server floor\./u,
+      /Server power range: 16% - 94%; short pulls use the server floor\./u,
     ),
   ).toBeVisible();
   const displayedPower = await page
@@ -638,6 +790,7 @@ test("captures the rendered authoritative tactical result", async ({
   );
   await page.getByTestId("kick-submit").click();
   await expect(page.getByTestId("kick-result")).toBeVisible();
+  await expect(page.getByText("39' · PENALTY", { exact: true })).toBeVisible();
   await captureTacticalEvidence(page, testInfo, "kick-result-playback");
 });
 
@@ -661,7 +814,11 @@ test("automatically continues an authoritative tactical result after its hold", 
   await hydrateScene(page, canonicalScene("PENALTY"));
   const target = page.getByTestId("ball-aim-target");
   await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
-  await reverseDragFromBall(page, target, false);
+  await reverseDragFromBall(
+    page,
+    target,
+    test.info().project.name === "mobile-chromium",
+  );
   await page.getByTestId("kick-submit").click();
   await expect(page.getByTestId("kick-result")).toBeVisible();
   await page.waitForTimeout(2_000);
@@ -669,4 +826,46 @@ test("automatically continues an authoritative tactical result after its hold", 
   await expect(page).toHaveURL(/\/match\/match-penalty$/u, {
     timeout: 1_500,
   });
+});
+
+// WEBGL_lose_context can degrade SwiftShader for the rest of a browser worker,
+// so this destructive lifecycle proof intentionally runs after interaction visuals.
+test("invalidates field readiness across WebGL context loss and restoration", async ({
+  page,
+}) => {
+  test.slow();
+  await page.goto("/game");
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+  await waitForRenderableTacticalScene(page, "OPEN_PLAY");
+
+  const field = page.getByTestId("game-field");
+  const contextExtensionAvailable = await page.evaluate(() => {
+    const canvas = document.querySelector<HTMLCanvasElement>(
+      '[data-testid="game-field"] canvas',
+    );
+    const context =
+      canvas?.getContext("webgl2") ?? canvas?.getContext("webgl") ?? null;
+    const extension = context?.getExtension("WEBGL_lose_context");
+    if (!extension) return false;
+    canvas?.addEventListener(
+      "webglcontextlost",
+      () => window.setTimeout(() => extension.restoreContext(), 800),
+      { once: true },
+    );
+    extension.loseContext();
+    return true;
+  });
+  expect(contextExtensionAvailable).toBe(true);
+
+  await expect(field).toHaveAttribute("data-render-ready", "false");
+  await expect(page.getByTestId("field-loading-overlay")).toBeVisible();
+  await expect(page.getByTestId("ball-aim-target")).toHaveCount(0);
+  await expect(field).toHaveAttribute("data-render-ready", "true", {
+    timeout: FIELD_READY_TIMEOUT_MS,
+  });
+  await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
+  await expect(page.getByTestId("ball-aim-target")).toBeVisible();
 });

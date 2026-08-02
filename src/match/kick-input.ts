@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export const CANONICAL_KICK_SCENES = [
   "OPEN_PLAY",
   "FREE_KICK",
@@ -7,15 +9,23 @@ export const CANONICAL_KICK_SCENES = [
 
 export type CanonicalKickScene = (typeof CANONICAL_KICK_SCENES)[number];
 
-export interface KickControlEnvelope {
-  version: number;
-  input_mapping_version: string;
-  minimum_power: number;
-  maximum_power: number;
-  maximum_curve: number;
-  maximum_lift: number;
-  contact_radius: number;
-}
+export const KickControlEnvelopeSchema = z
+  .object({
+    version: z.literal(1),
+    input_mapping_version: z.literal("kick-v1"),
+    minimum_power: z.number().finite().min(0).max(1),
+    maximum_power: z.number().finite().min(0).max(1),
+    maximum_curve: z.number().finite().min(0).max(1),
+    maximum_lift: z.number().finite().min(0).max(1),
+    contact_radius: z.number().finite().gt(0).max(1),
+  })
+  .strict()
+  .refine((envelope) => envelope.minimum_power <= envelope.maximum_power, {
+    message: "minimum_power must not exceed maximum_power",
+    path: ["minimum_power"],
+  });
+
+export type KickControlEnvelope = z.infer<typeof KickControlEnvelopeSchema>;
 
 export interface CanonicalKickInput {
   version: number;
@@ -72,43 +82,11 @@ export function visibleKickPowerRatio(
   return clampKickPower(envelope, normalizedPullPower);
 }
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 export function parseKickControlEnvelope(
   value: unknown,
 ): KickControlEnvelope | null {
-  if (!value || typeof value !== "object") return null;
-  const envelope = value as Record<string, unknown>;
-  const numericKeys = [
-    "version",
-    "minimum_power",
-    "maximum_power",
-    "maximum_curve",
-    "maximum_lift",
-    "contact_radius",
-  ] as const;
-  if (
-    numericKeys.some((key) => !isFiniteNumber(envelope[key])) ||
-    typeof envelope.input_mapping_version !== "string" ||
-    envelope.input_mapping_version.length === 0
-  ) {
-    return null;
-  }
-
-  const parsed = envelope as unknown as KickControlEnvelope;
-  if (
-    parsed.version < 1 ||
-    parsed.minimum_power < 0 ||
-    parsed.maximum_power > 1 ||
-    parsed.minimum_power > parsed.maximum_power ||
-    parsed.contact_radius <= 0 ||
-    parsed.contact_radius > 1
-  ) {
-    return null;
-  }
-  return parsed;
+  const parsed = KickControlEnvelopeSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export function isCanonicalKickScene(sceneType: string | undefined) {

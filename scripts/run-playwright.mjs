@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ec } from "starknet";
 import { extractVitePreviewUrl } from "./preview-url.mjs";
@@ -10,13 +10,17 @@ import { extractVitePreviewUrl } from "./preview-url.mjs";
 const previewServerScript = fileURLToPath(
   new URL("./serve-e2e-preview.mjs", import.meta.url),
 );
+const playwrightCli = fileURLToPath(
+  new URL("../node_modules/playwright/cli.js", import.meta.url),
+);
 const pnpmVersion =
   process.env.npm_config_user_agent?.match(/^pnpm\/([^\s]+)/u)?.[1];
+const pnpmCli = process.env.npm_execpath;
 const shutdownSignals = ["SIGINT", "SIGTERM", "SIGHUP"];
 const usesProcessGroups = process.platform !== "win32";
 const initialParentPid = process.ppid;
 
-if (!pnpmVersion) {
+if (!pnpmVersion || !pnpmCli) {
   throw new Error("pnpm is required to run browser tests");
 }
 
@@ -24,7 +28,6 @@ const ownedChildren = new Map();
 let cleanupPromise;
 let browserDistDirectory;
 let directBrowserDistDirectory;
-let pnpmShimDirectory;
 let parentWatchdog;
 let shutdownRequested = false;
 let shutdownSignal;
@@ -121,9 +124,6 @@ async function cleanup() {
       }
     }
 
-    if (pnpmShimDirectory) {
-      await rm(pnpmShimDirectory, { force: true, recursive: true });
-    }
     if (browserDistDirectory) {
       await rm(browserDistDirectory, { force: true, recursive: true });
     }
@@ -157,33 +157,19 @@ function runOwned(name, command, args, options = {}) {
 }
 
 function runPnpm(name, args, options = {}) {
-  return runOwned(name, "corepack", [`pnpm@${pnpmVersion}`, ...args], {
+  return runOwned(name, process.execPath, [pnpmCli, ...args], {
     ...options,
     env: {
       ...process.env,
       ...options.env,
-      PATH: `${pnpmShimDirectory}${delimiter}${options.env?.PATH ?? process.env.PATH}`,
     },
   });
 }
 
-async function createPnpmShimDirectory() {
-  const directory = await mkdtemp(join(tmpdir(), "overgoal-pnpm-"));
-  if (shutdownRequested) {
-    await rm(directory, { force: true, recursive: true });
-    throw new Error("Browser runner shut down before Corepack setup completed");
-  }
-
-  pnpmShimDirectory = directory;
+async function createRunnerDirectories() {
   browserDistDirectory = await mkdtemp(
     join(tmpdir(), "overgoal-browser-dist-"),
   );
-  await runOwned("corepack-enable", "corepack", [
-    "enable",
-    "--install-directory",
-    pnpmShimDirectory,
-  ]);
-  return pnpmShimDirectory;
 }
 
 function waitForPreviewUrl(preview) {
@@ -301,7 +287,7 @@ async function main() {
     };
   });
   const encodedLocalCiWallets = JSON.stringify(localCiWallets);
-  await createPnpmShimDirectory();
+  await createRunnerDirectories();
   await runPnpm("typecheck", ["typecheck"]);
   await runPnpm(
     "build",
@@ -380,7 +366,7 @@ async function main() {
   }
   console.log(`OVERGOAL_PREVIEW_URL=${baseUrl}`);
 
-  const playwrightArgs = [`pnpm@${pnpmVersion}`, "exec", "playwright", "test"];
+  const playwrightArgs = [playwrightCli, "test"];
   const focusedGrep = process.env.OVERGOAL_PLAYWRIGHT_GREP;
   if (focusedGrep) {
     playwrightArgs.push("--grep", focusedGrep);
@@ -400,11 +386,10 @@ async function main() {
   if (process.env.OVERGOAL_UPDATE_SNAPSHOTS === "true") {
     playwrightArgs.push("--update-snapshots");
   }
-  const browser = spawnOwned("playwright", "corepack", playwrightArgs, {
+  const browser = spawnOwned("playwright", process.execPath, playwrightArgs, {
     stdio: "inherit",
     env: {
       ...process.env,
-      PATH: `${pnpmShimDirectory}${delimiter}${process.env.PATH}`,
       OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
       OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
       PLAYWRIGHT_BASE_URL: baseUrl,
@@ -481,19 +466,12 @@ async function main() {
 
   const directBrowser = spawnOwned(
     "direct-playwright",
-    "corepack",
-    [
-      `pnpm@${pnpmVersion}`,
-      "exec",
-      "playwright",
-      "test",
-      "e2e/direct-api.spec.ts",
-    ],
+    process.execPath,
+    [playwrightCli, "test", "e2e/direct-api.spec.ts"],
     {
       stdio: "inherit",
       env: {
         ...process.env,
-        PATH: `${pnpmShimDirectory}${delimiter}${process.env.PATH}`,
         OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
         OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
         OVERGOAL_MATCH_API_BASE_URL: directApiBaseUrl,

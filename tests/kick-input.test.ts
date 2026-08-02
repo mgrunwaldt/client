@@ -7,6 +7,7 @@ import {
   clampContactToRadius,
   clampKickPower,
   createKickSubmissionGate,
+  type KickControlEnvelope,
   parseKickControlEnvelope,
   visibleKickPowerRatio,
 } from "../src/match/kick-input";
@@ -19,7 +20,7 @@ const envelope = {
   maximum_curve: 0.8,
   maximum_lift: 0.8,
   contact_radius: 0.7,
-};
+} satisfies KickControlEnvelope;
 
 describe("canonical kick input", () => {
   it("maps the ball face to canonical Cartesian coordinates", () => {
@@ -84,13 +85,26 @@ describe("canonical kick input", () => {
 
   it("validates server-authored envelopes and preserves radius boundaries", () => {
     expect(parseKickControlEnvelope(envelope)).toEqual(envelope);
-    expect(parseKickControlEnvelope({ ...envelope, contact_radius: 1.1 })).toBe(
-      null,
-    );
     expect(clampContactToRadius({ x: -0.2, y: 0.3 }, 0.7)).toEqual({
       x: -0.2,
       y: 0.3,
     });
+  });
+
+  it.each([
+    ["contract version", { ...envelope, version: 2 }],
+    ["input mapping", { ...envelope, input_mapping_version: "kick-v2" }],
+    ["negative minimum", { ...envelope, minimum_power: -0.1 }],
+    ["maximum above one", { ...envelope, maximum_power: 1.1 }],
+    ["inverted power range", { ...envelope, minimum_power: 0.9 }],
+    ["negative curve", { ...envelope, maximum_curve: -0.1 }],
+    ["lift above one", { ...envelope, maximum_lift: 1.1 }],
+    ["zero contact radius", { ...envelope, contact_radius: 0 }],
+    ["contact radius above one", { ...envelope, contact_radius: 1.1 }],
+    ["wrong numeric type", { ...envelope, maximum_power: "0.8" }],
+    ["unknown field", { ...envelope, selection_quality: 0.9 }],
+  ])("rejects an unsupported %s envelope", (_label, unsupported) => {
+    expect(parseKickControlEnvelope(unsupported)).toBeNull();
   });
 
   it("accepts exactly one submission per action and allows transport retry", () => {

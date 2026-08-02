@@ -8,6 +8,7 @@ import { type BallAimDraft, buildBallAimDraft } from "../../match/kick-gesture";
 interface BallAimSurfaceProps {
   position: [number, number, number];
   maximumPower: number;
+  focusOnMount?: boolean;
   onAimChange: (draft: BallAimDraft | null) => void;
   onAimRelease: (draft: BallAimDraft) => void;
 }
@@ -37,6 +38,7 @@ function aimPointFromEvent(
 export function BallAimSurface({
   position,
   maximumPower,
+  focusOnMount = false,
   onAimChange,
   onAimRelease,
 }: BallAimSurfaceProps) {
@@ -92,6 +94,7 @@ export function BallAimSurface({
     <Html position={position} center>
       <button
         type="button"
+        autoFocus={focusOnMount}
         data-testid="ball-aim-target"
         data-kick-maximum-power={maximumPower}
         aria-label="Aim from the live ball"
