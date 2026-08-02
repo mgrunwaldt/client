@@ -5,8 +5,10 @@ import {
   ballFacePercentFromContact,
   buildCanonicalKickDecision,
   clampContactToRadius,
+  clampKickPower,
   createKickSubmissionGate,
   parseKickControlEnvelope,
+  visibleKickPowerRatio,
 } from "../src/match/kick-input";
 
 const envelope = {
@@ -68,6 +70,16 @@ describe("canonical kick input", () => {
         y: 0,
       }),
     ).toThrow("non-zero aim");
+  });
+
+  it("renders the server-clamped power on the global arrow range", () => {
+    const fullEnvelope = { ...envelope, maximum_power: 1 };
+
+    expect(clampKickPower(envelope, 1)).toBe(0.8);
+    expect(visibleKickPowerRatio(envelope, 0.8)).toBe(0.8);
+    expect(visibleKickPowerRatio(envelope, 1)).toBe(0.8);
+    expect(visibleKickPowerRatio(envelope, 0)).toBe(0.2);
+    expect(visibleKickPowerRatio(fullEnvelope, 1)).toBe(1);
   });
 
   it("validates server-authored envelopes and preserves radius boundaries", () => {

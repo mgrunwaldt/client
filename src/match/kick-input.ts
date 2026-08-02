@@ -52,6 +52,26 @@ export function clamp(value: number, minimum: number, maximum: number) {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+export function clampKickPower(
+  envelope: KickControlEnvelope,
+  normalizedPullPower: number,
+) {
+  return clamp(
+    normalizedPullPower,
+    envelope.minimum_power,
+    envelope.maximum_power,
+  );
+}
+
+// The renderer uses the same effective power that the request sends. This is
+// a presentation of server bounds, not a client-side skill formula.
+export function visibleKickPowerRatio(
+  envelope: KickControlEnvelope,
+  normalizedPullPower: number,
+) {
+  return clampKickPower(envelope, normalizedPullPower);
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -145,11 +165,7 @@ export function buildCanonicalKickDecision(
     kick_input: {
       version: envelope.version,
       aim,
-      power: clamp(
-        normalizedPullPower,
-        envelope.minimum_power,
-        envelope.maximum_power,
-      ),
+      power: clampKickPower(envelope, normalizedPullPower),
       contact: clampContactToRadius(rawContact, envelope.contact_radius),
     },
   };

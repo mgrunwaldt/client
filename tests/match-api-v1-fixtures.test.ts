@@ -23,10 +23,10 @@ import { createMatchApiV1SchemaValidator } from "../scripts/match-api-v1-schema-
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "d5393cf3ff6efa4d9c893e0534284b08b2f98d2c";
+const CONTRACT_SOURCE_REVISION = "8bfcdec94f33054e73176fdc9af939f189f4369e";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "8935c0ab46f1b7ca8b0a36c8df6bfb38545b7a1c6c8e7ce8833ebb3406505282";
+  "6883a656f08b919828a61290a218f20930726cd595ff79e45b508b11c837e1f7";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(
@@ -160,7 +160,7 @@ describe("Match API v1 test fixture mirror", () => {
       revision: CONTRACT_SOURCE_REVISION,
       contract_path: "contracts/match-api/v1",
       description:
-        "Test-only mirror of the M1 authenticated-owner Match API v1 contract. Runtime modules must not import this directory.",
+        "Test-only mirror of the M2 tactical Match API v1 contract. Runtime modules must not import this directory.",
     });
     expect(sha256(manifestContents.toString())).toBe(FIXTURE_MANIFEST_SHA256);
 

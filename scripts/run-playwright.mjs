@@ -391,7 +391,10 @@ async function main() {
   console.log(`OVERGOAL_PREVIEW_URL=${baseUrl}`);
 
   const playwrightArgs = [`pnpm@${pnpmVersion}`, "exec", "playwright", "test"];
-  if (process.env.OVERGOAL_RUNNER_SIGNAL_PROOF === "1") {
+  const focusedGrep = process.env.OVERGOAL_PLAYWRIGHT_GREP;
+  if (focusedGrep) {
+    playwrightArgs.push("--grep", focusedGrep);
+  } else if (process.env.OVERGOAL_RUNNER_SIGNAL_PROOF === "1") {
     playwrightArgs.push(
       "--project=chromium",
       "--grep",
@@ -416,7 +419,12 @@ async function main() {
   await waitForBrowserOrPreviewExit(browser, preview);
 
   await stopOwnedChild(preview, "preview");
-  if (process.env.OVERGOAL_STALE_PORT_PROOF === "1") return;
+  if (
+    process.env.OVERGOAL_STALE_PORT_PROOF === "1" ||
+    process.env.OVERGOAL_SKIP_DIRECT_API === "true"
+  ) {
+    return;
+  }
 
   directBrowserDistDirectory = await mkdtemp(
     join(tmpdir(), "overgoal-direct-browser-dist-"),
@@ -530,7 +538,11 @@ for (const signal of shutdownSignals) {
   process.on(signal, () => requestShutdown(signal));
 }
 
-if (usesProcessGroups && initialParentPid > 1) {
+if (
+  usesProcessGroups &&
+  initialParentPid > 1 &&
+  process.env.OVERGOAL_DISABLE_PARENT_WATCHDOG !== "true"
+) {
   parentWatchdog = setInterval(() => {
     if (process.ppid !== initialParentPid) {
       requestShutdown(

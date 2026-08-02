@@ -184,8 +184,8 @@
         "operationId": "createMatch",
         "tags": ["Matches"],
         "summary": "Create an unstarted match shell",
-        "description": "Creates a NOT_STARTED match. The seed and idempotency semantics are accepted contract fields but are not durably enforced by the M0 prototype.",
-        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "description": "Creates a NOT_STARTED match. An Idempotency-Key is required and is durably scoped to the authenticated principal and createMatch operation.",
+        "parameters": [{ "$ref": "#/components/parameters/CreateMatchIdempotencyKey" }],
         "requestBody": {
           "required": true,
           "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateMatchRequest" } } }
@@ -213,8 +213,8 @@
         "tags": ["Matches"],
         "summary": "Start a NOT_STARTED match and run to the next stop",
         "parameters": [
-          { "$ref": "#/components/parameters/IdempotencyKey" },
-          { "$ref": "#/components/parameters/MatchRevision" }
+          { "$ref": "#/components/parameters/StartMatchIdempotencyKey" },
+          { "$ref": "#/components/parameters/StartMatchRevision" }
         ],
         "requestBody": {
           "required": true,
@@ -523,6 +523,27 @@
         "schema": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" },
         "x-overgoal-m1-required": true
       },
+      "CreateMatchIdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Opaque key scoped to createMatch and the authenticated principal. Exact retries replay the original 201 response.",
+        "schema": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" }
+      },
+      "StartMatchIdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "Opaque key scoped to startMatch, the authenticated principal, and the target match. Exact retries replay the original response.",
+        "schema": { "type": "string", "minLength": 16, "maxLength": 128, "pattern": "^[A-Za-z0-9._:-]+$" }
+      },
+      "StartMatchRevision": {
+        "name": "If-Match-Revision",
+        "in": "header",
+        "required": true,
+        "description": "Last observed match revision. A stale start command returns MATCH_REVISION_CONFLICT without mutation.",
+        "schema": { "type": "integer", "minimum": 0 }
+      },
       "MatchRevision": {
         "name": "If-Match-Revision",
         "in": "header",
@@ -714,7 +735,8 @@
         "required": ["attack_chain_depth", "last_scene_origin"],
         "properties": {
           "attack_chain_depth": { "type": "integer", "minimum": 0, "maximum": 8 },
-          "last_scene_origin": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP"] },
+          "last_scene_origin": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP", "POSSESSION_CHAIN"] },
+          "possession_chain": { "$ref": "#/components/schemas/MatchContext" },
           "requested_seed": {
             "oneOf": [{ "$ref": "#/components/schemas/SimulationSeed" }, { "type": "null" }],
             "description": "Optional client compatibility metadata. It is never an authoritative entropy source."
@@ -765,7 +787,12 @@
           "ruleset": { "$ref": "#/components/schemas/Ruleset" },
           "match_metadata": { "$ref": "#/components/schemas/MatchMetadata" },
           "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
-          "engine_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
+          "engine_version": {
+            "type": "string",
+            "enum": ["match-engine/1", "match-engine/2"],
+            "description": "match-engine/2 supports live mutation. Persisted match-engine/1 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
+            "x-overgoal-m1-required": true
+          },
           "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
           "initial_state": { "$ref": "#/components/schemas/ReplayInitialState" },
           "revision": { "type": "integer", "minimum": 0, "x-overgoal-m1-required": true }
@@ -786,7 +813,11 @@
           "carrier_player_id": { "$ref": "#/components/schemas/Identifier" },
           "possession_state": { "type": "string" },
           "ball_x": { "$ref": "#/components/schemas/Coordinate" },
-          "ball_y": { "$ref": "#/components/schemas/Coordinate" }
+          "ball_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 }
         },
         "additionalProperties": true
       },
@@ -801,9 +832,52 @@
           "is_legend": { "type": "boolean" },
           "has_ball": { "type": "boolean" },
           "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
-          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" }
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 },
+          "collision_shape": { "$ref": "#/components/schemas/CollisionShape" }
         },
         "additionalProperties": true
+      },
+      "CollisionShape": {
+        "type": "object",
+        "required": ["radius_m", "height_m", "receive_radius_m"],
+        "properties": {
+          "radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9 },
+          "height_m": { "type": "number", "minimum": 1.7, "maximum": 2.44 },
+          "receive_radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9 }
+        },
+        "additionalProperties": false
+      },
+      "FieldGeometry": {
+        "type": "object",
+        "required": ["version", "pitch_width_m", "pitch_length_m", "goal_width_m", "goal_height_m", "goal_depth_m", "goal_post_radius_m", "ball_radius_m", "opponent_goal", "opponent_penalty_area"],
+        "properties": {
+          "version": { "const": "regulation-68x105-v1" },
+          "pitch_width_m": { "const": 68 },
+          "pitch_length_m": { "const": 105 },
+          "goal_width_m": { "const": 7.32 },
+          "goal_height_m": { "const": 2.44 },
+          "goal_depth_m": { "const": 2 },
+          "goal_post_radius_m": { "const": 0.06 },
+          "ball_radius_m": { "const": 0.11 },
+          "opponent_goal": {
+            "type": "object",
+            "required": ["line_y", "left_post_x", "right_post_x"],
+            "properties": { "line_y": { "const": 0 }, "left_post_x": { "const": 44.62 }, "right_post_x": { "const": 55.38 } },
+            "additionalProperties": false
+          },
+          "opponent_penalty_area": {
+            "type": "object",
+            "required": ["min_x", "max_x", "min_y", "max_y", "penalty_spot"],
+            "properties": {
+              "min_x": { "const": 20.35 }, "max_x": { "const": 79.65 }, "min_y": { "const": 0 }, "max_y": { "const": 15.71 },
+              "penalty_spot": { "type": "object", "required": ["x", "y"], "properties": { "x": { "const": 50 }, "y": { "const": 10.48 } }, "additionalProperties": false }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
       },
       "DefenderWave": {
         "type": "object",
@@ -875,8 +949,13 @@
           "distance_to_goal": { "type": "number", "minimum": 0, "maximum": 100 },
           "ball_x": { "$ref": "#/components/schemas/Coordinate" },
           "ball_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 },
           "context": { "$ref": "#/components/schemas/MatchContext" },
-          "dribble_pattern": { "$ref": "#/components/schemas/DribblePattern" }
+          "dribble_pattern": { "$ref": "#/components/schemas/DribblePattern" },
+          "geometry": { "$ref": "#/components/schemas/FieldGeometry" }
         },
         "additionalProperties": true
       },
@@ -887,7 +966,8 @@
           "optional": { "type": "array", "items": { "type": "string" } },
           "target_lane_values": { "type": "array", "items": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] } },
           "lane_trace_values": { "type": "array", "items": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] } },
-          "lane_trace_point_fields": { "type": "array", "items": { "type": "string", "enum": ["at_second", "lane"] } }
+          "lane_trace_point_fields": { "type": "array", "items": { "type": "string", "enum": ["at_second", "lane"] } },
+          "kick_input_version": { "type": "integer", "const": 1 }
         },
         "additionalProperties": true
       },
@@ -932,6 +1012,7 @@
           "context": { "$ref": "#/components/schemas/MatchContext" },
           "origin": { "oneOf": [{ "$ref": "#/components/schemas/PendingActionOrigin" }, { "type": "null" }] },
           "contract_version": { "type": "integer", "const": 2 },
+          "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" },
           "field_state": { "$ref": "#/components/schemas/FieldState" }
         },
         "additionalProperties": true
@@ -939,7 +1020,7 @@
       "OpenPlayPendingAction": {
         "allOf": [
           { "$ref": "#/components/schemas/PendingActionBase" },
-          { "type": "object", "properties": { "scene_type": { "const": "OPEN_PLAY" } }, "x-overgoal-choice-ids": ["KICK", "DRIBBLE"] }
+          { "type": "object", "required": ["control_envelope"], "properties": { "scene_type": { "const": "OPEN_PLAY" }, "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" } }, "x-overgoal-choice-ids": ["KICK", "DRIBBLE"] }
         ]
       },
       "DribblePendingAction": {
@@ -956,13 +1037,13 @@
         ]
       },
       "FreeKickPendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "FREE_KICK" } }, "x-overgoal-choice-ids": ["KICK"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "required": ["control_envelope"], "properties": { "scene_type": { "const": "FREE_KICK" }, "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" } }, "x-overgoal-choice-ids": ["KICK"] }]
       },
       "CornerPendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "CORNER" } }, "x-overgoal-choice-ids": ["KICK"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "required": ["control_envelope"], "properties": { "scene_type": { "const": "CORNER" }, "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" } }, "x-overgoal-choice-ids": ["KICK"] }]
       },
       "PenaltyPendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "PENALTY" } }, "x-overgoal-choice-ids": ["KICK"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "required": ["control_envelope"], "properties": { "scene_type": { "const": "PENALTY" }, "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" } }, "x-overgoal-choice-ids": ["KICK"] }]
       },
       "JumperPendingAction": {
         "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "JUMPER" } }, "x-overgoal-choice-ids": ["ACCEPT_HUG", "DODGE", "SECURITY_TACKLE"] }]
@@ -1048,6 +1129,11 @@
           "final_point": { "$ref": "#/components/schemas/FlightPoint" },
           "receiver": { "$ref": "#/components/schemas/FieldPlayer" },
           "interceptor": { "$ref": "#/components/schemas/FieldPlayer" },
+          "receiver_control": { "$ref": "#/components/schemas/ReceiverControl" },
+          "possession_follow_up": { "$ref": "#/components/schemas/PossessionFollowUp" },
+          "automatic_follow_up": { "$ref": "#/components/schemas/AutomaticKickFollowUp" },
+          "kick_resolution": { "$ref": "#/components/schemas/KickResolution" },
+          "foul": { "$ref": "#/components/schemas/KickFoul" },
           "dribble_resolution": { "$ref": "#/components/schemas/DribbleResolution" }
         },
         "allOf": [
@@ -1143,7 +1229,7 @@
           "action_team": { "$ref": "#/components/schemas/ActionTeam" },
           "action_id": { "$ref": "#/components/schemas/Identifier" },
           "action_version": { "type": "integer", "minimum": 1 },
-          "decision_version": { "type": "integer", "minimum": 1 },
+          "decision_version": { "type": "integer", "minimum": 1, "maximum": 2 },
           "decision_data": { "type": "object", "additionalProperties": true },
           "field_state_id": { "$ref": "#/components/schemas/Identifier" },
           "timestamp": { "type": "number", "minimum": 0 }
@@ -1215,7 +1301,50 @@
         "type": "number",
         "description": "Compatibility/replay metadata supplied by the client. The runtime records but does not use this value for authoritative outcomes; M1 replay derives outcomes from the durable match seed and ordered action identity."
       },
-      "KickDecision": {
+      "KickControlEnvelope": {
+        "type": "object",
+        "required": ["version", "input_mapping_version", "minimum_power", "maximum_power", "maximum_curve", "maximum_lift", "contact_radius"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "input_mapping_version": { "type": "string", "const": "kick-v1" },
+          "minimum_power": { "type": "number", "minimum": 0, "maximum": 1 },
+          "maximum_power": { "type": "number", "minimum": 0, "maximum": 1 },
+          "maximum_curve": { "type": "number", "minimum": 0, "maximum": 1 },
+          "maximum_lift": { "type": "number", "minimum": 0, "maximum": 1 },
+          "contact_radius": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "KickVector": {
+        "type": "object",
+        "required": ["x", "y"],
+        "properties": {
+          "x": { "type": "number", "minimum": -1, "maximum": 1 },
+          "y": { "type": "number", "minimum": -1, "maximum": 1 }
+        },
+        "additionalProperties": false
+      },
+      "KickInput": {
+        "type": "object",
+        "required": ["version", "aim", "power", "contact"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "aim": { "$ref": "#/components/schemas/KickVector" },
+          "power": { "type": "number", "minimum": 0, "maximum": 1 },
+          "contact": { "$ref": "#/components/schemas/KickVector" }
+        },
+        "additionalProperties": false
+      },
+      "CanonicalKickDecision": {
+        "type": "object",
+        "required": ["choice", "kick_input"],
+        "properties": {
+          "choice": { "const": "KICK" },
+          "kick_input": { "$ref": "#/components/schemas/KickInput" }
+        },
+        "additionalProperties": false
+      },
+      "LegacyKickDecision": {
         "type": "object",
         "required": ["choice", "end_x", "end_y", "contact_x", "contact_y", "power", "curve", "selection_quality", "seed"],
         "properties": {
@@ -1228,6 +1357,127 @@
           "intent_hint": { "type": "string" },
           "target_zone": { "type": "string" },
           "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+        },
+        "additionalProperties": false
+      },
+      "KickDecision": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/CanonicalKickDecision" },
+          { "$ref": "#/components/schemas/LegacyKickDecision" }
+        ]
+      },
+      "KickContact": {
+        "type": "object",
+        "required": ["type", "at"],
+        "properties": {
+          "type": { "type": "string", "enum": ["PLAYER", "GOALKEEPER", "POST", "CROSSBAR"] },
+          "player_id": { "$ref": "#/components/schemas/Identifier" },
+          "at": { "$ref": "#/components/schemas/FlightPoint" },
+          "speed_mps": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": false
+      },
+      "ReceiverControl": {
+        "type": "object",
+        "required": ["carrier_player_id", "facing_target_x", "facing_target_y", "facing_target_player_id", "carry_offset_m"],
+        "properties": {
+          "carrier_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 }
+        },
+        "additionalProperties": false
+      },
+      "PossessionFollowUp": {
+        "type": "object",
+        "required": ["type", "carrier_player_id", "facing_target_x", "facing_target_y", "facing_target_player_id", "carry_offset_m"],
+        "properties": {
+          "type": { "const": "TIMELINE" },
+          "carrier_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 }
+        },
+        "additionalProperties": true
+      },
+      "AutomaticKickFollowUp": {
+        "type": "object",
+        "required": ["type", "actor_player_id", "opportunity", "flight_path", "flight_outcome", "final_point", "contact", "frame_contacts"],
+        "properties": {
+          "type": { "const": "TEAMMATE_SHOT" },
+          "actor_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "opportunity": { "$ref": "#/components/schemas/AutomaticShotOpportunity" },
+          "flight_path": { "type": "array", "minItems": 2, "items": { "$ref": "#/components/schemas/FlightPoint" } },
+          "flight_outcome": { "type": "string", "minLength": 1 },
+          "final_point": { "$ref": "#/components/schemas/FlightPoint" },
+          "contact": { "oneOf": [{ "$ref": "#/components/schemas/KickContact" }, { "type": "null" }] },
+          "frame_contacts": { "type": "array", "maxItems": 2, "items": { "$ref": "#/components/schemas/KickContact" } }
+        },
+        "additionalProperties": false
+      },
+      "AutomaticShotOpportunity": {
+        "type": "object",
+        "required": ["eligible", "score", "distance_to_goal_m", "nearest_defender_m", "lane_blocked", "scene_pressure", "receive_speed_mps"],
+        "properties": {
+          "eligible": { "const": true },
+          "score": { "type": "number", "minimum": 0, "maximum": 100 },
+          "distance_to_goal_m": { "type": "number", "minimum": 0 },
+          "nearest_defender_m": { "oneOf": [{ "type": "number", "minimum": 0 }, { "type": "null" }] },
+          "lane_blocked": { "const": false },
+          "scene_pressure": { "$ref": "#/components/schemas/Rating" },
+          "receive_speed_mps": { "type": "number", "minimum": 0 }
+        },
+        "additionalProperties": false
+      },
+      "KickResolution": {
+        "type": "object",
+        "required": ["decision_version", "kick_input_version", "input_mapping_version", "classification", "aim", "power", "curve", "lift", "projected_goal_line_x", "contact", "frame_contacts", "foul", "follow_up"],
+        "properties": {
+          "decision_version": { "type": "integer", "enum": [1, 2] },
+          "kick_input_version": { "oneOf": [{ "type": "integer", "const": 1 }, { "type": "null" }] },
+          "input_mapping_version": { "type": "string", "enum": ["kick-v1", "legacy-flat-v1"] },
+          "classification": { "type": "string", "enum": ["PASS", "CROSS", "SHOT"] },
+          "aim": { "$ref": "#/components/schemas/KickVector" },
+          "power": { "type": "number", "minimum": 0, "maximum": 1 },
+          "curve": { "type": "number", "minimum": -1, "maximum": 1 },
+          "lift": { "type": "number", "minimum": 0, "maximum": 1 },
+          "projected_goal_line_x": { "type": ["number", "null"] },
+          "contact": { "oneOf": [{ "$ref": "#/components/schemas/KickContact" }, { "type": "null" }] },
+          "frame_contacts": { "type": "array", "maxItems": 2, "items": { "$ref": "#/components/schemas/KickContact" } },
+          "foul": { "oneOf": [{ "$ref": "#/components/schemas/KickFoul" }, { "type": "null" }] },
+          "follow_up": {
+            "oneOf": [
+              { "type": "object", "required": ["type", "scene_type", "context"], "properties": { "type": { "const": "SCENE" }, "scene_type": { "$ref": "#/components/schemas/PlayableSceneType" }, "context": { "$ref": "#/components/schemas/MatchContext" } }, "additionalProperties": false },
+              { "type": "object", "required": ["type", "actor_player_id"], "properties": { "type": { "const": "AUTOMATIC_SHOT" }, "actor_player_id": { "$ref": "#/components/schemas/Identifier" } }, "additionalProperties": false },
+              { "type": "object", "required": ["type", "carrier_player_id"], "properties": { "type": { "const": "TIMELINE" }, "carrier_player_id": { "$ref": "#/components/schemas/Identifier" } }, "additionalProperties": false },
+              { "type": "null" }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "KickFoul": {
+        "type": "object",
+        "required": ["awarded", "eligible", "score", "roll", "set_piece", "challenge"],
+        "properties": {
+          "awarded": { "const": true },
+          "eligible": { "const": true },
+          "score": { "type": "number", "minimum": 0, "maximum": 85 },
+          "roll": { "type": "number", "minimum": 0, "maximum": 100 },
+          "set_piece": { "type": "string", "enum": ["FREE_KICK", "PENALTY"] },
+          "challenge": {
+            "type": "object",
+            "required": ["attacker_player_id", "defender_player_id", "distance_m", "at"],
+            "properties": {
+              "attacker_player_id": { "$ref": "#/components/schemas/Identifier" },
+              "defender_player_id": { "$ref": "#/components/schemas/Identifier" },
+              "distance_m": { "type": "number", "minimum": 0 },
+              "at": { "type": "object", "required": ["x", "y"], "properties": { "x": { "$ref": "#/components/schemas/Coordinate" }, "y": { "$ref": "#/components/schemas/Coordinate" } }, "additionalProperties": false }
+            },
+            "additionalProperties": false
+          }
         },
         "additionalProperties": false
       },

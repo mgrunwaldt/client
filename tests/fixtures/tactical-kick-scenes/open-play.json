@@ -1,0 +1,790 @@
+{
+  "minute": 12,
+  "status": "WAITING_FOR_DECISION",
+  "prev_time": 11,
+  "pending_action": {
+    "id": "action_aca90b59060352d16fcd1d67ac17d0b1",
+    "action_sequence": 1,
+    "minute": 12,
+    "action_type": "OPEN_PLAY",
+    "scene_type": "OPEN_PLAY",
+    "action_team": "MY_TEAM",
+    "source": "TEST_FIXTURE",
+    "title": "Open Play",
+    "description": "Your Legend receives the ball in open play.",
+    "field_state_id": "field_19af064399ae91cdf4c48758425fd258",
+    "available_choices": [
+      {
+        "id": "KICK",
+        "label": "Kick",
+        "description": "Aim the ball with direction, power, and contact point. The engine infers shot or pass from the trajectory.",
+        "input_schema": {
+          "required": ["choice", "kick_input"],
+          "kick_input_version": 1
+        }
+      },
+      {
+        "id": "DRIBBLE",
+        "label": "Dribble",
+        "description": "Launch the three-lane dribble survival minigame.",
+        "input_schema": {
+          "required": ["choice", "target_lane", "selection_quality", "seed"],
+          "target_lane_values": ["LEFT", "CENTER", "RIGHT"]
+        }
+      }
+    ],
+    "control_envelope": {
+      "version": 1,
+      "input_mapping_version": "kick-v1",
+      "minimum_power": 0.16,
+      "maximum_power": 0.94,
+      "maximum_curve": 0.882,
+      "maximum_lift": 0.893,
+      "contact_radius": 0.953
+    },
+    "context": {
+      "seed": 12001,
+      "side_of_pitch": "CENTER",
+      "pressure": 62,
+      "attack_phase": "SETTLED",
+      "numerical_advantage": 0,
+      "quality_band": "PROGRESSIVE",
+      "previous_outcome": null,
+      "carrier_player_id": "team_1_RB_2"
+    },
+    "origin": null,
+    "contract_version": 2,
+    "field_state": {
+      "id": "field_19af064399ae91cdf4c48758425fd258",
+      "match_id": "match-open_play",
+      "minute": 12,
+      "action_type": "OPEN_PLAY",
+      "scene_family": "OPEN_PLAY",
+      "my_team_positions": [
+        {
+          "id": "team_1_GK_1",
+          "role": "GK",
+          "collision_shape": {
+            "radius_m": 0.75,
+            "height_m": 2.44,
+            "receive_radius_m": 0.75
+          },
+          "x": 49.405345601774755,
+          "y": 94.367127469033
+        },
+        {
+          "id": "team_1_RB_2",
+          "role": "RB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 50,
+          "y": 8.714285714285714,
+          "is_legend": true,
+          "has_ball": true
+        },
+        {
+          "id": "team_1_RCB_3",
+          "role": "RCB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 58.762145835720005,
+          "y": 80.7590748384036
+        },
+        {
+          "id": "team_1_LCB_4",
+          "role": "LCB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 39.81526350332424,
+          "y": 80.71269885007291
+        },
+        {
+          "id": "team_1_LB_5",
+          "role": "LB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 15.930755054950714,
+          "y": 76.50573779357597
+        },
+        {
+          "id": "team_1_DM_6",
+          "role": "DM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 51.737994228303435,
+          "y": 59.706111000273374
+        },
+        {
+          "id": "team_1_RCM_7",
+          "role": "RCM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 66.4713185057044,
+          "y": 49.47952990204096
+        },
+        {
+          "id": "team_1_LCM_8",
+          "role": "LCM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 34.858397907670586,
+          "y": 47.270139744766055
+        },
+        {
+          "id": "team_1_RW_9",
+          "role": "RW",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 80.43307065553964,
+          "y": 22.593887797184287
+        },
+        {
+          "id": "team_1_ST_10",
+          "role": "ST",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 50.5445685883984,
+          "y": 11.835631940048188
+        },
+        {
+          "id": "team_1_LW_11",
+          "role": "LW",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 20.89411593424156,
+          "y": 22.580009754747152
+        }
+      ],
+      "opponent_positions": [
+        {
+          "id": "team_2_GK_1",
+          "role": "GK",
+          "collision_shape": {
+            "radius_m": 0.75,
+            "height_m": 2.44,
+            "receive_radius_m": 0.75
+          },
+          "x": 50.256623494345696,
+          "y": 5.182164659127596
+        },
+        {
+          "id": "team_2_RB_2",
+          "role": "RB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 82.5336200132966,
+          "y": 18.42705912511796
+        },
+        {
+          "id": "team_2_RCB_3",
+          "role": "RCB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 57.76435722187161,
+          "y": 12.639535992182795
+        },
+        {
+          "id": "team_2_LCB_4",
+          "role": "LCB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 39.070624481700364,
+          "y": 13.898912813104694
+        },
+        {
+          "id": "team_2_LB_5",
+          "role": "LB",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 16.892934623826296,
+          "y": 15.274272447600964
+        },
+        {
+          "id": "team_2_RDM_6",
+          "role": "RDM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 56.51936127571389,
+          "y": 34.20716917796061
+        },
+        {
+          "id": "team_2_LDM_7",
+          "role": "LDM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 41.977839045319705,
+          "y": 30.466089280620224
+        },
+        {
+          "id": "team_2_RAM_8",
+          "role": "RAM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 75.2569502656348,
+          "y": 55.25888128133491
+        },
+        {
+          "id": "team_2_CAM_9",
+          "role": "CAM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 49.87366067627445,
+          "y": 58.586333023682236
+        },
+        {
+          "id": "team_2_LAM_10",
+          "role": "LAM",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 24.43636324806139,
+          "y": 56.35331950766966
+        },
+        {
+          "id": "team_2_ST_11",
+          "role": "ST",
+          "collision_shape": {
+            "radius_m": 0.42,
+            "height_m": 2,
+            "receive_radius_m": 0.85
+          },
+          "x": 48.41333741685376,
+          "y": 82.86169617250562
+        }
+      ],
+      "legend_player_id": "team_1_RB_2",
+      "carrier_player_id": "team_1_RB_2",
+      "ball_x": 50,
+      "ball_y": 8,
+      "context": {
+        "seed": 12001,
+        "side_of_pitch": "CENTER",
+        "pressure": 62,
+        "attack_phase": "SETTLED",
+        "numerical_advantage": 0,
+        "quality_band": "PROGRESSIVE",
+        "previous_outcome": null,
+        "carrier_player_id": "team_1_RB_2"
+      },
+      "geometry": {
+        "version": "regulation-68x105-v1",
+        "pitch_width_m": 68,
+        "pitch_length_m": 105,
+        "goal_width_m": 7.32,
+        "goal_height_m": 2.44,
+        "goal_depth_m": 2,
+        "goal_post_radius_m": 0.06,
+        "ball_radius_m": 0.11,
+        "opponent_goal": {
+          "line_y": 0,
+          "left_post_x": 44.62,
+          "right_post_x": 55.38
+        },
+        "opponent_penalty_area": {
+          "min_x": 20.35,
+          "max_x": 79.65,
+          "min_y": 0,
+          "max_y": 15.71,
+          "penalty_spot": {
+            "x": 50,
+            "y": 10.48
+          }
+        }
+      },
+      "action_sequence": 1
+    }
+  },
+  "field_state": {
+    "id": "field_19af064399ae91cdf4c48758425fd258",
+    "match_id": "match-open_play",
+    "minute": 12,
+    "action_type": "OPEN_PLAY",
+    "scene_family": "OPEN_PLAY",
+    "my_team_positions": [
+      {
+        "id": "team_1_GK_1",
+        "role": "GK",
+        "collision_shape": {
+          "radius_m": 0.75,
+          "height_m": 2.44,
+          "receive_radius_m": 0.75
+        },
+        "x": 49.405345601774755,
+        "y": 94.367127469033
+      },
+      {
+        "id": "team_1_RB_2",
+        "role": "RB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 50,
+        "y": 8.714285714285714,
+        "is_legend": true,
+        "has_ball": true
+      },
+      {
+        "id": "team_1_RCB_3",
+        "role": "RCB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 58.762145835720005,
+        "y": 80.7590748384036
+      },
+      {
+        "id": "team_1_LCB_4",
+        "role": "LCB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 39.81526350332424,
+        "y": 80.71269885007291
+      },
+      {
+        "id": "team_1_LB_5",
+        "role": "LB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 15.930755054950714,
+        "y": 76.50573779357597
+      },
+      {
+        "id": "team_1_DM_6",
+        "role": "DM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 51.737994228303435,
+        "y": 59.706111000273374
+      },
+      {
+        "id": "team_1_RCM_7",
+        "role": "RCM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 66.4713185057044,
+        "y": 49.47952990204096
+      },
+      {
+        "id": "team_1_LCM_8",
+        "role": "LCM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 34.858397907670586,
+        "y": 47.270139744766055
+      },
+      {
+        "id": "team_1_RW_9",
+        "role": "RW",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 80.43307065553964,
+        "y": 22.593887797184287
+      },
+      {
+        "id": "team_1_ST_10",
+        "role": "ST",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 50.5445685883984,
+        "y": 11.835631940048188
+      },
+      {
+        "id": "team_1_LW_11",
+        "role": "LW",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 20.89411593424156,
+        "y": 22.580009754747152
+      }
+    ],
+    "opponent_positions": [
+      {
+        "id": "team_2_GK_1",
+        "role": "GK",
+        "collision_shape": {
+          "radius_m": 0.75,
+          "height_m": 2.44,
+          "receive_radius_m": 0.75
+        },
+        "x": 50.256623494345696,
+        "y": 5.182164659127596
+      },
+      {
+        "id": "team_2_RB_2",
+        "role": "RB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 82.5336200132966,
+        "y": 18.42705912511796
+      },
+      {
+        "id": "team_2_RCB_3",
+        "role": "RCB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 57.76435722187161,
+        "y": 12.639535992182795
+      },
+      {
+        "id": "team_2_LCB_4",
+        "role": "LCB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 39.070624481700364,
+        "y": 13.898912813104694
+      },
+      {
+        "id": "team_2_LB_5",
+        "role": "LB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 16.892934623826296,
+        "y": 15.274272447600964
+      },
+      {
+        "id": "team_2_RDM_6",
+        "role": "RDM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 56.51936127571389,
+        "y": 34.20716917796061
+      },
+      {
+        "id": "team_2_LDM_7",
+        "role": "LDM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 41.977839045319705,
+        "y": 30.466089280620224
+      },
+      {
+        "id": "team_2_RAM_8",
+        "role": "RAM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 75.2569502656348,
+        "y": 55.25888128133491
+      },
+      {
+        "id": "team_2_CAM_9",
+        "role": "CAM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 49.87366067627445,
+        "y": 58.586333023682236
+      },
+      {
+        "id": "team_2_LAM_10",
+        "role": "LAM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 24.43636324806139,
+        "y": 56.35331950766966
+      },
+      {
+        "id": "team_2_ST_11",
+        "role": "ST",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 48.41333741685376,
+        "y": 82.86169617250562
+      }
+    ],
+    "legend_player_id": "team_1_RB_2",
+    "carrier_player_id": "team_1_RB_2",
+    "ball_x": 50,
+    "ball_y": 8,
+    "context": {
+      "seed": 12001,
+      "side_of_pitch": "CENTER",
+      "pressure": 62,
+      "attack_phase": "SETTLED",
+      "numerical_advantage": 0,
+      "quality_band": "PROGRESSIVE",
+      "previous_outcome": null,
+      "carrier_player_id": "team_1_RB_2"
+    },
+    "geometry": {
+      "version": "regulation-68x105-v1",
+      "pitch_width_m": 68,
+      "pitch_length_m": 105,
+      "goal_width_m": 7.32,
+      "goal_height_m": 2.44,
+      "goal_depth_m": 2,
+      "goal_post_radius_m": 0.06,
+      "ball_radius_m": 0.11,
+      "opponent_goal": {
+        "line_y": 0,
+        "left_post_x": 44.62,
+        "right_post_x": 55.38
+      },
+      "opponent_penalty_area": {
+        "min_x": 20.35,
+        "max_x": 79.65,
+        "min_y": 0,
+        "max_y": 15.71,
+        "penalty_spot": {
+          "x": 50,
+          "y": 10.48
+        }
+      }
+    },
+    "action_sequence": 1
+  },
+  "action": "OPEN_PLAY",
+  "action_team": "MY_TEAM",
+  "events": [],
+  "match": {
+    "id": "match-open_play",
+    "my_team_id": "team_1",
+    "opponent_team_id": "team_2",
+    "my_team_score": 0,
+    "opponent_team_score": 0,
+    "next_match_action": "OPEN_PLAY",
+    "next_match_action_minute": 1,
+    "current_time": 12,
+    "prev_time": 11,
+    "match_status": "WAITING_FOR_DECISION",
+    "player_participation": "PARTICIPATING",
+    "action_team": "MY_TEAM",
+    "event_counter": 0,
+    "action_counter": 1,
+    "decision_counter": 0,
+    "revision": 0,
+    "field_state_id": "field_19af064399ae91cdf4c48758425fd258",
+    "pending_action": {
+      "id": "action_aca90b59060352d16fcd1d67ac17d0b1",
+      "action_sequence": 1,
+      "minute": 12,
+      "action_type": "OPEN_PLAY",
+      "scene_type": "OPEN_PLAY",
+      "action_team": "MY_TEAM",
+      "source": "TEST_FIXTURE",
+      "title": "Open Play",
+      "description": "Your Legend receives the ball in open play.",
+      "field_state_id": "field_19af064399ae91cdf4c48758425fd258",
+      "available_choices": [
+        {
+          "id": "KICK",
+          "label": "Kick",
+          "description": "Aim the ball with direction, power, and contact point. The engine infers shot or pass from the trajectory.",
+          "input_schema": {
+            "required": ["choice", "kick_input"],
+            "kick_input_version": 1
+          }
+        },
+        {
+          "id": "DRIBBLE",
+          "label": "Dribble",
+          "description": "Launch the three-lane dribble survival minigame.",
+          "input_schema": {
+            "required": ["choice", "target_lane", "selection_quality", "seed"],
+            "target_lane_values": ["LEFT", "CENTER", "RIGHT"]
+          }
+        }
+      ],
+      "control_envelope": {
+        "version": 1,
+        "input_mapping_version": "kick-v1",
+        "minimum_power": 0.16,
+        "maximum_power": 0.94,
+        "maximum_curve": 0.882,
+        "maximum_lift": 0.893,
+        "contact_radius": 0.953
+      },
+      "context": {
+        "seed": 12001,
+        "side_of_pitch": "CENTER",
+        "pressure": 62,
+        "attack_phase": "SETTLED",
+        "numerical_advantage": 0,
+        "quality_band": "PROGRESSIVE",
+        "previous_outcome": null,
+        "carrier_player_id": "team_1_RB_2"
+      },
+      "origin": null,
+      "contract_version": 2
+    },
+    "legend_profile": {
+      "stamina": 78,
+      "energy": 78,
+      "shoot": 74,
+      "dribble": 76,
+      "speed": 77,
+      "passing": 73,
+      "heading": 69,
+      "defense": 58,
+      "intelligence": 72,
+      "yellow_cards": 0,
+      "red_card": false,
+      "simulation_attempts": 0,
+      "substitutions": 0
+    },
+    "legend_player_id": "team_1_RB_2",
+    "ruleset": {
+      "rebound_play_enabled": true
+    },
+    "seed": "m2-i3-browser-open_play",
+    "engine_version": "match-engine/2",
+    "ruleset_version": "nss-match-v2/1",
+    "initial_state": {
+      "my_team": {
+        "id": "team_1",
+        "name": "Dojo United",
+        "offense": 78,
+        "defense": 75,
+        "intensity": 80,
+        "set_pieces": 74,
+        "chemistry": 79,
+        "formation": "4-3-3"
+      },
+      "opponent_team": {
+        "id": "team_2",
+        "name": "Cartridge City",
+        "offense": 85,
+        "defense": 68,
+        "intensity": 72,
+        "set_pieces": 77,
+        "chemistry": 70,
+        "formation": "4-2-3-1"
+      },
+      "legend_profile": {
+        "stamina": 78,
+        "energy": 78,
+        "shoot": 74,
+        "dribble": 76,
+        "speed": 77,
+        "passing": 73,
+        "heading": 69,
+        "defense": 58,
+        "intelligence": 72,
+        "yellow_cards": 0,
+        "red_card": false,
+        "simulation_attempts": 0,
+        "substitutions": 0
+      },
+      "ruleset": {
+        "rebound_play_enabled": true
+      }
+    },
+    "match_metadata": {
+      "attack_chain_depth": 0,
+      "last_scene_origin": "TEST_FIXTURE",
+      "requested_seed": null
+    }
+  }
+}

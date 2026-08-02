@@ -1,16 +1,90 @@
-import { expect, test, type Page } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  test,
+  type TestInfo,
+} from "@playwright/test";
+import { sepolia } from "@starknet-react/chains";
 
-import waitingOpenPlayResponse from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
+import cornerScene from "../tests/fixtures/tactical-kick-scenes/corner.json" with { type: "json" };
+import freeKickScene from "../tests/fixtures/tactical-kick-scenes/free-kick.json" with { type: "json" };
+import openPlayScene from "../tests/fixtures/tactical-kick-scenes/open-play.json" with { type: "json" };
+import penaltyScene from "../tests/fixtures/tactical-kick-scenes/penalty.json" with { type: "json" };
 
-const controlEnvelope = {
-  version: 1,
-  input_mapping_version: "kick-v1",
-  minimum_power: 0.2,
-  maximum_power: 1,
-  maximum_curve: 1,
-  maximum_lift: 1,
-  contact_radius: 1,
+const FIELD_READY_TIMEOUT_MS = 45_000;
+const tacticalScenes = {
+  OPEN_PLAY: openPlayScene,
+  FREE_KICK: freeKickScene,
+  CORNER: cornerScene,
+  PENALTY: penaltyScene,
+} as const;
+type TacticalSceneType = keyof typeof tacticalScenes;
+const sceneExpectations: Record<
+  TacticalSceneType,
+  {
+    ballPosition: [string, string];
+    description: string;
+    maximumPower: string;
+    penaltyNonparticipantCount?: string;
+    playerCount: string;
+    playerRoles: string;
+    opponentRoles: string;
+    title: string;
+  }
+> = {
+  OPEN_PLAY: {
+    ballPosition: ["50", "8"],
+    description: "Your Legend receives the ball in open play.",
+    maximumPower: "0.94",
+    title: "Open Play",
+    playerCount: "22",
+    playerRoles:
+      "CAM,DM,GK,GK,LAM,LB,LB,LCB,LCB,LCM,LDM,LW,RAM,RB,RB,RCB,RCB,RCM,RDM,RW,ST,ST",
+    opponentRoles: "CAM,GK,LAM,LB,LCB,LDM,RAM,RB,RCB,RDM,ST",
+  },
+  FREE_KICK: {
+    ballPosition: ["50", "19.05"],
+    description: "Your Legend wins a dangerous free kick.",
+    maximumPower: "0.94",
+    title: "Free Kick",
+    playerCount: "22",
+    playerRoles:
+      "CAM,DM,GK,GK,LAM,LB,LCB,LCM,LDM,LW,RAM,RB,RCB,RCM,RDM,RW,ST,ST,WALL,WALL,WALL,WALL",
+    opponentRoles: "CAM,GK,LAM,LDM,RAM,RDM,ST,WALL,WALL,WALL,WALL",
+  },
+  CORNER: {
+    ballPosition: ["99.63235294117646", "0.23809523809523808"],
+    description: "Your team has a corner to attack.",
+    maximumPower: "0.939",
+    title: "Corner",
+    playerCount: "22",
+    playerRoles:
+      "CAM,EDGE_BOX,FAR_POST,GK,GK,LAM,LCM,LDM,LW,MARKER_1,MARKER_2,MARKER_3,MARKER_4,NEAR_POST,PENALTY_SPOT,RAM,RB,RCM,RDM,RW,ST,ST",
+    opponentRoles:
+      "CAM,GK,LAM,LDM,MARKER_1,MARKER_2,MARKER_3,MARKER_4,RAM,RDM,ST",
+  },
+  PENALTY: {
+    ballPosition: ["50", "10.48"],
+    description: "Your Legend steps up for a penalty.",
+    maximumPower: "0.94",
+    penaltyNonparticipantCount: "20",
+    title: "Penalty Kick",
+    playerCount: "22",
+    playerRoles:
+      "CAM,DM,GK,GK,LAM,LB,LB,LCB,LCB,LCM,LDM,LW,RAM,RB,RB,RCB,RCB,RCM,RDM,RW,ST,ST",
+    opponentRoles: "CAM,GK,LAM,LB,LCB,LDM,RAM,RB,RCB,RDM,ST",
+  },
 };
+const encodedWallets = process.env.OVERGOAL_LOCAL_CI_WALLETS;
+
+if (!encodedWallets) {
+  throw new Error("OVERGOAL_LOCAL_CI_WALLETS is required by tactical E2E.");
+}
+
+const [wallet] = JSON.parse(encodedWallets) as Array<{ address: string }>;
+const walletChainId = `0x${sepolia.id.toString(16)}`;
+const csrfToken = `0x${"a".repeat(64)}`;
 
 const teams = {
   myTeam: {
@@ -29,25 +103,94 @@ const teams = {
   },
 };
 
-function canonicalScene(sceneType: "OPEN_PLAY" | "FREE_KICK" | "CORNER" | "PENALTY") {
-  const response = structuredClone(waitingOpenPlayResponse);
-  const pendingActions = [response.pending_action, response.match.pending_action];
-  pendingActions.forEach((action) => {
-    Object.assign(action, {
-      action_type: sceneType,
-      scene_type: sceneType,
-      title: sceneType.replaceAll("_", " "),
-      control_envelope: controlEnvelope,
-    });
-  });
-  response.field_state.action_type = sceneType;
-  response.field_state.scene_family = sceneType;
-  response.pending_action.field_state.action_type = sceneType;
-  response.pending_action.field_state.scene_family = sceneType;
-  return response;
+function authChallengeResponse() {
+  return {
+    challenge_id: `0x${"1".repeat(32)}`,
+    action: "CREATE_SESSION",
+    account_address: wallet.address,
+    chain_id: walletChainId,
+    expires_at: "2026-07-19T12:05:00.000Z",
+    typed_data: {
+      types: {
+        StarknetDomain: [
+          { name: "name", type: "shortstring" },
+          { name: "version", type: "shortstring" },
+          { name: "chainId", type: "shortstring" },
+          { name: "revision", type: "shortstring" },
+        ],
+        OvergoalAuthChallenge: [{ name: "challenge_hash", type: "felt" }],
+      },
+      primaryType: "OvergoalAuthChallenge",
+      domain: {
+        name: "Overgoal Auth",
+        version: "1",
+        chainId: walletChainId,
+        revision: "1",
+      },
+      message: { challenge_hash: "0x1" },
+    },
+  };
+}
+
+function authSessionResponse() {
+  return {
+    session: {
+      issued_at: "2026-07-19T12:00:00.000Z",
+      idle_expires_at: "2026-07-19T12:15:00.000Z",
+      absolute_expires_at: "2026-07-20T12:00:00.000Z",
+      subject: {
+        provider: "starknet",
+        chain_id: walletChainId,
+        account_address: wallet.address,
+      },
+    },
+    legend: { legend_id: "legend-tactical-e2e" },
+    response_context: { cookie_csrf_token: csrfToken },
+  };
+}
+
+async function authenticateForContinuation(page: Page) {
+  await page.route("**/api/auth/v1/challenges", (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify(authChallengeResponse()),
+    }),
+  );
+  await page.route("**/api/auth/v1/sessions", (route) =>
+    route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      headers: {
+        "Set-Cookie":
+          "__Host-overgoal_session=tactical-e2e; Path=/; Secure; HttpOnly; SameSite=Lax",
+      },
+      body: JSON.stringify(authSessionResponse()),
+    }),
+  );
+  await page.route("**/api/auth/v1/session", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(authSessionResponse()),
+    }),
+  );
+
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Connect Controller" }).click();
+  await expect(page).toHaveURL(/\/post-login-screen$/u);
+  await page.goto("/game");
+}
+
+function canonicalScene(sceneType: TacticalSceneType) {
+  return structuredClone(tacticalScenes[sceneType]);
 }
 
 async function hydrateScene(page: Page, response: unknown) {
+  const sceneMinute =
+    typeof response === "object" && response !== null && "minute" in response
+      ? (response as { minute: number }).minute
+      : 12;
   await page.evaluate(
     ({ matchResponse, myTeam, opponentTeam }) => {
       const setMatchResponse = (
@@ -66,9 +209,289 @@ async function hydrateScene(page: Page, response: unknown) {
     },
     { matchResponse: response, ...teams },
   );
+  await page.evaluate((minute) => {
+    const advance = (
+      globalThis as typeof globalThis & {
+        __OVERGOAL_E2E_ADVANCE_TO_SCENE__?: (sceneMinute: number) => void;
+      }
+    ).__OVERGOAL_E2E_ADVANCE_TO_SCENE__;
+    if (!advance)
+      throw new Error("Match scene browser-test bridge is unavailable");
+    advance(minute);
+  }, sceneMinute);
+}
+
+async function reverseDragFromBall(
+  page: Page,
+  target: Locator,
+  mobile: boolean,
+) {
+  const bounds = await target.boundingBox();
+  if (!bounds) throw new Error("The live ball aim target is not measurable.");
+  const start = {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  };
+  const end = { x: start.x - 72, y: start.y + 54 };
+
+  if (mobile) {
+    const session = await page.context().newCDPSession(page);
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchStart",
+      touchPoints: [start],
+    });
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [end],
+    });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await session.send("Input.dispatchTouchEvent", {
+      type: "touchEnd",
+      touchPoints: [],
+    });
+    return;
+  }
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.mouse.up();
+}
+
+async function previewAimArrow(
+  page: Page,
+  target: Locator,
+  offset: { x: number; y: number },
+  name: string,
+  testInfo: TestInfo,
+) {
+  const bounds = await target.boundingBox();
+  if (!bounds) throw new Error("The live ball aim target is not measurable.");
+  const start = {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  };
+  const end = { x: start.x + offset.x, y: start.y + offset.y };
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.waitForTimeout(100);
+  await captureTacticalEvidence(page, testInfo, `kick-arrow-${name}`);
+  await page.mouse.up();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.getByRole("button", { name: "Close" }).click();
+}
+
+async function captureTacticalEvidence(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+) {
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({ path });
+  await testInfo.attach(name, { path, contentType: "image/png" });
+}
+
+async function waitForRenderableTacticalScene(
+  page: Page,
+  sceneType: TacticalSceneType,
+) {
+  const expectation = sceneExpectations[sceneType];
+  await expect(page.getByTestId("field-loading-overlay")).toBeHidden({
+    timeout: FIELD_READY_TIMEOUT_MS,
+  });
+  const field = page.getByTestId("game-field");
+  await expect(field).toHaveAttribute(
+    "data-player-count",
+    expectation.playerCount,
+  );
+  await expect(field).toHaveAttribute("data-scene-family", sceneType);
+  await expect(field).toHaveAttribute(
+    "data-ball-x",
+    expectation.ballPosition[0],
+  );
+  await expect(field).toHaveAttribute(
+    "data-ball-y",
+    expectation.ballPosition[1],
+  );
+  await expect(field).toHaveAttribute(
+    "data-player-roles",
+    expectation.playerRoles,
+  );
+  await expect(field).toHaveAttribute(
+    "data-opponent-roles",
+    expectation.opponentRoles,
+  );
+  await expect(
+    page.getByText(expectation.description, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId("ball-aim-target")).toBeVisible({
+    timeout: FIELD_READY_TIMEOUT_MS,
+  });
+  await expect(page.getByTestId("ball-aim-target")).toHaveAttribute(
+    "data-kick-maximum-power",
+    expectation.maximumPower,
+  );
+  if (expectation.penaltyNonparticipantCount) {
+    await expect(field).toHaveAttribute(
+      "data-penalty-nonparticipant-count",
+      expectation.penaltyNonparticipantCount,
+    );
+  }
+}
+
+function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
+  const response = canonicalScene(sceneType);
+  return Object.assign(response, {
+    status: "IN_PROGRESS",
+    pending_action: null,
+    field_state: null,
+    match: {
+      ...response.match,
+      match_status: "IN_PROGRESS",
+      pending_action: null,
+    },
+    decision_result: {
+      description: "The goalkeeper turns it away.",
+      success: false,
+      outcome_type: "SAVE",
+      flight_outcome: "SAVE",
+      flight_path: [
+        { x: 72, y: 36.2, z: 0.11, t: 0 },
+        { x: 62, y: 18, z: 2.4, t: 0.15 },
+        { x: 54, y: 8, z: 0.11, t: 0.3 },
+      ],
+      final_point: { x: 54, y: 8, z: 0.11, t: 0.3 },
+    },
+  });
 }
 
 test("renders each canonical tactical scene with preloaded field assets", async ({
+  page,
+}, testInfo) => {
+  test.slow();
+  // Each isolated page must preload the actual stadium and 22-player assets.
+  // The production preview deliberately serves these large assets without a
+  // cache lifetime, so this matrix can exceed Playwright's default slow limit.
+  test.setTimeout(240_000);
+  await page.goto("/game");
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+
+  const sceneTypes = ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"] as const;
+  for (const [index, sceneType] of sceneTypes.entries()) {
+    const scenePage = index === 0 ? page : await page.context().newPage();
+    if (index > 0) {
+      await scenePage.goto("/game");
+      await scenePage.waitForFunction(
+        () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+      );
+    }
+    await hydrateScene(scenePage, canonicalScene(sceneType));
+    await expect(
+      scenePage.getByText(sceneExpectations[sceneType].title, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      scenePage.getByTestId("game-field").locator("canvas"),
+    ).toBeVisible();
+    await waitForRenderableTacticalScene(scenePage, sceneType);
+    await captureTacticalEvidence(
+      scenePage,
+      testInfo,
+      `tactical-${sceneType.toLowerCase()}`,
+    );
+    if (scenePage !== page) await scenePage.close();
+  }
+});
+
+test("submits one canonical reverse-drag kick and plays the authoritative result", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.slow();
+  const submittedRequests: unknown[] = [];
+  await context.route("**/api/processMatchAction", async (route) => {
+    submittedRequests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(resolvedKickResponse()),
+    });
+  });
+
+  await authenticateForContinuation(page);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await reverseDragFromBall(
+    page,
+    target,
+    testInfo.project.name === "mobile-chromium",
+  );
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(
+    page.getByText(
+      /Server power range: 16% -94%; short pulls use the server floor\./u,
+    ),
+  ).toBeVisible();
+  const displayedPower = await page
+    .getByText(/Submitted power:/u)
+    .textContent();
+  await captureTacticalEvidence(page, testInfo, "kick-arrow-and-contact-modal");
+
+  await page
+    .getByTestId("kick-contact-ball")
+    .click({ position: { x: 210, y: 60 } });
+  // Fire two same-turn activations before React applies the disabled state.
+  // The production action-id gate must therefore reject the second request.
+  await page.getByTestId("kick-submit").evaluate((button) => {
+    (button as HTMLButtonElement).click();
+    (button as HTMLButtonElement).click();
+  });
+  await expect(page.getByTestId("kick-result")).toBeVisible();
+  expect(submittedRequests).toHaveLength(1);
+  expect(submittedRequests[0]).toMatchObject({
+    match_decision: {
+      choice: "KICK",
+      kick_input: {
+        version: 1,
+        aim: { x: expect.any(Number), y: expect.any(Number) },
+        power: expect.any(Number),
+        contact: { x: expect.any(Number), y: expect.any(Number) },
+      },
+    },
+  });
+  const submittedPower = (
+    submittedRequests[0] as {
+      match_decision: { kick_input: { power: number } };
+    }
+  ).match_decision.kick_input.power;
+  expect(displayedPower).toBe(
+    `Submitted power: ${Math.round(submittedPower * 100)}%`,
+  );
+  expect(JSON.stringify(submittedRequests[0])).not.toMatch(
+    /seed|selection_quality|intent_hint|target|curve|lift/u,
+  );
+  await page.waitForTimeout(1_000);
+  await expect(page.getByTestId("kick-result")).toBeVisible();
+  if (testInfo.project.name === "mobile-chromium") {
+    await page.getByTestId("kick-result").tap({ force: true });
+  } else {
+    await page.getByTestId("kick-result").click({ force: true });
+  }
+  await expect(page).toHaveURL(/\/match\/match-open_play$/u);
+});
+
+test("keeps first-use tactical arrows visible at short, maximum, diagonal, and edge pulls", async ({
   page,
 }, testInfo) => {
   test.slow();
@@ -76,19 +499,83 @@ test("renders each canonical tactical scene with preloaded field assets", async 
   await page.waitForFunction(
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
   );
+  await hydrateScene(page, canonicalScene("FREE_KICK"));
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
 
-  for (const sceneType of [
-    "OPEN_PLAY",
-    "FREE_KICK",
-    "CORNER",
-    "PENALTY",
-  ] as const) {
-    await hydrateScene(page, canonicalScene(sceneType));
-    await expect(page.getByText(sceneType.replaceAll("_", " "))).toBeVisible();
-    await expect(page.getByTestId("game-field").locator("canvas")).toBeVisible();
-    await testInfo.attach(`tactical-${sceneType.toLowerCase()}`, {
-      body: await page.screenshot(),
-      contentType: "image/png",
+  await previewAimArrow(page, target, { x: -10, y: 6 }, "short", testInfo);
+  await previewAimArrow(page, target, { x: -260, y: 0 }, "maximum", testInfo);
+  await previewAimArrow(page, target, { x: -120, y: 92 }, "diagonal", testInfo);
+  const bounds = await target.boundingBox();
+  if (!bounds) throw new Error("The live ball aim target is not measurable.");
+  await previewAimArrow(
+    page,
+    target,
+    {
+      x: 8 - (bounds.x + bounds.width / 2),
+      y: 4 - (bounds.y + bounds.height / 2),
+    },
+    "viewport-edge",
+    testInfo,
+  );
+});
+
+test("captures the rendered authoritative tactical result", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.slow();
+  await context.route("**/api/processMatchAction", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(resolvedKickResponse("PENALTY")),
     });
-  }
+  });
+  await authenticateForContinuation(page);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("PENALTY"));
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await reverseDragFromBall(
+    page,
+    target,
+    testInfo.project.name === "mobile-chromium",
+  );
+  await page.getByTestId("kick-submit").click();
+  await expect(page.getByTestId("kick-result")).toBeVisible();
+  await captureTacticalEvidence(page, testInfo, "kick-result-playback");
+});
+
+test("automatically continues an authoritative tactical result after its hold", async ({
+  context,
+  page,
+}) => {
+  test.slow();
+  await context.route("**/api/processMatchAction", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(resolvedKickResponse("PENALTY")),
+    });
+  });
+  await authenticateForContinuation(page);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, canonicalScene("PENALTY"));
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await reverseDragFromBall(page, target, false);
+  await page.getByTestId("kick-submit").click();
+  await expect(page.getByTestId("kick-result")).toBeVisible();
+  await page.waitForTimeout(2_000);
+  await expect(page.getByTestId("kick-result")).toBeVisible();
+  await expect(page).toHaveURL(/\/match\/match-penalty$/u, {
+    timeout: 1_500,
+  });
 });

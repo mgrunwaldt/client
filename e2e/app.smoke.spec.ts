@@ -170,6 +170,7 @@ test("renders a complete backend player scene without a fatal error", async ({
     y,
     is_legend: role === "ST",
     has_ball: role === "ST",
+    collision_shape: { radius_m: 0.42, height_m: 2, receive_radius_m: 0.85 },
   }));
   const opponentFormation: Array<[string, number, number]> = [
     ["GK", 50, 94],
@@ -189,6 +190,7 @@ test("renders a complete backend player scene without a fatal error", async ({
     role,
     x,
     y,
+    collision_shape: { radius_m: 0.42, height_m: 2, receive_radius_m: 0.85 },
   }));
   const response = structuredClone(waitingOpenPlayResponse);
   const fieldState = response.pending_action.field_state;

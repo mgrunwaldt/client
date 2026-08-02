@@ -169,7 +169,7 @@ The mirror includes canonical `openapi.json`; AJV 2020-12 with `ajv-formats`
 checks all declared payloads against its schemas, route associations, and
 declared formats. Its canonical source is
 `mgrunwaldt/match_server` revision
-`d5393cf3ff6efa4d9c893e0534284b08b2f98d2c`. The mirror includes the final
+`8bfcdec94f33054e73176fdc9af939f189f4369e`. The mirror includes the final
 Auth Boundary v1 challenge/proof requests and challenge/session responses;
 tests validate their route associations, schemas, two-field proof shape, file
 hashes, and aggregate tree seal. Runtime source must not import these fixtures.

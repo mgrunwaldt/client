@@ -263,4 +263,12 @@ if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
       });
     },
   });
+  Object.defineProperty(globalThis, "__OVERGOAL_E2E_ADVANCE_TO_SCENE__", {
+    configurable: true,
+    value: (minute: number) => {
+      const store = useMatchSessionStore.getState();
+      store.setPlaybackMinute(minute);
+      store.markSceneReady();
+    },
+  });
 }

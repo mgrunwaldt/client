@@ -9,26 +9,28 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTF } from "three-stdlib";
 
-const AIM_MIN_DISTANCE = 0.05;
+import {
+  type BallAimDraft,
+  buildBallAimDraft,
+} from "../../../match/kick-gesture";
+import {
+  type KickControlEnvelope,
+  visibleKickPowerRatio,
+} from "../../../match/kick-input";
+
 // The gesture can travel beyond the visible arrow so a full-strength touch pull
-// remains reachable without driving an arrow mesh outside the camera framing.
-const AIM_POWER_NORMALIZATION_DISTANCE = 32;
+// remains reachable without driving the global power scale outside the camera.
 const AIM_VISIBLE_ARROW_MAX_LENGTH = 24;
 
-export interface BallAimDraft {
-  dragStart: { x: number; y: number; z: number };
-  dragCurrent: { x: number; y: number; z: number };
-  shotVector: { x: number; y: number; z: number };
-  normalizedDirection: { x: number; y: number; z: number };
-  pullDistance: number;
-  normalizedPower: number;
-}
+export type { BallAimDraft } from "../../../match/kick-gesture";
 
 interface BallProps {
   position?: [number, number, number];
   interactive?: boolean;
   renderOnly?: boolean;
   aimEnabled?: boolean;
+  aimDraft?: BallAimDraft | null;
+  kickControlEnvelope?: KickControlEnvelope | null;
   onAimChange?: (draft: BallAimDraft | null) => void;
   onAimRelease?: (draft: BallAimDraft) => void;
 }
@@ -134,6 +136,8 @@ export function Ball({
   interactive = true,
   renderOnly = false,
   aimEnabled = false,
+  aimDraft = null,
+  kickControlEnvelope = null,
   onAimChange,
   onAimRelease,
 }: BallProps) {
@@ -163,34 +167,6 @@ export function Ball({
     tipGlowTexture.wrapS = THREE.ClampToEdgeWrapping;
     tipGlowTexture.wrapT = THREE.ClampToEdgeWrapping;
   }, [headTexture, shaftTexture, tipGlowTexture]);
-
-  const buildAimDraft = (
-    start: THREE.Vector3,
-    current: THREE.Vector3,
-  ): BallAimDraft | null => {
-    const shotVector = new THREE.Vector3().subVectors(start, current);
-    const pullDistance = shotVector.length();
-    if (pullDistance < AIM_MIN_DISTANCE) {
-      return null;
-    }
-
-    const normalizedDirection = shotVector.clone().normalize();
-    return {
-      dragStart: { x: start.x, y: start.y, z: start.z },
-      dragCurrent: { x: current.x, y: current.y, z: current.z },
-      shotVector: { x: shotVector.x, y: shotVector.y, z: shotVector.z },
-      normalizedDirection: {
-        x: normalizedDirection.x,
-        y: normalizedDirection.y,
-        z: normalizedDirection.z,
-      },
-      pullDistance,
-      normalizedPower: Math.min(
-        1,
-        pullDistance / AIM_POWER_NORMALIZATION_DISTANCE,
-      ),
-    };
-  };
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!interactive && !aimEnabled) return;
@@ -233,7 +209,7 @@ export function Ball({
     // Check intersection with our horizontal plane
     if (raycaster.ray.intersectPlane(floorPlane, intersectPoint)) {
       setDragCurrent(intersectPoint);
-      onAimChange?.(buildAimDraft(dragStart, intersectPoint));
+      onAimChange?.(buildBallAimDraft(dragStart, intersectPoint));
     }
   };
 
@@ -246,20 +222,25 @@ export function Ball({
       e.pointerId,
     );
 
-    const aimDraft = buildAimDraft(dragStart, dragCurrent);
+    const releasedAimDraft = buildBallAimDraft(dragStart, dragCurrent);
 
-    if (interactive && rigidBodyRef.current && !renderOnly && aimDraft) {
+    if (
+      interactive &&
+      rigidBodyRef.current &&
+      !renderOnly &&
+      releasedAimDraft
+    ) {
       const impulse = new THREE.Vector3(
-        aimDraft.shotVector.x,
-        aimDraft.shotVector.y,
-        aimDraft.shotVector.z,
+        releasedAimDraft.shotVector.x,
+        releasedAimDraft.shotVector.y,
+        releasedAimDraft.shotVector.z,
       ).multiplyScalar(10.0);
       impulse.y = Math.abs(impulse.y) * 0.1;
       rigidBodyRef.current.applyImpulse(impulse, true);
     }
 
-    if (aimDraft) {
-      onAimRelease?.(aimDraft);
+    if (releasedAimDraft) {
+      onAimRelease?.(releasedAimDraft);
     } else {
       onAimChange?.(null);
     }
@@ -281,12 +262,27 @@ export function Ball({
 
   // Calculate arrow direction and length
   const arrowData = useMemo(() => {
-    if (!isDragging || !dragStart || !dragCurrent) return null;
+    const currentAimDraft =
+      aimDraft ||
+      (isDragging && dragStart && dragCurrent
+        ? buildBallAimDraft(dragStart, dragCurrent)
+        : null);
+    if (!currentAimDraft) return null;
 
     // Direction from dragCurrent (pull position) to dragStart (ball position)
     // This shows where the ball will go
-    const direction = new THREE.Vector3().subVectors(dragStart, dragCurrent);
-    let length = direction.length();
+    const direction = new THREE.Vector3(
+      currentAimDraft.shotVector.x,
+      currentAimDraft.shotVector.y,
+      currentAimDraft.shotVector.z,
+    );
+    const usablePowerRatio = kickControlEnvelope
+      ? visibleKickPowerRatio(
+          kickControlEnvelope,
+          currentAimDraft.normalizedPower,
+        )
+      : currentAimDraft.normalizedPower;
+    let length = AIM_VISIBLE_ARROW_MAX_LENGTH * usablePowerRatio;
 
     // Minimum length to show arrow
     if (length < 0.1) return null;
@@ -303,12 +299,23 @@ export function Ball({
     );
 
     return {
-      position: dragStart,
+      position: new THREE.Vector3(
+        currentAimDraft.dragStart.x,
+        currentAimDraft.dragStart.y,
+        currentAimDraft.dragStart.z,
+      ),
       direction,
       length,
       quaternion,
     };
-  }, [dragCurrent, dragStart, isDragging, shaftTexture]);
+  }, [
+    aimDraft,
+    dragCurrent,
+    dragStart,
+    isDragging,
+    kickControlEnvelope,
+    shaftTexture,
+  ]);
 
   if (renderOnly) {
     return (

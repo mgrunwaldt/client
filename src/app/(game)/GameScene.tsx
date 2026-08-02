@@ -34,6 +34,7 @@ import {
   parseKickControlEnvelope,
 } from "../../match/kick-input";
 import { useMatchSessionStore } from "../../match/session-store";
+import { BallAimSurface } from "./BallAimSurface";
 
 const FIELD_Y = 111;
 const BALL_Y = 111.25;
@@ -375,7 +376,10 @@ function FieldLoadingOverlay({
   }
 
   return (
-    <div className="absolute inset-0 z-30 overflow-hidden bg-linear-to-b from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]">
+    <div
+      data-testid="field-loading-overlay"
+      className="absolute inset-0 z-30 overflow-hidden bg-linear-to-b from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]"
+    >
       <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-35" />
       <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
@@ -517,6 +521,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     total: assetsTotal,
   } = useProgress();
   const match = useMatchSessionStore((state) => state.match);
+  const phase = useMatchSessionStore((state) => state.phase);
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
@@ -534,6 +539,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     (state) => state.beginActionCommand,
   );
   const [releasedAimDraft, setReleasedAimDraft] = useState<BallAimDraft | null>(
+    null,
+  );
+  const [activeAimDraft, setActiveAimDraft] = useState<BallAimDraft | null>(
     null,
   );
   const [strikeContact, setStrikeContact] = useState(DEFAULT_STRIKE_CONTACT);
@@ -579,6 +587,13 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           (player) => player.id === displayFieldState.legend_player_id,
         ) || null
       : null);
+  const penaltyNonparticipantCount =
+    displayFieldState?.scene_family === "PENALTY"
+      ? myPlayers.length +
+        opponentPlayers.length -
+        (legendPlayer ? 1 : 0) -
+        opponentPlayers.filter((player) => player.role === "GK").length
+      : null;
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
     : { x: 50, y: VISIBLE_FIELD_CENTER_Y };
@@ -594,18 +609,28 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         return [x, y, z + PLAYER_RENDER_Z_OFFSET] as [number, number, number];
       })()
     : null;
+  const kickControlEnvelope = parseKickControlEnvelope(
+    pendingAction?.control_envelope ?? pendingAction?.context?.control_envelope,
+  );
   const canAim =
     !stagedKickResult &&
-    !assetsActive &&
+    phase === "scene_ready" &&
     pendingAction?.action_team === "MY_TEAM" &&
     isCanonicalKickScene(pendingAction?.scene_type) &&
     pendingAction.available_choices.some((choice) => choice.id === "KICK") &&
-    Boolean(
-      parseKickControlEnvelope(
-        pendingAction?.control_envelope ??
-          pendingAction?.context?.control_envelope,
-      ),
-    );
+    Boolean(kickControlEnvelope);
+  const displayedKickDecision =
+    releasedAimDraft && kickControlEnvelope
+      ? buildCanonicalKickDecision(
+          kickControlEnvelope,
+          {
+            x: releasedAimDraft.normalizedDirection.x,
+            y: releasedAimDraft.normalizedDirection.z,
+          },
+          releasedAimDraft.normalizedPower,
+          strikeContact,
+        )
+      : null;
   const showFieldLoadingOverlay =
     assetsActive || (assetsTotal > 0 && assetsLoaded < assetsTotal);
 
@@ -687,6 +712,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
 
   const handleAimRelease = (draft: BallAimDraft) => {
     setSubmitError(null);
+    setActiveAimDraft(null);
     setReleasedAimDraft(draft);
     setStrikeContact(DEFAULT_STRIKE_CONTACT);
   };
@@ -695,10 +721,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const envelope = parseKickControlEnvelope(
-      pendingAction?.control_envelope ??
-        pendingAction?.context?.control_envelope,
-    );
+    const envelope = kickControlEnvelope;
     if (!envelope) return;
     const contact = ballFaceContactFromPercent({
       x: ((event.clientX - rect.left) / rect.width) * 100,
@@ -716,9 +739,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       return;
     }
 
-    const envelope = parseKickControlEnvelope(
-      pendingAction.control_envelope ?? pendingAction.context?.control_envelope,
-    );
+    const envelope = kickControlEnvelope;
     if (!envelope) {
       setSubmitError("The current action is missing canonical kick controls.");
       return;
@@ -833,6 +854,18 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     <div
       data-testid="game-field"
       data-player-count={myPlayers.length + opponentPlayers.length}
+      data-player-roles={[...myPlayers, ...opponentPlayers]
+        .map((player) => player.role)
+        .sort()
+        .join(",")}
+      data-opponent-roles={opponentPlayers
+        .map((player) => player.role)
+        .sort()
+        .join(",")}
+      data-scene-family={displayFieldState?.scene_family ?? ""}
+      data-ball-x={displayFieldState?.ball_x ?? ""}
+      data-ball-y={displayFieldState?.ball_y ?? ""}
+      data-penalty-nonparticipant-count={penaltyNonparticipantCount ?? ""}
       className={`fixed inset-0 overflow-hidden bg-[#0a4739] ${
         active ? "z-40 opacity-100" : "pointer-events-none -z-10 opacity-0"
       }`}
@@ -899,8 +932,19 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               interactive={false}
               renderOnly={true}
               aimEnabled={Boolean(canAim && !releasedAimDraft)}
+              aimDraft={activeAimDraft}
+              kickControlEnvelope={kickControlEnvelope}
+              onAimChange={setActiveAimDraft}
               onAimRelease={handleAimRelease}
             />
+            {canAim && !releasedAimDraft && (
+              <BallAimSurface
+                position={[ballX, ballY, ballZ]}
+                maximumPower={kickControlEnvelope?.maximum_power ?? 0}
+                onAimChange={setActiveAimDraft}
+                onAimRelease={handleAimRelease}
+              />
+            )}
 
             {myPlayers.map((player) => (
               <BackendPlayerModel
@@ -930,7 +974,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         visible={showFieldLoadingOverlay}
         progress={assetsProgress}
       />
-      {releasedAimDraft && (
+      {releasedAimDraft && kickControlEnvelope && (
         <div
           role="dialog"
           aria-label="Choose ball contact"
@@ -983,12 +1027,21 @@ export default function GameScene({ active = true }: { active?: boolean }) {
 
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/72">
                 <div className="rounded-2xl bg-black/22 px-3 py-2">
-                  Pull power:{" "}
-                  {Math.round(releasedAimDraft.normalizedPower * 100)}%
+                  Submitted power:{" "}
+                  {Math.round(
+                    (displayedKickDecision?.kick_input.power ?? 0) * 100,
+                  )}
+                  %
                 </div>
                 <div className="rounded-2xl bg-black/22 px-3 py-2">
                   Contact: {strikeContact.x.toFixed(2)},{" "}
                   {strikeContact.y.toFixed(2)}
+                </div>
+                <div className="col-span-2 rounded-2xl bg-black/22 px-3 py-2">
+                  Server power range:{" "}
+                  {Math.round(kickControlEnvelope.minimum_power * 100)}% -
+                  {Math.round(kickControlEnvelope.maximum_power * 100)}%; short
+                  pulls use the server floor.
                 </div>
               </div>
               {submitError && (

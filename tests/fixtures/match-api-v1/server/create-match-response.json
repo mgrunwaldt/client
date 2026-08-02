@@ -23,7 +23,7 @@
     "legend_player_id": "team_1_RB_2",
     "ruleset": { "rebound_play_enabled": true },
     "seed": "fixture-seed-1",
-    "engine_version": "match-engine/1",
+    "engine_version": "match-engine/2",
     "ruleset_version": "nss-match-v2/1",
     "initial_state": {
       "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" },
