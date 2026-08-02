@@ -134,6 +134,45 @@ describe("match session store hydration", () => {
     }
   });
 
+  it("retains authoritative Legend data through create and snapshot hydration", async () => {
+    const created = await readFixture<{
+      match: BackendMatch;
+      my_team: BackendTeam;
+      opponent_team: BackendTeam;
+    }>("server/create-match-response.json");
+    const match = {
+      ...created.match,
+      legend_player_id: "legend-authoritative-7",
+      legend_profile: {
+        ...created.match.legend_profile!,
+        stamina: 63,
+        energy: 41,
+      },
+    };
+
+    useMatchSessionStore.getState().setCreatedMatch({
+      match,
+      myTeam: created.my_team,
+      opponentTeam: created.opponent_team,
+    });
+    expect(useMatchSessionStore.getState().match).toMatchObject({
+      legend_player_id: "legend-authoritative-7",
+      legend_profile: { stamina: 63, energy: 41 },
+    });
+
+    useMatchSessionStore.getState().resetMatchSession();
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match,
+      myTeam: created.my_team,
+      opponentTeam: created.opponent_team,
+      timelineEvents: [],
+    });
+    expect(useMatchSessionStore.getState().match).toMatchObject({
+      legend_player_id: "legend-authoritative-7",
+      legend_profile: { stamina: 63, energy: 41 },
+    });
+  });
+
   it("starts every newly hydrated waiting match from the authoritative timeline cursor", async () => {
     const scene = await readFixture<SceneFixture>("scenes/open-play.json");
     const teams = await readFixture<CreateMatchFixture>(

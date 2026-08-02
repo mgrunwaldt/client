@@ -16,6 +16,7 @@ export {
   type BackendFieldPlayer,
   type BackendFieldState,
   type BackendFlightPoint,
+  type BackendLegendProfile,
   type BackendMatch,
   type BackendMatchResponse,
   type BackendMatchSnapshot,

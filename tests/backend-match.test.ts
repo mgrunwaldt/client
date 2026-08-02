@@ -257,6 +257,50 @@ describe("backend match client", () => {
     });
   });
 
+  it("rejects pre-match responses without a complete authoritative Legend", async () => {
+    const create = await readFixture<Record<string, unknown>>(
+      "server/create-match-response.json",
+    );
+    const snapshot = await readFixture<Record<string, unknown>>(
+      "server/match-snapshot-response.json",
+    );
+    const missingLegendId = structuredClone(create) as {
+      match: Record<string, unknown>;
+    };
+    delete missingLegendId.match.legend_player_id;
+    const malformedLegend = structuredClone(create) as {
+      match: { legend_profile: Record<string, unknown> };
+    };
+    malformedLegend.match.legend_profile.stamina = "not-a-rating";
+    const preMatchSnapshot = structuredClone(snapshot) as {
+      match: Record<string, unknown>;
+    };
+    preMatchSnapshot.match.match_status = "NOT_STARTED";
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(missingLegendId, 201))
+      .mockResolvedValueOnce(jsonResponse(malformedLegend, 201))
+      .mockResolvedValueOnce(jsonResponse(preMatchSnapshot));
+
+    await expect(
+      createBackendMatch({
+        my_team_id: "team_1",
+        opponent_team_id: "team_2",
+        player_profile: defaultLegendProfile(),
+      }),
+    ).rejects.toBeInstanceOf(MatchApiContractError);
+    await expect(
+      createBackendMatch({
+        my_team_id: "team_1",
+        opponent_team_id: "team_2",
+        player_profile: defaultLegendProfile(),
+      }),
+    ).rejects.toBeInstanceOf(MatchApiContractError);
+    await expect(fetchBackendMatch("match-fixture-1")).rejects.toBeInstanceOf(
+      MatchApiContractError,
+    );
+  });
+
   it("rejects a response whose pending action and field state disagree", async () => {
     const response = await readFixture<BackendMatchResponse>(
       "server/waiting-open-play-response.json",

@@ -39,6 +39,23 @@ export interface BackendTeam {
   [key: string]: unknown;
 }
 
+export interface BackendLegendProfile {
+  stamina: number;
+  energy: number;
+  shoot: number;
+  dribble: number;
+  speed: number;
+  passing: number;
+  heading: number;
+  defense: number;
+  intelligence: number;
+  yellow_cards?: number;
+  red_card?: boolean;
+  simulation_attempts?: number;
+  substitutions?: number;
+  [key: string]: unknown;
+}
+
 export interface BackendFieldPlayer {
   id: string;
   role: string;
@@ -110,6 +127,8 @@ export interface BackendMatch {
   revision: number;
   match_status: string;
   pending_action: BackendPendingAction | null;
+  legend_profile?: BackendLegendProfile;
+  legend_player_id?: string;
   player_participation?: string;
   [key: string]: unknown;
 }
@@ -167,6 +186,7 @@ export interface BackendMatchSnapshot {
 
 const identifier = z.string().trim().min(1).max(128);
 const coordinate = z.number().finite().min(0).max(100);
+const rating = z.number().finite().min(0).max(100);
 const actionTeam = z.enum(["MY_TEAM", "OPPONENT_TEAM", "NEUTRAL"]);
 
 export const BackendTeamSchema: z.ZodType<BackendTeam> = z
@@ -179,6 +199,24 @@ export const BackendTeamSchema: z.ZodType<BackendTeam> = z
     set_pieces: z.number().finite().min(0).max(100).optional(),
     chemistry: z.number().finite().min(0).max(100).optional(),
     formation: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+export const BackendLegendProfileSchema: z.ZodType<BackendLegendProfile> = z
+  .object({
+    stamina: rating,
+    energy: rating,
+    shoot: rating,
+    dribble: rating,
+    speed: rating,
+    passing: rating,
+    heading: rating,
+    defense: rating,
+    intelligence: rating,
+    yellow_cards: z.number().int().min(0).max(2).optional(),
+    red_card: z.boolean().optional(),
+    simulation_attempts: z.number().int().min(0).optional(),
+    substitutions: z.number().int().min(0).optional(),
   })
   .passthrough();
 
@@ -272,6 +310,8 @@ export const BackendMatchSchema: z.ZodType<BackendMatch> = z
     // turns them into a recoverable diagnostic instead of allowing a blank UI.
     match_status: z.string().trim().min(1),
     pending_action: BackendPendingActionSchema.nullable(),
+    legend_profile: BackendLegendProfileSchema.optional(),
+    legend_player_id: identifier.optional(),
     event_counter: z.number().int().min(0),
     seed: z
       .string()
@@ -285,6 +325,29 @@ export const BackendMatchSchema: z.ZodType<BackendMatch> = z
     player_participation: z.string().trim().min(1).optional(),
   })
   .passthrough();
+
+function requirePrematchLegendData(
+  match: BackendMatch,
+  context: z.RefinementCtx,
+  path: (string | number)[],
+) {
+  if (match.match_status !== "NOT_STARTED") return;
+  if (!match.legend_profile) {
+    context.addIssue({
+      code: "custom",
+      message: "A pre-match snapshot requires an authoritative Legend profile.",
+      path: [...path, "legend_profile"],
+    });
+  }
+  if (!match.legend_player_id) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "A pre-match snapshot requires an authoritative Legend player ID.",
+      path: [...path, "legend_player_id"],
+    });
+  }
+}
 
 export const BackendTimelineEventSchema: z.ZodType<BackendTimelineEvent> = z
   .object({
@@ -414,6 +477,7 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
   })
   .passthrough()
   .superRefine((response, context) => {
+    requirePrematchLegendData(response.match, context, ["match"]);
     const pendingAction = response.pending_action;
     if (pendingAction?.id !== response.match.pending_action?.id) {
       context.addIssue({
@@ -463,7 +527,10 @@ export const BackendCreateMatchResponseSchema = z
     my_team: BackendTeamSchema,
     opponent_team: BackendTeamSchema,
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((response, context) => {
+    requirePrematchLegendData(response.match, context, ["match"]);
+  });
 
 export const BackendTeamListResponseSchema = z
   .object({ teams: z.array(BackendTeamSchema) })

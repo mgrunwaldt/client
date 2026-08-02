@@ -69,14 +69,14 @@ function sessionResponse() {
 const teams = [
   {
     id: "team-1",
-    name: "Dojo United",
+    name: "API Eclipse XI",
     offense: 80,
     defense: 75,
     intensity: 70,
   },
   {
     id: "team-2",
-    name: "Cartridge City",
+    name: "Backend Comets",
     offense: 76,
     defense: 74,
     intensity: 72,
@@ -98,6 +98,18 @@ function createMatchResponse() {
       match_status: "NOT_STARTED",
       pending_action: null,
       event_counter: 0,
+      legend_player_id: "legend-api-9",
+      legend_profile: {
+        stamina: 63,
+        energy: 41,
+        shoot: 92,
+        dribble: 88,
+        speed: 81,
+        passing: 79,
+        heading: 75,
+        defense: 54,
+        intelligence: 90,
+      },
       seed: "match-entry-e2e-seed",
       engine_version: "match-engine/1",
       ruleset_version: "nss-match-v2/1",
@@ -203,20 +215,20 @@ test("enters a production match once and reports truthful loading stages", async
     }
     if (
       request.method() === "GET" &&
-      pathname === "/api/match/match-entry-e2e" &&
-      acceptedStart
+      pathname === "/api/match/match-entry-e2e"
     ) {
+      const current = acceptedStart ?? createMatchResponse();
       return route.fulfill({
         status: 200,
         headers: apiHeaders,
         contentType: "application/json",
         body: JSON.stringify({
-          match: acceptedStart.match,
+          match: current.match,
           my_team: teams[0],
           opponent_team: teams[1],
-          timeline: acceptedStart.events,
-          pending_action: acceptedStart.pending_action,
-          field_state: acceptedStart.field_state,
+          timeline: acceptedStart ? acceptedStart.events : [],
+          pending_action: acceptedStart ? acceptedStart.pending_action : null,
+          field_state: acceptedStart ? acceptedStart.field_state : null,
         }),
       });
     }
@@ -234,6 +246,23 @@ test("enters a production match once and reports truthful loading stages", async
   await createButton.dblclick();
   await expect(page).toHaveURL(/\/pre-match\/match-entry-e2e$/u);
   expect(createCalls).toBe(1);
+  await expect(
+    page.getByRole("heading", { name: "API Eclipse XI" }),
+  ).toBeVisible();
+  await expect(page.getByText("Backend Comets", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("legend-player-id")).toHaveText("legend-api-9");
+  await expect(page.getByTestId("legend-stamina")).toHaveText("63");
+  await expect(page.getByTestId("legend-energy")).toHaveText("41");
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/pre-match\/match-entry-e2e$/u);
+  await expect(
+    page.getByRole("heading", { name: "API Eclipse XI" }),
+  ).toBeVisible();
+  await expect(page.getByText("Backend Comets", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("legend-player-id")).toHaveText("legend-api-9");
+  await expect(page.getByTestId("legend-stamina")).toHaveText("63");
+  await expect(page.getByTestId("legend-energy")).toHaveText("41");
 
   const startButton = page.getByRole("button", { name: "Play" });
   await expect(startButton).toBeVisible();

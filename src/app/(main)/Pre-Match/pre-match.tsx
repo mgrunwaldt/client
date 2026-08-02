@@ -3,13 +3,12 @@ import { useNavigate, useParams } from "react-router";
 
 import preMatchBackground from "/backgrounds/glitch-bg.webp";
 
-import playersData from "../../../../data/players.json";
 import LoadingScreen from "../../../components/loader/LoadingScreen";
 import { BackButton } from "../../../components/ui/back-button";
 import { Button } from "../../../components/ui/button";
 import { GlitchText } from "../../../components/ui/glitch-text";
-import { StaminaBar } from "../../../components/ui/stamina-bar";
 import {
+  type BackendTeam,
   createMatchCommand,
   fetchBackendMatch,
   startBackendMatch,
@@ -17,19 +16,12 @@ import {
 import { preloadMatchExperience } from "../../../match/match-preload";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { cn } from "../../../utils/utils";
-import useAppStore from "../../../zustand/store";
-import CyberContainer from "../Home/components/cyber-container";
-import SemiSquareContainer from "../Home/components/semi-square/semi-square-container";
 import teamsData from "../Seasons/components/teams.json";
+import PreMatchLegend from "./components/pre-match-legend";
 import PreMatchTeam from "./components/pre-match-team";
 
-function findClaimedPlayerTeam(claimedPlayerLinkId: string | null) {
-  if (!claimedPlayerLinkId) return undefined;
-
-  const claimedPlayer = playersData.find(
-    (player) => player.linkID === claimedPlayerLinkId,
-  );
-  return teamsData.find((team) => team.id === claimedPlayer?.team_id);
+function teamImageFor(team: BackendTeam) {
+  return teamsData.find((candidate) => candidate.name === team.name)?.imageUrl;
 }
 
 export default function PreMatchScreen() {
@@ -38,7 +30,6 @@ export default function PreMatchScreen() {
   const startLock = useRef(false);
   const startCompleted = useRef(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const { claimedPlayerLinkId } = useAppStore();
   const match = useMatchSessionStore((state) => state.match);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
@@ -63,12 +54,8 @@ export default function PreMatchScreen() {
   const loading = useMatchSessionStore((state) => state.loading);
   const error = useMatchSessionStore((state) => state.error);
   const phase = useMatchSessionStore((state) => state.phase);
-  const playerTeam =
-    teamsData.find((team) => team.name === myTeam?.name) ??
-    findClaimedPlayerTeam(claimedPlayerLinkId) ??
-    teamsData[3];
-  const enemyTeam =
-    teamsData.find((team) => team.name === opponentTeam?.name) ?? teamsData[0];
+  const legendProfile = match?.legend_profile;
+  const legendPlayerId = match?.legend_player_id;
   const authoritativeMatchReady =
     match?.id === params.matchId && Boolean(myTeam) && Boolean(opponentTeam);
 
@@ -263,6 +250,8 @@ export default function PreMatchScreen() {
     );
   }
 
+  if (!match || !myTeam || !opponentTeam) return null;
+
   return (
     <div className="bg-overgoal-dark-blue h-full min-h-dvh w-full p-4">
       <img
@@ -278,8 +267,8 @@ export default function PreMatchScreen() {
 
           <div className="relative flex h-full w-full flex-row items-center justify-center gap-1">
             <PreMatchTeam
-              teamName={playerTeam.name}
-              teamImage={playerTeam.imageUrl}
+              teamName={myTeam.name}
+              teamImage={teamImageFor(myTeam)}
               side="left"
               isMyTeam={true}
             />
@@ -289,51 +278,19 @@ export default function PreMatchScreen() {
             </span>
 
             <PreMatchTeam
-              teamName={enemyTeam.name}
-              teamImage={enemyTeam.imageUrl}
+              teamName={opponentTeam.name}
+              teamImage={teamImageFor(opponentTeam)}
               side="right"
               isMyTeam={false}
             />
           </div>
 
-          <div className="border-overgoal-positive flex w-full flex-row items-center justify-between gap-4 border-1 bg-[#002601] p-2 text-center text-white">
-            <img
-              src="/logo.png"
-              alt="stamina"
-              className="h-16 w-16 object-cover"
+          {legendProfile && legendPlayerId ? (
+            <PreMatchLegend
+              legendPlayerId={legendPlayerId}
+              legendProfile={legendProfile}
             />
-            <div className="flex h-10 w-full items-center justify-end">
-              <CyberContainer className="!h-[65%] !w-full">
-                <StaminaBar value={10} className="h-full w-full" />
-              </CyberContainer>
-            </div>
-            <div className="flex flex-row gap-2">
-              <SemiSquareContainer
-                bgColor="#002601"
-                noShadow={true}
-                borderColor="var(--color-overgoal-positive)"
-                className="h-10 w-10"
-              >
-                <div className="hidden">a</div>
-              </SemiSquareContainer>
-              <SemiSquareContainer
-                bgColor="#002601"
-                borderColor="var(--color-overgoal-positive)"
-                noShadow={true}
-                className="h-10 w-10"
-              >
-                <div className="hidden">a</div>
-              </SemiSquareContainer>
-              <SemiSquareContainer
-                bgColor="#002601"
-                borderColor="var(--color-overgoal-positive)"
-                noShadow={true}
-                className="h-10 w-10"
-              >
-                <div className="hidden">a</div>
-              </SemiSquareContainer>
-            </div>
-          </div>
+          ) : null}
 
           <div className="mt-16 flex w-full flex-col items-center justify-center">
             <div

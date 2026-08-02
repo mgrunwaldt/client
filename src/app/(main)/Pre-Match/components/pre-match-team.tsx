@@ -1,7 +1,7 @@
 import { cn } from "../../../../utils/utils";
 type PreMatchTeamProps = {
   teamName: string;
-  teamImage: string;
+  teamImage?: string;
   side: "left" | "right";
   isMyTeam?: boolean;
 };
@@ -51,12 +51,13 @@ export default function PreMatchTeam({
       >
         <div className="flex h-full max-h-[60px] w-full max-w-[60px] items-center justify-center">
           <img
-            src={teamImage}
-            alt="team"
+            src={teamImage ?? "/logo.png"}
+            alt={`${teamName} crest`}
             className="h-full w-full object-cover"
           />
         </div>
         <h1
+          aria-label={teamName}
           className={cn(
             "font-orbitron mx-auto max-w-[140px] text-center text-lg leading-6 font-bold text-white uppercase",
             isMyTeam ? "text-overgoal-lime-green" : "text-overgoal-error",
