@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash, X509Certificate } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ec } from "starknet";
 import { extractVitePreviewUrl } from "./preview-url.mjs";
 
-const viteBinary = fileURLToPath(
-  new URL("../node_modules/vite/bin/vite.js", import.meta.url),
+const previewServerScript = fileURLToPath(
+  new URL("./serve-e2e-preview.mjs", import.meta.url),
 );
 const pnpmVersion =
   process.env.npm_config_user_agent?.match(/^pnpm\/([^\s]+)/u)?.[1];
@@ -351,29 +352,18 @@ async function main() {
     ],
     { stdio: "ignore" },
   );
+  const certificate = new X509Certificate(await readFile(httpsCertPath));
+  const certificateSpki = createHash("sha256")
+    .update(certificate.publicKey.export({ format: "der", type: "spki" }))
+    .digest("base64");
 
   const preview = spawnOwned(
     "preview",
     process.execPath,
-    [
-      viteBinary,
-      "preview",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--strictPort",
-      "--outDir",
-      browserDistDirectory,
-    ],
+    [previewServerScript, browserDistDirectory, httpsKeyPath, httpsCertPath],
     {
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        VITE_LOCAL_HTTPS: "true",
-        VITE_HTTPS_KEY_PATH: httpsKeyPath,
-        VITE_HTTPS_CERT_PATH: httpsCertPath,
-      },
+      env: process.env,
     },
   );
   preview.stdout.pipe(process.stdout);
@@ -407,12 +397,16 @@ async function main() {
       "mounts the login route without a fatal page error",
     );
   }
+  if (process.env.OVERGOAL_UPDATE_SNAPSHOTS === "true") {
+    playwrightArgs.push("--update-snapshots");
+  }
   const browser = spawnOwned("playwright", "corepack", playwrightArgs, {
     stdio: "inherit",
     env: {
       ...process.env,
       PATH: `${pnpmShimDirectory}${delimiter}${process.env.PATH}`,
       OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
+      OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
       PLAYWRIGHT_BASE_URL: baseUrl,
     },
   });
@@ -470,24 +464,14 @@ async function main() {
     "direct-preview",
     process.execPath,
     [
-      viteBinary,
-      "preview",
-      "--host",
-      "127.0.0.1",
-      "--port",
-      "0",
-      "--strictPort",
-      "--outDir",
+      previewServerScript,
       directBrowserDistDirectory,
+      httpsKeyPath,
+      httpsCertPath,
     ],
     {
       stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        VITE_LOCAL_HTTPS: "true",
-        VITE_HTTPS_KEY_PATH: httpsKeyPath,
-        VITE_HTTPS_CERT_PATH: httpsCertPath,
-      },
+      env: process.env,
     },
   );
   directPreview.stdout.pipe(process.stdout);
@@ -511,6 +495,7 @@ async function main() {
         ...process.env,
         PATH: `${pnpmShimDirectory}${delimiter}${process.env.PATH}`,
         OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
+        OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
         OVERGOAL_MATCH_API_BASE_URL: directApiBaseUrl,
         PLAYWRIGHT_BASE_URL: directPreviewUrl,
       },

@@ -290,6 +290,54 @@ function FieldCameraController({
   return null;
 }
 
+function FieldRenderReadiness({
+  sceneKey,
+  onReady,
+}: {
+  sceneKey: string;
+  onReady: (sceneKey: string) => void;
+}) {
+  const gl = useThree((state) => state.gl);
+  const completeFrameCount = useRef(0);
+  const reportedReady = useRef(false);
+  const drawingBufferSize = useRef(new THREE.Vector2());
+
+  useFrame(() => {
+    if (reportedReady.current) return;
+
+    const canvas = gl.domElement;
+    const bounds = canvas.getBoundingClientRect();
+    gl.getDrawingBufferSize(drawingBufferSize.current);
+    const coversViewport =
+      Math.abs(bounds.x) <= 1 &&
+      Math.abs(bounds.y) <= 1 &&
+      Math.abs(bounds.width - window.innerWidth) <= 1 &&
+      Math.abs(bounds.height - window.innerHeight) <= 1;
+    const hasCompleteDrawingBuffer =
+      drawingBufferSize.current.x >= Math.floor(bounds.width) &&
+      drawingBufferSize.current.y >= Math.floor(bounds.height);
+
+    if (
+      gl.getContext().isContextLost() ||
+      !coversViewport ||
+      !hasCompleteDrawingBuffer
+    ) {
+      completeFrameCount.current = 0;
+      return;
+    }
+
+    completeFrameCount.current += 1;
+    // useFrame runs before R3F's render. Requiring three observations proves
+    // that two correctly sized, asset-complete frames have already painted.
+    if (completeFrameCount.current >= 3) {
+      reportedReady.current = true;
+      onReady(sceneKey);
+    }
+  });
+
+  return null;
+}
+
 function rotationTowardsFieldTarget(
   source: { x: number; y: number },
   target: { x: number; y: number },
@@ -557,6 +605,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     z: number;
   } | null>(null);
   const [isResultAnimating, setIsResultAnimating] = useState(false);
+  const [readySceneKey, setReadySceneKey] = useState("");
   const animationFrameRef = useRef<number | null>(null);
   const resultTimerRef = useRef<number | null>(null);
   const kickSubmissionGateRef = useRef(createKickSubmissionGate());
@@ -612,7 +661,17 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const kickControlEnvelope = parseKickControlEnvelope(
     pendingAction?.control_envelope ?? pendingAction?.context?.control_envelope,
   );
+  const renderSceneKey = [
+    pendingAction?.id ?? "no-action",
+    displayFieldState?.scene_family ?? "no-scene",
+    displayFieldState?.ball_x ?? "no-ball-x",
+    displayFieldState?.ball_y ?? "no-ball-y",
+    myPlayers.length,
+    opponentPlayers.length,
+  ].join(":");
+  const isCanvasReady = readySceneKey === renderSceneKey;
   const canAim =
+    isCanvasReady &&
     !stagedKickResult &&
     phase === "scene_ready" &&
     pendingAction?.action_team === "MY_TEAM" &&
@@ -632,7 +691,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         )
       : null;
   const showFieldLoadingOverlay =
-    assetsActive || (assetsTotal > 0 && assetsLoaded < assetsTotal);
+    !isCanvasReady ||
+    assetsActive ||
+    (assetsTotal > 0 && assetsLoaded < assetsTotal);
 
   useEffect(() => {
     return () => {
@@ -866,6 +927,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       data-ball-x={displayFieldState?.ball_x ?? ""}
       data-ball-y={displayFieldState?.ball_y ?? ""}
       data-penalty-nonparticipant-count={penaltyNonparticipantCount ?? ""}
+      data-render-ready={isCanvasReady ? "true" : "false"}
       className={`fixed inset-0 overflow-hidden bg-[#0a4739] ${
         active ? "z-40 opacity-100" : "pointer-events-none -z-10 opacity-0"
       }`}
@@ -967,6 +1029,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               />
             ))}
             <Preload all />
+            <FieldRenderReadiness
+              key={renderSceneKey}
+              sceneKey={renderSceneKey}
+              onReady={setReadySceneKey}
+            />
           </Physics>
         </Suspense>
       </Canvas>

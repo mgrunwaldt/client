@@ -1,7 +1,7 @@
 {
   "source": {
     "repository": "https://github.com/mgrunwaldt/match_server",
-    "revision": "8bfcdec94f33054e73176fdc9af939f189f4369e",
+    "revision": "d140b818a2c10d86476fcf34befd56616560f8a5",
     "contract_path": "contracts/match-api/v1",
     "description": "Test-only mirror of the M2 tactical Match API v1 contract. Runtime modules must not import this directory."
   },
@@ -15,7 +15,7 @@
     "invalid/server-error-verifier-output-field.json": "8134b86c216e5eb7c31ec058b5e122807b19c6ac3b0bad9647e3870a56c97595",
     "invalid/server-error-wallet-address-field.json": "f214376092f8311d21410a124fb88a1fedd6c750a45dec0c9ea23e2a65652b2b",
     "manifest.json": "a67abeac50d12d240c59f39c3d14829e08c4b35388b80333b6dc0f346362f651",
-    "openapi.json": "0ef2dead66f4436b8437815b8c11268556072b4a663ccde57812dee5f08cd189",
+    "openapi.json": "33ac41861bc99323d34a774d2b72ce47c71cb82067317662725100f83e1cc222",
     "player-client/auth-challenge-request.json": "ad54c126ece7826e4f52da61ae6192f3bf8147b4525d454bb75de3e7acf5faa7",
     "player-client/auth-proof-request.json": "a87d561f334fb0ac2ca6d8280860158f4d58891018d76e667e5cbbe7cdb6e7e8",
     "player-client/create-match-request.json": "f079e3bc5f51bf61f64637ac8ef3f2f51666699df513590a4b4b2cb96f26480e",
@@ -33,7 +33,7 @@
     "scenes/dribble.json": "312b36cbf0320d32c7f63882f5e434c60a72505241ed196aa730c4fdb1077d93",
     "scenes/free-kick.json": "af55ca729d9b6df93e5466154bbff88a28f3d2fe5c8cf4f23c30ccb2ef8cc6de",
     "scenes/jumper.json": "0841842f5ece6276435cf6dcb525895435413fcc8e29e25cbc22b53d00c6f109",
-    "scenes/open-play.json": "a69ebf7f2a886fc3b8e4058f668b55299d5869331f0de88a42dcbad29f088a1a",
+    "scenes/open-play.json": "3ca9ebf3f3ea3fb466fa25bff06b9d6ed91a8413e9d545553ae732283ab162cb",
     "scenes/penalty.json": "5c594a7aa21820d3a4912d3cd8a338fcc9542df924c59b438e3d77ebf77e0fc3",
     "server/auth-challenge-response.json": "fa23d1a04a6e98b64dc16b94fa2948c243ed74ecc02213e0cc2d586f49e6645a",
     "server/auth-session-response.json": "1c789465b8a728bd78732ae9a71da37a5fc6baa35e8626a7619e6167b4a7a66c",

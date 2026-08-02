@@ -23,10 +23,10 @@ import { createMatchApiV1SchemaValidator } from "../scripts/match-api-v1-schema-
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "8bfcdec94f33054e73176fdc9af939f189f4369e";
+const CONTRACT_SOURCE_REVISION = "d140b818a2c10d86476fcf34befd56616560f8a5";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "6883a656f08b919828a61290a218f20930726cd595ff79e45b508b11c837e1f7";
+  "1ed227c87069e2750df98af526d1559de82244848199b27327c4c0b6aaa8e832";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(

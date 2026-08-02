@@ -6,6 +6,7 @@ import {
   type TestInfo,
 } from "@playwright/test";
 import { sepolia } from "@starknet-react/chains";
+import sharp from "sharp";
 
 import cornerScene from "../tests/fixtures/tactical-kick-scenes/corner.json" with { type: "json" };
 import freeKickScene from "../tests/fixtures/tactical-kick-scenes/free-kick.json" with { type: "json" };
@@ -179,6 +180,14 @@ async function authenticateForContinuation(page: Page) {
   await page.goto("/login");
   await page.getByRole("button", { name: "Connect Controller" }).click();
   await expect(page).toHaveURL(/\/post-login-screen$/u);
+  await expect
+    .poll(async () => {
+      const cookies = await page.context().cookies();
+      return cookies.some(
+        (cookie) => cookie.name === "__Host-overgoal_session",
+      );
+    })
+    .toBe(true);
   await page.goto("/game");
 }
 
@@ -278,8 +287,33 @@ async function previewAimArrow(
   await page.mouse.down();
   await page.mouse.move(end.x, end.y);
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.waitForTimeout(100);
+  // Let React and R3F paint the same final drag state used for both the
+  // attachment and the committed visual baseline.
+  await page.waitForTimeout(250);
   await captureTacticalEvidence(page, testInfo, `kick-arrow-${name}`);
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The tactical viewport is not measurable.");
+  const clipWidth = Math.min(360, viewport.width);
+  const clipHeight = Math.min(320, viewport.height);
+  const screenshot = await page.screenshot({
+    animations: "disabled",
+    caret: "hide",
+    clip: {
+      x: Math.max(
+        0,
+        Math.min(start.x - clipWidth / 2, viewport.width - clipWidth),
+      ),
+      y: Math.max(
+        0,
+        Math.min(start.y - clipHeight / 2, viewport.height - clipHeight),
+      ),
+      width: clipWidth,
+      height: clipHeight,
+    },
+  });
+  expect(screenshot).toMatchSnapshot(`kick-arrow-${name}.png`, {
+    maxDiffPixelRatio: 0.002,
+  });
   await page.mouse.up();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
@@ -290,9 +324,64 @@ async function captureTacticalEvidence(
   testInfo: TestInfo,
   name: string,
 ) {
+  await expect(page.getByTestId("game-field")).toHaveAttribute(
+    "data-render-ready",
+    "true",
+  );
+  const canvas = page.getByTestId("game-field").locator("canvas");
+  await expect
+    .poll(() =>
+      canvas.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const webglCanvas = element as HTMLCanvasElement;
+        return {
+          fullHeight: Math.abs(bounds.height - window.innerHeight) <= 1,
+          fullWidth: Math.abs(bounds.width - window.innerWidth) <= 1,
+          hasDrawingBuffer:
+            webglCanvas.width >= Math.floor(bounds.width) &&
+            webglCanvas.height >= Math.floor(bounds.height),
+        };
+      }),
+    )
+    .toEqual({
+      fullHeight: true,
+      fullWidth: true,
+      hasDrawingBuffer: true,
+    });
   const path = testInfo.outputPath(`${name}.png`);
-  await page.screenshot({ path });
+  const screenshot = await page.screenshot({
+    path,
+    animations: "disabled",
+    caret: "hide",
+  });
+  const { data, info } = await sharp(screenshot)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const bandHeight = Math.max(1, Math.floor(info.height / 12));
+  let maximumBlankRatio = 0;
+  for (let band = 0; band < 12; band += 1) {
+    const startY = band * bandHeight;
+    const endY = band === 11 ? info.height : startY + bandHeight;
+    let blankPixels = 0;
+    const pixelCount = (endY - startY) * info.width;
+    for (let y = startY; y < endY; y += 1) {
+      for (let x = 0; x < info.width; x += 1) {
+        const offset = (y * info.width + x) * info.channels;
+        const [red, green, blue, alpha] = data.subarray(offset, offset + 4);
+        if (alpha < 250 || (red >= 245 && green >= 245 && blue >= 245)) {
+          blankPixels += 1;
+        }
+      }
+    }
+    maximumBlankRatio = Math.max(maximumBlankRatio, blankPixels / pixelCount);
+  }
+  expect(
+    maximumBlankRatio,
+    "every horizontal viewport band must contain a composed field frame",
+  ).toBeLessThan(0.1);
   await testInfo.attach(name, { path, contentType: "image/png" });
+  return screenshot;
 }
 
 async function waitForRenderableTacticalScene(
@@ -300,10 +389,11 @@ async function waitForRenderableTacticalScene(
   sceneType: TacticalSceneType,
 ) {
   const expectation = sceneExpectations[sceneType];
-  await expect(page.getByTestId("field-loading-overlay")).toBeHidden({
+  const field = page.getByTestId("game-field");
+  await expect(field).toHaveAttribute("data-render-ready", "true", {
     timeout: FIELD_READY_TIMEOUT_MS,
   });
-  const field = page.getByTestId("game-field");
+  await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
   await expect(field).toHaveAttribute(
     "data-player-count",
     expectation.playerCount,
@@ -491,7 +581,7 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
   await expect(page).toHaveURL(/\/match\/match-open_play$/u);
 });
 
-test("keeps first-use tactical arrows visible at short, maximum, diagonal, and edge pulls", async ({
+test("captures continuous tactical arrow visuals at short, maximum, diagonal, and edge pulls", async ({
   page,
 }, testInfo) => {
   test.slow();
@@ -500,6 +590,7 @@ test("keeps first-use tactical arrows visible at short, maximum, diagonal, and e
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
   );
   await hydrateScene(page, canonicalScene("FREE_KICK"));
+  await waitForRenderableTacticalScene(page, "FREE_KICK");
   const target = page.getByTestId("ball-aim-target");
   await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
 

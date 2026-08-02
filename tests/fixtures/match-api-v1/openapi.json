@@ -735,7 +735,7 @@
         "required": ["attack_chain_depth", "last_scene_origin"],
         "properties": {
           "attack_chain_depth": { "type": "integer", "minimum": 0, "maximum": 8 },
-          "last_scene_origin": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP", "POSSESSION_CHAIN"] },
+          "last_scene_origin": { "$ref": "#/components/schemas/PendingActionSource" },
           "possession_chain": { "$ref": "#/components/schemas/MatchContext" },
           "requested_seed": {
             "oneOf": [{ "$ref": "#/components/schemas/SimulationSeed" }, { "type": "null" }],
@@ -982,6 +982,11 @@
         },
         "additionalProperties": false
       },
+      "PendingActionSource": {
+        "type": "string",
+        "enum": ["SIMULATION", "FOLLOW_UP", "POSSESSION_CHAIN"],
+        "description": "Authoritative cause of the playable pause: a generated simulation event, a same-minute decision follow-up, or a next-minute continuation of retained possession."
+      },
       "PendingActionOrigin": {
         "type": "object",
         "required": ["previous_action_id", "previous_outcome"],
@@ -1004,7 +1009,7 @@
           "action_type": { "$ref": "#/components/schemas/PlayableSceneType" },
           "scene_type": { "$ref": "#/components/schemas/PlayableSceneType" },
           "action_team": { "$ref": "#/components/schemas/ActionTeam" },
-          "source": { "type": "string", "enum": ["SIMULATION", "FOLLOW_UP"] },
+          "source": { "$ref": "#/components/schemas/PendingActionSource" },
           "title": { "type": "string", "minLength": 1 },
           "description": { "type": "string", "minLength": 1 },
           "field_state_id": { "$ref": "#/components/schemas/Identifier" },
