@@ -250,7 +250,17 @@ export default function PreMatchScreen() {
     );
   }
 
-  if (!match || !myTeam || !opponentTeam) return null;
+  if (!match || !myTeam || !opponentTeam) {
+    return (
+      <LoadingScreen
+        isLoading={true}
+        progress={32}
+        title="Preparing matchup"
+        detail="Restoring authoritative match presentation"
+        label="Restoring pre-match data"
+      />
+    );
+  }
 
   return (
     <div className="bg-overgoal-dark-blue h-full min-h-dvh w-full p-4">

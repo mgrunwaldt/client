@@ -397,6 +397,12 @@ async function main() {
       "--grep",
       "holds an active browser worker for the runner signal-cleanup proof",
     );
+  } else if (process.env.OVERGOAL_STALE_PORT_PROOF === "1") {
+    playwrightArgs.push(
+      "--project=chromium",
+      "--grep",
+      "mounts the login route without a fatal page error",
+    );
   }
   const browser = spawnOwned("playwright", "corepack", playwrightArgs, {
     stdio: "inherit",
@@ -410,6 +416,8 @@ async function main() {
   await waitForBrowserOrPreviewExit(browser, preview);
 
   await stopOwnedChild(preview, "preview");
+  if (process.env.OVERGOAL_STALE_PORT_PROOF === "1") return;
+
   directBrowserDistDirectory = await mkdtemp(
     join(tmpdir(), "overgoal-direct-browser-dist-"),
   );

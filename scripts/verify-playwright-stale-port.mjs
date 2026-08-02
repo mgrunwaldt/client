@@ -51,6 +51,7 @@ try {
       env: {
         ...process.env,
         OVERGOAL_OCCUPIED_PORT: String(stalePort),
+        OVERGOAL_STALE_PORT_PROOF: "1",
       },
     },
   );
