@@ -30,7 +30,7 @@ account's match state is never exposed after an account switch.
 ## Server Envelope Confirmation
 
 The client boundary follows the Match API v1 OpenAPI and fixtures pinned at
-`9918cbc1beb502f0675895b9fbe64d77a96127dc`:
+`d5393cf3ff6efa4d9c893e0534284b08b2f98d2c`:
 
 ```ts
 POST /auth/v1/challenges

@@ -1311,12 +1311,14 @@
       },
       "MatchSnapshotResponse": {
         "type": "object",
-        "required": ["match", "my_team", "opponent_team", "timeline"],
+        "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state"],
         "properties": {
           "match": { "$ref": "#/components/schemas/Match" },
           "my_team": { "$ref": "#/components/schemas/Team" },
           "opponent_team": { "$ref": "#/components/schemas/Team" },
-          "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } }
+          "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } },
+          "pending_action": { "oneOf": [{ "$ref": "#/components/schemas/PendingAction" }, { "type": "null" }] },
+          "field_state": { "oneOf": [{ "$ref": "#/components/schemas/FieldState" }, { "type": "null" }] }
         },
         "additionalProperties": false
       },

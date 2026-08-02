@@ -62,6 +62,7 @@ export default function PreMatchScreen() {
   );
   const loading = useMatchSessionStore((state) => state.loading);
   const error = useMatchSessionStore((state) => state.error);
+  const phase = useMatchSessionStore((state) => state.phase);
   const playerTeam =
     teamsData.find((team) => team.name === myTeam?.name) ??
     findClaimedPlayerTeam(claimedPlayerLinkId) ??
@@ -85,11 +86,21 @@ export default function PreMatchScreen() {
         setError(null);
         const response = await fetchBackendMatch(matchId);
         if (cancelled) return;
+        const pendingAction =
+          response.pending_action &&
+          !response.pending_action.field_state &&
+          response.field_state
+            ? {
+                ...response.pending_action,
+                field_state: response.field_state,
+              }
+            : response.pending_action;
         hydrateMatchSession({
           match: response.match,
           myTeam: response.my_team,
           opponentTeam: response.opponent_team,
           timelineEvents: response.timeline,
+          pendingAction,
         });
       } catch (error) {
         if (cancelled) return;
@@ -113,11 +124,24 @@ export default function PreMatchScreen() {
   ]);
 
   useEffect(() => {
-    if (!authoritativeMatchReady) return;
+    const matchId = match?.id;
+    if (!authoritativeMatchReady || !matchId) return;
+    if (startLock.current || startCompleted.current) return;
+    if (phase === "finished") {
+      navigate(`/match-result/${matchId}`, { replace: true });
+      return;
+    }
+    if (match.match_status !== "NOT_STARTED") {
+      navigate(`/match/${matchId}`, { replace: true });
+    }
+  }, [authoritativeMatchReady, match, navigate, phase]);
+
+  useEffect(() => {
+    if (!authoritativeMatchReady || phase !== "created") return;
     // PREMATCH is the earliest safe point to warm the timeline and field
     // without loading game assets on login or unrelated routes.
     void preloadMatchExperience().catch(() => undefined);
-  }, [authoritativeMatchReady]);
+  }, [authoritativeMatchReady, phase]);
 
   const handleStartMatch = async () => {
     if (startLock.current) return;

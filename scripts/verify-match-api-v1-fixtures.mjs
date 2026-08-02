@@ -12,13 +12,15 @@ import {
   buildCanonicalChoiceMatrix,
 } from "./match-api-v1-fixture-invariants.mjs";
 
-const SOURCE_REPOSITORY = "https://github.com/overgoal/match_server";
-const CONTRACT_SOURCE_REVISION = "9918cbc1beb502f0675895b9fbe64d77a96127dc";
+const SOURCE_REPOSITORY = "https://github.com/mgrunwaldt/match_server";
+const REPRODUCTION_SOURCE_REPOSITORY =
+  "https://github.com/overgoal/match_server";
+const CONTRACT_SOURCE_REVISION = "d5393cf3ff6efa4d9c893e0534284b08b2f98d2c";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const EXPECTED_FIXTURE_MANIFEST_SHA256 =
-  "5bc7905b27edca848ee9f6bc82b04e8fb9838c12f66dce36c6c659307d980008";
+  "8935c0ab46f1b7ca8b0a36c8df6bfb38545b7a1c6c8e7ce8833ebb3406505282";
 const EXPECTED_MIRROR_TREE_SHA256 =
-  "c8e3c1ddfb73e9c2b89dbd288b48e657762dc7b06e2ab9a4c31571a2ee442eec";
+  "ac85dcf638964c6cf0b538eb176fed1b892e06f53a950a3e5ce35a090d0926a6";
 const EXPECTED_REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 
@@ -210,7 +212,7 @@ async function readSealedReproduction(reproductionRoot) {
   const manifest = JSON.parse(manifestContents);
 
   if (
-    manifest.source?.repository !== SOURCE_REPOSITORY ||
+    manifest.source?.repository !== REPRODUCTION_SOURCE_REPOSITORY ||
     manifest.source?.revision !== REPRODUCTION_SOURCE_REVISION ||
     manifest.source?.packet_path !== "self-pass-follow-up-response.json"
   ) {

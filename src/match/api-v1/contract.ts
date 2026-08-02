@@ -160,6 +160,8 @@ export interface BackendMatchSnapshot {
   my_team: BackendTeam;
   opponent_team: BackendTeam;
   timeline: BackendTimelineEvent[];
+  pending_action: BackendPendingAction | null;
+  field_state: BackendFieldState | null;
   [key: string]: unknown;
 }
 
@@ -407,8 +409,52 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
     my_team: BackendTeamSchema,
     opponent_team: BackendTeamSchema,
     timeline: z.array(BackendTimelineEventSchema),
+    pending_action: BackendPendingActionSchema.nullable(),
+    field_state: BackendFieldStateSchema.nullable(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((response, context) => {
+    const pendingAction = response.pending_action;
+    if (pendingAction?.id !== response.match.pending_action?.id) {
+      context.addIssue({
+        code: "custom",
+        message: "Snapshot and match pending actions must agree.",
+        path: ["pending_action"],
+      });
+    }
+    if (!pendingAction) {
+      if (response.field_state !== null) {
+        context.addIssue({
+          code: "custom",
+          message: "A snapshot field state requires a pending action.",
+          path: ["field_state"],
+        });
+      }
+      return;
+    }
+
+    const fieldState = pendingAction.field_state ?? response.field_state;
+    if (!fieldState) {
+      context.addIssue({
+        code: "custom",
+        message: "A snapshot pending action requires a field state.",
+        path: ["field_state"],
+      });
+      return;
+    }
+    if (
+      fieldState.id !== pendingAction.field_state_id ||
+      fieldState.match_id !== response.match.id ||
+      fieldState.minute !== pendingAction.minute ||
+      fieldState.action_type !== pendingAction.action_type
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Snapshot pending action and field state must agree.",
+        path: ["pending_action"],
+      });
+    }
+  });
 
 export const BackendCreateMatchResponseSchema = z
   .object({

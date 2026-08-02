@@ -213,4 +213,30 @@ describe("auth session client", () => {
     });
     expect(useMatchSessionStore.getState().match).toBeNull();
   });
+
+  it("revokes a bearer session before clearing it during an account switch", async () => {
+    useAuthSessionStore.getState().setAuthenticated({
+      walletAddress: "0x123",
+      chainId: "0x534e",
+      session: {},
+      transport: "bearer",
+      bearerCredential: "bearer-to-revoke",
+    });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    useAuthSessionStore.getState().beginAccountSwitch();
+    expect(useAuthSessionStore.getState()).toMatchObject({
+      status: "account_switching",
+      bearerCredential: "bearer-to-revoke",
+    });
+    await logoutAuthSession();
+
+    expect(headers(fetchMock.mock.calls[0]).get("Authorization")).toBe(
+      "Bearer bearer-to-revoke",
+    );
+    expect(useAuthSessionStore.getState()).toMatchObject({
+      status: "unknown",
+      bearerCredential: null,
+    });
+  });
 });

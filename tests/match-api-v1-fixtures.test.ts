@@ -23,10 +23,10 @@ import { createMatchApiV1SchemaValidator } from "../scripts/match-api-v1-schema-
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "9918cbc1beb502f0675895b9fbe64d77a96127dc";
+const CONTRACT_SOURCE_REVISION = "d5393cf3ff6efa4d9c893e0534284b08b2f98d2c";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "5bc7905b27edca848ee9f6bc82b04e8fb9838c12f66dce36c6c659307d980008";
+  "8935c0ab46f1b7ca8b0a36c8df6bfb38545b7a1c6c8e7ce8833ebb3406505282";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(
@@ -156,7 +156,7 @@ describe("Match API v1 test fixture mirror", () => {
     );
 
     expect(manifest.source).toEqual({
-      repository: "https://github.com/overgoal/match_server",
+      repository: "https://github.com/mgrunwaldt/match_server",
       revision: CONTRACT_SOURCE_REVISION,
       contract_path: "contracts/match-api/v1",
       description:

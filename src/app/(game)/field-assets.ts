@@ -1,4 +1,5 @@
 import { useFBX, useGLTF, useProgress, useTexture } from "@react-three/drei";
+import { DefaultLoadingManager } from "three";
 
 const defenderTextures = [
   "/models/in-game/textures/defenders/BaseTeam_1_Skin_1.png",
@@ -27,6 +28,19 @@ const accessoryTextures = [
   "/models/Male/new-text/Accesories_Mat_6.png",
   "/models/Male/new-text/Accesories_Mat_7.png",
 ];
+
+const legacyEmbeddedTextureRedirects = new Map([
+  ["Accesories_Mat_BaseColor.png", accessoryTextures[0]],
+  ["MainBody_Skin1_BaseColor.png", defenderTextures[0]],
+]);
+
+// The shipped FBX files contain obsolete absolute authoring-machine paths.
+// Redirect their basenames to maintained runtime textures before any model loads.
+DefaultLoadingManager.setURLModifier((url) => {
+  const segments = url.replace(/\\/gu, "/").split("/");
+  const basename = segments[segments.length - 1] ?? url;
+  return legacyEmbeddedTextureRedirects.get(basename) ?? url;
+});
 
 const fieldTextures = [
   "/models/in-game/Pitch desing.png",
@@ -64,6 +78,20 @@ export const MATCH_FIELD_ASSET_COUNT =
 let assetsPrimed = false;
 let activePreload: Promise<void> | null = null;
 
+function clearMatchFieldAssetCache() {
+  gltfModels.forEach((asset) => useGLTF.clear(asset));
+  [...playerModels, ...playerAnimations].forEach((asset) =>
+    useFBX.clear(asset),
+  );
+  [
+    ...defenderTextures,
+    ...goalkeeperTextures,
+    ...accessoryTextures,
+    ...fieldTextures,
+  ].forEach((asset) => useTexture.clear(asset));
+  assetsPrimed = false;
+}
+
 export function primeMatchFieldAssets() {
   if (assetsPrimed) return;
   assetsPrimed = true;
@@ -99,19 +127,24 @@ export function preloadMatchFieldAssets(
     let settled = false;
     let sawActivity = useProgress.getState().active;
     let idleChecks = 0;
-    let interval: number | null = null;
-    let timeout: number | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
     let unsubscribe: () => void = () => {};
 
     const finish = (error?: Error) => {
       if (settled) return;
       settled = true;
-      if (interval !== null) window.clearInterval(interval);
-      if (timeout !== null) window.clearTimeout(timeout);
+      if (interval !== null) clearInterval(interval);
+      if (timeout !== null) clearTimeout(timeout);
       unsubscribe();
-      activePreload = error ? null : Promise.resolve();
-      if (error) reject(error);
-      else resolve();
+      if (error) {
+        clearMatchFieldAssetCache();
+        activePreload = null;
+        reject(error);
+      } else {
+        activePreload = Promise.resolve();
+        resolve();
+      }
     };
 
     const inspect = () => {
@@ -144,8 +177,8 @@ export function preloadMatchFieldAssets(
     };
 
     unsubscribe = useProgress.subscribe(inspect);
-    interval = window.setInterval(inspect, 50);
-    timeout = window.setTimeout(() => {
+    interval = setInterval(inspect, 50);
+    timeout = setTimeout(() => {
       if (!settled) {
         finish(new Error("Timed out while preparing the match field."));
       }

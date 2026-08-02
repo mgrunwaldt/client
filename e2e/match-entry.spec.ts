@@ -119,13 +119,16 @@ function startedMatchResponse() {
 }
 
 test("enters a production match once and reports truthful loading stages", async ({
+  context,
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(120_000);
   let createCalls = 0;
   let startCalls = 0;
+  let acceptedStart: ReturnType<typeof startedMatchResponse> | null = null;
+  const startCommandKeys: string[] = [];
 
-  await page.route("**/api/**", async (route) => {
+  await context.route("**/api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
 
@@ -143,6 +146,13 @@ test("enters a production match once and reports truthful loading stages", async
           "Set-Cookie":
             "__Host-overgoal_session=match-entry; Path=/; Secure; HttpOnly; SameSite=Lax",
         },
+        contentType: "application/json",
+        body: JSON.stringify(sessionResponse()),
+      });
+    }
+    if (request.method() === "GET" && pathname === "/api/auth/v1/session") {
+      return route.fulfill({
+        status: 200,
         contentType: "application/json",
         body: JSON.stringify(sessionResponse()),
       });
@@ -167,14 +177,47 @@ test("enters a production match once and reports truthful loading stages", async
     }
     if (request.method() === "POST" && pathname === "/api/startMatch") {
       startCalls += 1;
+      startCommandKeys.push(request.headers()["idempotency-key"] ?? "");
       expect(request.headers()["if-match-revision"]).toBe("1");
       expect(request.headers()["x-csrf-token"]).toBe(csrfToken);
       await new Promise((resolve) => setTimeout(resolve, 700));
+      if (startCalls === 1) {
+        return route.fulfill({
+          status: 503,
+          headers: apiHeaders,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "The match engine is warming up. Try again.",
+            code: "MATCH_ENGINE_UNAVAILABLE",
+            retryable: true,
+          }),
+        });
+      }
+      acceptedStart = startedMatchResponse();
       return route.fulfill({
         status: 200,
         headers: apiHeaders,
         contentType: "application/json",
-        body: JSON.stringify(startedMatchResponse()),
+        body: JSON.stringify(acceptedStart),
+      });
+    }
+    if (
+      request.method() === "GET" &&
+      pathname === "/api/match/match-entry-e2e" &&
+      acceptedStart
+    ) {
+      return route.fulfill({
+        status: 200,
+        headers: apiHeaders,
+        contentType: "application/json",
+        body: JSON.stringify({
+          match: acceptedStart.match,
+          my_team: teams[0],
+          opponent_team: teams[1],
+          timeline: acceptedStart.events,
+          pending_action: acceptedStart.pending_action,
+          field_state: acceptedStart.field_state,
+        }),
       });
     }
 
@@ -188,25 +231,34 @@ test("enters a production match once and reports truthful loading stages", async
 
   const createButton = page.getByRole("button", { name: "Play" });
   await expect(createButton).toBeVisible();
-  await createButton.click();
-  await createButton
-    .evaluate((button) => button.click())
-    .catch(() => undefined);
+  await createButton.dblclick();
   await expect(page).toHaveURL(/\/pre-match\/match-entry-e2e$/u);
   expect(createCalls).toBe(1);
 
   const startButton = page.getByRole("button", { name: "Play" });
   await expect(startButton).toBeVisible();
-  await startButton.click();
-  await startButton.evaluate((button) => button.click()).catch(() => undefined);
+  const startClickedAt = Date.now();
+  await startButton.dblclick();
 
   const transition = page
     .getByRole("status")
     .filter({ hasText: "Starting Match" });
   await expect(transition).toBeVisible();
+  const firstFeedbackMs = Date.now() - startClickedAt;
+  expect(firstFeedbackMs).toBeLessThan(1_000);
   await expect(transition).toContainText("Match engine");
+  await testInfo.attach("match-transition", {
+    body: await page.screenshot(),
+    contentType: "image/png",
+  });
   await expect(page).toHaveURL(/\/pre-match\/match-entry-e2e$/u);
   expect(startCalls).toBe(1);
+
+  await expect(
+    page.getByText("The match engine is warming up. Try again."),
+  ).toBeVisible();
+  const retryButton = page.getByRole("button", { name: "Retry" });
+  await retryButton.dblclick();
 
   await expect(page).toHaveURL(/\/match\/match-entry-e2e$/u, {
     timeout: 60_000,
@@ -214,5 +266,33 @@ test("enters a production match once and reports truthful loading stages", async
   await expect(page.getByText("LIVE", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("00'", { exact: true })).toBeVisible();
   await expect(transition).toBeHidden();
-  expect(startCalls).toBe(1);
+  expect(startCalls).toBe(2);
+  expect(startCommandKeys[0]).toBeTruthy();
+  expect(startCommandKeys[1]).toBe(startCommandKeys[0]);
+
+  const refreshedPage = await context.newPage();
+  await refreshedPage.goto("/pre-match/match-entry-e2e");
+  await expect(refreshedPage).toHaveURL(/\/match\/match-entry-e2e$/u, {
+    timeout: 15_000,
+  });
+  await expect(
+    refreshedPage.getByText("LIVE", { exact: true }).first(),
+  ).toBeVisible();
+  await refreshedPage.close();
+
+  await testInfo.attach("match-entry-timing", {
+    body: Buffer.from(
+      JSON.stringify(
+        {
+          project: testInfo.project.name,
+          firstFeedbackMs,
+          startAttempts: startCalls,
+          duplicateCommandReused: startCommandKeys[1] === startCommandKeys[0],
+        },
+        null,
+        2,
+      ),
+    ),
+    contentType: "application/json",
+  });
 });

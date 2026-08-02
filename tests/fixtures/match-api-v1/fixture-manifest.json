@@ -1,7 +1,7 @@
 {
   "source": {
-    "repository": "https://github.com/overgoal/match_server",
-    "revision": "9918cbc1beb502f0675895b9fbe64d77a96127dc",
+    "repository": "https://github.com/mgrunwaldt/match_server",
+    "revision": "d5393cf3ff6efa4d9c893e0534284b08b2f98d2c",
     "contract_path": "contracts/match-api/v1",
     "description": "Test-only mirror of the M1 authenticated-owner Match API v1 contract. Runtime modules must not import this directory."
   },
@@ -15,7 +15,7 @@
     "invalid/server-error-verifier-output-field.json": "8134b86c216e5eb7c31ec058b5e122807b19c6ac3b0bad9647e3870a56c97595",
     "invalid/server-error-wallet-address-field.json": "f214376092f8311d21410a124fb88a1fedd6c750a45dec0c9ea23e2a65652b2b",
     "manifest.json": "a67abeac50d12d240c59f39c3d14829e08c4b35388b80333b6dc0f346362f651",
-    "openapi.json": "264baf7debd333f55ee82bc6a83f74d2c1c3754d7acc1b772c3106b189ccaa23",
+    "openapi.json": "49af84f9b5c9e91032cc65df400f8367e10b46f698b0de2593c81098c619fbeb",
     "player-client/auth-challenge-request.json": "ad54c126ece7826e4f52da61ae6192f3bf8147b4525d454bb75de3e7acf5faa7",
     "player-client/auth-proof-request.json": "a87d561f334fb0ac2ca6d8280860158f4d58891018d76e667e5cbbe7cdb6e7e8",
     "player-client/create-match-request.json": "f079e3bc5f51bf61f64637ac8ef3f2f51666699df513590a4b4b2cb96f26480e",
@@ -49,7 +49,7 @@
     "server/error-response.json": "fed20156773dec34d5badf53392ffa9c6400eb82d78cca04b97c6883699610b7",
     "server/fulltime-response.json": "52375a4ab54967a2108971e2ca5ba05f5cd085f9605ae89c4f0b0e1fec026fee",
     "server/halftime-response.json": "76eda4459e45bccfdff510c95d9cb23dea5cdf4dca13cd37dff648591a382ea5",
-    "server/match-snapshot-response.json": "bf27ee7b16cc9ce78d6f745b5abfd330971dc3449a6162ce54d90f5e34d11156",
+    "server/match-snapshot-response.json": "def4fac44189c49c8e368bd49067655c2a256fe1cc35ab180e33ba202167fe47",
     "server/not-ready-response.json": "355fb9dc63c1257590b99e18e31a4de7a587bde0dc71e7e9ad2bb9b2d1baf66a",
     "server/rate-limited-response.json": "40cd3c1ba7f35ab6cab40c2d51680be33e8e9de5db8554dbe40416f8c2cda9cc",
     "server/readiness-response.json": "e9b021c2980ec1e7b785c29970aae770b96770fab3feead132988c3b28b555cc",
