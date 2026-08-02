@@ -22,6 +22,7 @@ if (!pnpmVersion) {
 const ownedChildren = new Map();
 let cleanupPromise;
 let browserDistDirectory;
+let directBrowserDistDirectory;
 let pnpmShimDirectory;
 let parentWatchdog;
 let shutdownRequested = false;
@@ -125,6 +126,9 @@ async function cleanup() {
     if (browserDistDirectory) {
       await rm(browserDistDirectory, { force: true, recursive: true });
     }
+    if (directBrowserDistDirectory) {
+      await rm(directBrowserDistDirectory, { force: true, recursive: true });
+    }
 
     if (failures.length > 0) {
       throw new AggregateError(
@@ -212,6 +216,41 @@ function waitForPreviewUrl(preview) {
     preview.stdout.on("data", inspect);
     preview.once("error", onError);
     preview.once("close", onClose);
+  });
+}
+
+function waitForApiUrl(server) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let output = "";
+    const timeout = setTimeout(
+      () => finish(reject, new Error("Timed out waiting for direct API URL")),
+      30_000,
+    );
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      server.stdout.off("data", inspect);
+      server.off("error", onError);
+      server.off("close", onClose);
+      callback(value);
+    };
+    const inspect = (chunk) => {
+      output = `${output}${chunk}`.slice(-4_096);
+      const match = output.match(/OVERGOAL_E2E_API_URL=(https:\/\/[^\s]+)/u);
+      if (match?.[1]) finish(resolve, match[1]);
+    };
+    const onError = (error) => finish(reject, error);
+    const onClose = (code, signal) =>
+      finish(
+        reject,
+        new Error(`Direct API exited before startup with ${code ?? signal}`),
+      );
+
+    server.stdout.on("data", inspect);
+    server.once("error", onError);
+    server.once("close", onClose);
   });
 }
 
@@ -369,6 +408,99 @@ async function main() {
     },
   });
   await waitForBrowserOrPreviewExit(browser, preview);
+
+  await stopOwnedChild(preview, "preview");
+  directBrowserDistDirectory = await mkdtemp(
+    join(tmpdir(), "overgoal-direct-browser-dist-"),
+  );
+  const directApi = spawnOwned(
+    "direct-api",
+    process.execPath,
+    ["scripts/e2e-match-api-server.mjs", httpsKeyPath, httpsCertPath],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  directApi.stdout.pipe(process.stdout);
+  directApi.stderr.pipe(process.stderr);
+  const directApiOrigin = await waitForApiUrl(directApi);
+  const directApiBaseUrl = `${directApiOrigin}/api`;
+
+  await runPnpm(
+    "direct-build",
+    [
+      "exec",
+      "vite",
+      "build",
+      "--outDir",
+      directBrowserDistDirectory,
+      "--emptyOutDir",
+    ],
+    {
+      env: {
+        VITE_E2E_LOCAL_CI_WALLETS: encodedLocalCiWallets,
+        VITE_E2E_MATCH_SESSION_BRIDGE: "true",
+        VITE_MATCH_API_BASE_URL: directApiBaseUrl,
+      },
+    },
+  );
+  await runPnpm("direct-bundle-verify", [
+    "exec",
+    "node",
+    "scripts/verify-bundle.mjs",
+    directBrowserDistDirectory,
+    "--allow-browser-test-bridge",
+  ]);
+
+  const directPreview = spawnOwned(
+    "direct-preview",
+    process.execPath,
+    [
+      viteBinary,
+      "preview",
+      "--host",
+      "127.0.0.1",
+      "--port",
+      "0",
+      "--strictPort",
+      "--outDir",
+      directBrowserDistDirectory,
+    ],
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        VITE_LOCAL_HTTPS: "true",
+        VITE_HTTPS_KEY_PATH: httpsKeyPath,
+        VITE_HTTPS_CERT_PATH: httpsCertPath,
+      },
+    },
+  );
+  directPreview.stdout.pipe(process.stdout);
+  directPreview.stderr.pipe(process.stderr);
+  const directPreviewUrl = await waitForPreviewUrl(directPreview);
+  console.log(`OVERGOAL_DIRECT_PREVIEW_URL=${directPreviewUrl}`);
+
+  const directBrowser = spawnOwned(
+    "direct-playwright",
+    "corepack",
+    [
+      `pnpm@${pnpmVersion}`,
+      "exec",
+      "playwright",
+      "test",
+      "e2e/direct-api.spec.ts",
+    ],
+    {
+      stdio: "inherit",
+      env: {
+        ...process.env,
+        PATH: `${pnpmShimDirectory}${delimiter}${process.env.PATH}`,
+        OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
+        OVERGOAL_MATCH_API_BASE_URL: directApiBaseUrl,
+        PLAYWRIGHT_BASE_URL: directPreviewUrl,
+      },
+    },
+  );
+  await waitForBrowserOrPreviewExit(directBrowser, directPreview);
 }
 
 function signalExitCode(signal) {

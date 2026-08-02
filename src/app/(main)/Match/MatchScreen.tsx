@@ -84,11 +84,21 @@ export default function MatchScreen() {
         setError(null);
         const response = await fetchBackendMatch(matchId);
         if (cancelled) return;
+        const pendingAction =
+          response.pending_action &&
+          !response.pending_action.field_state &&
+          response.field_state
+            ? {
+                ...response.pending_action,
+                field_state: response.field_state,
+              }
+            : response.pending_action;
         hydrateMatchSession({
           match: response.match,
           myTeam: response.my_team,
           opponentTeam: response.opponent_team,
           timelineEvents: response.timeline,
+          pendingAction,
         });
       } catch (error) {
         if (cancelled) return;

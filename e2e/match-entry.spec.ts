@@ -122,7 +122,7 @@ test("enters a production match once and reports truthful loading stages", async
   context,
   page,
 }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   let createCalls = 0;
   let startCalls = 0;
   let acceptedStart: ReturnType<typeof startedMatchResponse> | null = null;
@@ -273,12 +273,22 @@ test("enters a production match once and reports truthful loading stages", async
   const refreshedPage = await context.newPage();
   await refreshedPage.goto("/pre-match/match-entry-e2e");
   await expect(refreshedPage).toHaveURL(/\/match\/match-entry-e2e$/u, {
-    timeout: 15_000,
+    timeout: 30_000,
   });
   await expect(
     refreshedPage.getByText("LIVE", { exact: true }).first(),
   ).toBeVisible();
   await refreshedPage.close();
+
+  const refreshedTimelinePage = await context.newPage();
+  await refreshedTimelinePage.goto("/match/match-entry-e2e");
+  await expect(
+    refreshedTimelinePage.getByText("LIVE", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(refreshedTimelinePage).toHaveURL(/\/game$/u, {
+    timeout: 45_000,
+  });
+  await refreshedTimelinePage.close();
 
   await testInfo.attach("match-entry-timing", {
     body: Buffer.from(

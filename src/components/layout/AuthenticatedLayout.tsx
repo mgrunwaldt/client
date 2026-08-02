@@ -8,7 +8,12 @@ import {
   logoutAuthSession,
 } from "../../auth/api";
 import { useAuthSessionStore } from "../../auth/session-store";
-import { canonicalWalletAddress, walletAuthSigner } from "../../auth/wallet";
+import {
+  authenticatedSubjectChanged,
+  canonicalWalletAddress,
+  canonicalWalletChainId,
+  walletAuthSigner,
+} from "../../auth/wallet";
 import { useStarknetConnect } from "../../dojo/hooks/useStarknetConnect";
 import { useMatchSessionStore } from "../../match/session-store";
 import LoadingScreen from "../loader/LoadingScreen";
@@ -22,6 +27,7 @@ export function AuthenticatedLayout() {
   const authenticatedWallet = useAuthSessionStore(
     (state) => state.walletAddress,
   );
+  const authenticatedChain = useAuthSessionStore((state) => state.chainId);
   const resetMatchSession = useMatchSessionStore(
     (state) => state.resetMatchSession,
   );
@@ -45,7 +51,15 @@ export function AuthenticatedLayout() {
     if (status !== "connected" || !account || !address || !chainId) return;
     if (switchingRef.current) return;
     const connectedWallet = canonicalWalletAddress(address);
-    if (authenticatedWallet && authenticatedWallet !== connectedWallet) {
+    const connectedChain = canonicalWalletChainId(chainId);
+    if (
+      authenticatedSubjectChanged(
+        authenticatedWallet,
+        authenticatedChain,
+        connectedWallet,
+        connectedChain,
+      )
+    ) {
       switchingRef.current = true;
       useAuthSessionStore.getState().beginAccountSwitch();
       resetMatchSession();
@@ -69,7 +83,8 @@ export function AuthenticatedLayout() {
           // Hydration recovers only the existing cookie-bound CSRF token.
           const session = await hydrateAuthSession();
           if (
-            session.subject?.account_address === canonicalWalletAddress(address)
+            session.subject?.account_address === connectedWallet &&
+            session.subject?.chain_id === connectedChain
           ) {
             return;
           }
@@ -90,6 +105,7 @@ export function AuthenticatedLayout() {
     account,
     address,
     authStatus,
+    authenticatedChain,
     authenticatedWallet,
     chainId,
     resetMatchSession,
