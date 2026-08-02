@@ -10,13 +10,7 @@ import {
 } from "@react-three/drei";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
-import {
-  type MouseEvent as ReactMouseEvent,
-  Suspense,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { Suspense, useEffect, useEffectEvent, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import * as THREE from "three";
 
@@ -31,6 +25,14 @@ import {
   createMatchCommand,
   processBackendMatchAction,
 } from "../../lib/backend-match";
+import {
+  ballFaceContactFromPercent,
+  ballFacePercentFromContact,
+  buildCanonicalKickDecision,
+  createKickSubmissionGate,
+  isCanonicalKickScene,
+  parseKickControlEnvelope,
+} from "../../match/kick-input";
 import { useMatchSessionStore } from "../../match/session-store";
 
 const FIELD_Y = 111;
@@ -44,7 +46,8 @@ const OPPONENT_NEAR_BALL_DISTANCE = 10;
 const PLAYER_TRAJECTORY_TRACK_DISTANCE = 10;
 const RECEIVER_CONTROL_BALL_OFFSET_Y = 1.1;
 const PLAYER_TRACK_TURN_SPEED = 9;
-const DEFAULT_STRIKE_POINT = { x: 74, y: 58 };
+const DEFAULT_STRIKE_CONTACT = { x: 0.45, y: -0.15 };
+const RESULT_HOLD_MS = 2_500;
 const DEFAULT_CAMERA_POSITION: [number, number, number] = [0, 358, 234];
 const DEFAULT_CAMERA_ROTATION: [number, number, number] = [-0.7, 0, 0];
 const DEFAULT_CAMERA_ZOOM = 8;
@@ -63,22 +66,6 @@ function fieldToWorld(x: number, y: number): [number, number, number] {
   ];
 }
 
-function renderWorldToField(x: number, z: number) {
-  return {
-    x: clamp(x / LATERAL_SCALE + 50, 0, 100),
-    y: clamp(
-      (z - PLAYER_RENDER_Z_OFFSET - STADIUM_Z_CALIBRATION) / LENGTH_SCALE +
-        VISIBLE_FIELD_CENTER_Y,
-      0,
-      100,
-    ),
-  };
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
 function distanceInField(
   a: { x: number; y: number },
   b: { x: number; y: number },
@@ -86,101 +73,6 @@ function distanceInField(
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.hypot(dx, dy);
-}
-
-function roundPoint(value: number) {
-  return Math.round(value * 10) / 10;
-}
-
-function vectorPower(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
-) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const magnitude = Math.sqrt(dx * dx + dy * dy);
-  return clamp(Math.round(magnitude * 2.4), 10, 100);
-}
-
-function contactCurve(point: { x: number; y: number }) {
-  return clamp(Math.round((point.x - 50) * 2), -100, 100);
-}
-
-function inferKickIntent(
-  ballFieldPosition: { x: number; y: number },
-  vector: { x: number; y: number },
-  power: number,
-) {
-  if (vector.x <= 1 || vector.x >= 99 || vector.y <= 1 || vector.y >= 99) {
-    return "OUT";
-  }
-  if (vector.y <= 12 && vector.x >= 36 && vector.x <= 64 && power >= 28) {
-    return "SHOT_ON_GOAL";
-  }
-  if (vector.y <= 28) {
-    return "CROSS";
-  }
-  if (vector.y < ballFieldPosition.y - 10) {
-    return "DANGEROUS_PASS";
-  }
-  if (vector.y < ballFieldPosition.y) {
-    return "FORWARD_PASS";
-  }
-  return "KEEP_BALL";
-}
-
-function inferSelectionQuality(
-  power: number,
-  curve: number,
-  intentHint: string,
-) {
-  const curvePenalty = Math.min(Math.abs(curve) * 0.25, 18);
-  const powerBonus = Math.max(0, 24 - Math.abs(power - 72));
-  const targetBonus = ["SHOT_ON_GOAL", "DANGEROUS_PASS", "CROSS"].includes(
-    intentHint,
-  )
-    ? 6
-    : 3;
-  return clamp(
-    Math.round(58 + powerBonus * 0.4 - curvePenalty * 0.3 + targetBonus),
-    45,
-    88,
-  );
-}
-
-function buildKickPayload(
-  releasedAimDraft: BallAimDraft,
-  strikePoint: { x: number; y: number },
-  ballFieldPosition: { x: number; y: number },
-) {
-  const endFieldPoint = renderWorldToField(
-    releasedAimDraft.dragStart.x + releasedAimDraft.shotVector.x,
-    releasedAimDraft.dragStart.z + releasedAimDraft.shotVector.z,
-  );
-  const power = vectorPower(ballFieldPosition, endFieldPoint);
-  const curve = contactCurve(strikePoint);
-  const intentHint = inferKickIntent(ballFieldPosition, endFieldPoint, power);
-
-  return {
-    choice: "KICK",
-    end_x: roundPoint(endFieldPoint.x),
-    end_y: roundPoint(endFieldPoint.y),
-    contact_x: roundPoint(strikePoint.x),
-    contact_y: roundPoint(strikePoint.y),
-    power,
-    curve,
-    selection_quality: inferSelectionQuality(power, curve, intentHint),
-    intent_hint: intentHint,
-  };
-}
-
-function distanceBetween(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 function sampleFlightPath(
@@ -196,12 +88,13 @@ function sampleFlightPath(
       return {
         x: previous.x + (current.x - previous.x) * alpha,
         y: previous.y + (current.y - previous.y) * alpha,
+        z: previous.z + (current.z - previous.z) * alpha,
       };
     }
   }
 
   const lastPoint = path[path.length - 1];
-  return lastPoint ? { x: lastPoint.x, y: lastPoint.y } : null;
+  return lastPoint ? { x: lastPoint.x, y: lastPoint.y, z: lastPoint.z } : null;
 }
 
 function minDistanceToFlightPath(
@@ -238,7 +131,6 @@ function resolveControlledBallPosition(
 
 type StagedKickResult = {
   response: BackendMatchResponse;
-  submittedPayload: ReturnType<typeof buildKickPayload>;
 };
 
 function shouldUseDefaultCamera(player: BackendFieldPlayer | null) {
@@ -644,19 +536,22 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const [releasedAimDraft, setReleasedAimDraft] = useState<BallAimDraft | null>(
     null,
   );
-  const [strikePoint, setStrikePoint] = useState(DEFAULT_STRIKE_POINT);
+  const [strikeContact, setStrikeContact] = useState(DEFAULT_STRIKE_CONTACT);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stagedKickResult, setStagedKickResult] =
     useState<StagedKickResult | null>(null);
   const [resolvedSceneFieldState, setResolvedSceneFieldState] =
     useState<BackendFieldState | null>(null);
-  const [animatedBallFieldPosition, setAnimatedBallFieldPosition] = useState<{
+  const [animatedBallFlightPoint, setAnimatedBallFlightPoint] = useState<{
     x: number;
     y: number;
+    z: number;
   } | null>(null);
   const [isResultAnimating, setIsResultAnimating] = useState(false);
   const animationFrameRef = useRef<number | null>(null);
+  const resultTimerRef = useRef<number | null>(null);
+  const kickSubmissionGateRef = useRef(createKickSubmissionGate());
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
   const hasImmediateFollowUpFieldState =
     Boolean(stagedKickResult?.response.pending_action?.field_state) &&
@@ -687,10 +582,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
     : { x: 50, y: VISIBLE_FIELD_CENTER_Y };
-  const ballFieldPosition = animatedBallFieldPosition || baseBallFieldPosition;
+  const ballFieldPosition = animatedBallFlightPoint || baseBallFieldPosition;
   const [ballX, , logicalBallZ] = displayFieldState
     ? fieldToWorld(ballFieldPosition.x, ballFieldPosition.y)
     : [0, BALL_Y, 0];
+  const ballY = BALL_Y + (animatedBallFlightPoint?.z ?? 0);
   const ballZ = logicalBallZ + PLAYER_RENDER_Z_OFFSET;
   const legendWorldPosition = legendPlayer
     ? (() => {
@@ -702,8 +598,14 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     !stagedKickResult &&
     !assetsActive &&
     pendingAction?.action_team === "MY_TEAM" &&
-    pendingAction?.scene_type !== "DRIBBLE" &&
-    pendingAction?.scene_type !== undefined;
+    isCanonicalKickScene(pendingAction?.scene_type) &&
+    pendingAction.available_choices.some((choice) => choice.id === "KICK") &&
+    Boolean(
+      parseKickControlEnvelope(
+        pendingAction?.control_envelope ??
+          pendingAction?.context?.control_envelope,
+      ),
+    );
   const showFieldLoadingOverlay =
     assetsActive || (assetsTotal > 0 && assetsLoaded < assetsTotal);
 
@@ -711,6 +613,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     return () => {
       if (animationFrameRef.current) {
         window.cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (resultTimerRef.current) {
+        window.clearTimeout(resultTimerRef.current);
       }
     };
   }, []);
@@ -722,14 +627,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     }
     setStagedKickResult(null);
     setResolvedSceneFieldState(null);
-    setAnimatedBallFieldPosition(null);
+    setAnimatedBallFlightPoint(null);
     setIsResultAnimating(false);
   };
 
-  const startBallPlayback = (
-    response: BackendMatchResponse,
-    submittedPayload: ReturnType<typeof buildKickPayload>,
-  ) => {
+  const startBallPlayback = (response: BackendMatchResponse) => {
     if (animationFrameRef.current) {
       window.cancelAnimationFrame(animationFrameRef.current);
     }
@@ -748,7 +650,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         const progressMs = Math.min(durationMs, elapsed);
         const point = sampleFlightPath(flightPath, progressMs / 1000);
         if (point) {
-          setAnimatedBallFieldPosition(point);
+          setAnimatedBallFlightPoint(point);
         }
 
         if (progressMs < durationMs) {
@@ -759,13 +661,18 @@ export default function GameScene({ active = true }: { active?: boolean }) {
             ? {
                 x: response.decision_result.final_point.x,
                 y: response.decision_result.final_point.y,
+                z: response.decision_result.final_point.z,
               }
             : point;
           const resolvedFinalPoint = resolveControlledBallPosition(
             response,
             rawFinalPoint || null,
           );
-          setAnimatedBallFieldPosition(resolvedFinalPoint || null);
+          setAnimatedBallFlightPoint(
+            resolvedFinalPoint
+              ? { ...resolvedFinalPoint, z: rawFinalPoint?.z ?? 0 }
+              : null,
+          );
           setIsResultAnimating(false);
         }
       };
@@ -774,54 +681,34 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       return;
     }
 
-    const start = baseBallFieldPosition;
-    const end = { x: submittedPayload.end_x, y: submittedPayload.end_y };
-    const duration = Math.max(
-      650,
-      Math.min(1400, 420 + submittedPayload.power * 7),
-    );
-    const lift = Math.max(6, Math.min(18, distanceBetween(start, end) * 0.12));
-    const startedAt = performance.now();
-    setIsResultAnimating(true);
-
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - (1 - progress) * (1 - progress);
-      setAnimatedBallFieldPosition({
-        x: start.x + (end.x - start.x) * eased,
-        y:
-          start.y +
-          (end.y - start.y) * eased -
-          Math.sin(Math.PI * eased) * lift,
-      });
-
-      if (progress < 1) {
-        animationFrameRef.current = window.requestAnimationFrame(tick);
-      } else {
-        animationFrameRef.current = null;
-        const resolvedFinalPoint = resolveControlledBallPosition(response, end);
-        setAnimatedBallFieldPosition(resolvedFinalPoint || null);
-        setIsResultAnimating(false);
-      }
-    };
-
-    animationFrameRef.current = window.requestAnimationFrame(tick);
+    // Canonical kick scenes never fabricate a trajectory when the server omits one.
+    setIsResultAnimating(false);
   };
 
   const handleAimRelease = (draft: BallAimDraft) => {
     setSubmitError(null);
     setReleasedAimDraft(draft);
-    setStrikePoint(DEFAULT_STRIKE_POINT);
+    setStrikeContact(DEFAULT_STRIKE_CONTACT);
   };
 
-  const handleStrikePanelClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+  const handleStrikePanelClick = (
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 100;
-    const y = ((event.clientY - rect.top) / rect.height) * 100;
-    setStrikePoint({
-      x: clamp(x, 8, 92),
-      y: clamp(y, 8, 92),
+    const envelope = parseKickControlEnvelope(
+      pendingAction?.control_envelope ??
+        pendingAction?.context?.control_envelope,
+    );
+    if (!envelope) return;
+    const contact = ballFaceContactFromPercent({
+      x: ((event.clientX - rect.left) / rect.width) * 100,
+      y: ((event.clientY - rect.top) / rect.height) * 100,
     });
+    // Reuse the canonical mapper so visual contact can never exceed the backend radius.
+    setStrikeContact(
+      buildCanonicalKickDecision(envelope, { x: 0, y: -1 }, 0, contact)
+        .kick_input.contact,
+    );
   };
 
   const handleKick = async () => {
@@ -829,10 +716,24 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       return;
     }
 
-    const payload = buildKickPayload(
-      releasedAimDraft,
-      strikePoint,
-      ballFieldPosition,
+    const envelope = parseKickControlEnvelope(
+      pendingAction.control_envelope ?? pendingAction.context?.control_envelope,
+    );
+    if (!envelope) {
+      setSubmitError("The current action is missing canonical kick controls.");
+      return;
+    }
+    if (!kickSubmissionGateRef.current.begin(pendingAction.id)) {
+      return;
+    }
+    const payload = buildCanonicalKickDecision(
+      envelope,
+      {
+        x: releasedAimDraft.normalizedDirection.x,
+        y: releasedAimDraft.normalizedDirection.z,
+      },
+      releasedAimDraft.normalizedPower,
+      strikeContact,
     );
 
     try {
@@ -859,7 +760,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 actionId: pendingAction.id,
               },
             );
-      if (!beginActionCommand(command)) return;
+      if (!beginActionCommand(command)) {
+        kickSubmissionGateRef.current.reset(pendingAction.id);
+        return;
+      }
       const response = await processBackendMatchAction(
         match,
         pendingAction.id,
@@ -872,11 +776,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       setResolvedSceneFieldState(submittedFieldState);
       setStagedKickResult({
         response,
-        submittedPayload: payload,
       });
       setLoading(false);
-      startBallPlayback(response, payload);
+      startBallPlayback(response);
     } catch (error) {
+      kickSubmissionGateRef.current.reset(pendingAction.id);
       const message =
         error instanceof Error ? error.message : "Failed to submit kick.";
       setSubmitError(message);
@@ -896,6 +800,24 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     clearStagedKickResult();
     navigate(`/match/${match.id}`);
   };
+
+  const autoContinueResult = useEffectEvent(handleNextAction);
+
+  useEffect(() => {
+    if (!stagedKickResult || isResultAnimating) {
+      return;
+    }
+    resultTimerRef.current = window.setTimeout(
+      autoContinueResult,
+      RESULT_HOLD_MS,
+    );
+    return () => {
+      if (resultTimerRef.current) {
+        window.clearTimeout(resultTimerRef.current);
+        resultTimerRef.current = null;
+      }
+    };
+  }, [isResultAnimating, stagedKickResult]);
 
   const resultDescription =
     stagedKickResult?.response.decision_result?.description ||
@@ -973,7 +895,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
             <Stadium position={[0, 0, 0]} scale={10} rotation={[0, 0, 0]} />
 
             <Ball
-              position={[ballX, BALL_Y, ballZ]}
+              position={[ballX, ballY, ballZ]}
               interactive={false}
               renderOnly={true}
               aimEnabled={Boolean(canAim && !releasedAimDraft)}
@@ -1009,7 +931,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         progress={assetsProgress}
       />
       {releasedAimDraft && (
-        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/18 px-4 py-6 backdrop-blur-[1px]">
+        <div
+          role="dialog"
+          aria-label="Choose ball contact"
+          className="absolute inset-0 z-30 flex items-end justify-center bg-black/18 px-4 py-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] backdrop-blur-[1px]"
+        >
           <div className="w-full max-w-sm rounded-[2rem] border border-cyan-300/45 bg-linear-to-b from-cyan-400/18 via-slate-950/88 to-[#14235c]/92 p-4 shadow-[0_0_40px_rgba(34,211,238,0.18)]">
             <div className="mb-3 flex items-center justify-between px-1">
               <div>
@@ -1034,8 +960,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
 
             <div className="rounded-[1.6rem] border border-cyan-200/40 bg-linear-to-b from-cyan-300/12 via-[#14235c]/78 to-[#0f1738] p-4">
               <div
+                data-testid="kick-contact-ball"
                 className="relative mx-auto aspect-square w-full max-w-[260px] cursor-crosshair rounded-full border-2 border-cyan-300/70 bg-radial-[circle_at_35%_35%] from-cyan-100/95 via-sky-400/28 to-[#091132] shadow-[0_0_30px_rgba(56,189,248,0.28)]"
-                onClick={handleStrikePanelClick}
+                onPointerUp={handleStrikePanelClick}
               >
                 <div className="absolute inset-[10%] rounded-full border border-cyan-200/18" />
                 <div className="absolute inset-[23%] rounded-full border border-cyan-200/12" />
@@ -1044,8 +971,8 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 <div
                   className="absolute h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-orange-400/95 shadow-[0_0_22px_rgba(251,146,60,0.65)]"
                   style={{
-                    left: `${strikePoint.x}%`,
-                    top: `${strikePoint.y}%`,
+                    left: `${ballFacePercentFromContact(strikeContact).x}%`,
+                    top: `${ballFacePercentFromContact(strikeContact).y}%`,
                   }}
                 >
                   <div className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-200/90" />
@@ -1060,8 +987,8 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                   {Math.round(releasedAimDraft.normalizedPower * 100)}%
                 </div>
                 <div className="rounded-2xl bg-black/22 px-3 py-2">
-                  Contact: {Math.round(strikePoint.x)},{" "}
-                  {Math.round(strikePoint.y)}
+                  Contact: {strikeContact.x.toFixed(2)},{" "}
+                  {strikeContact.y.toFixed(2)}
                 </div>
               </div>
               {submitError && (
@@ -1073,6 +1000,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
 
             <button
               type="button"
+              data-testid="kick-submit"
               disabled={isSubmitting}
               className="mt-4 w-full rounded-2xl bg-linear-to-b from-amber-300 via-orange-400 to-red-500 px-4 py-3 text-center text-2xl font-black tracking-[0.12em] text-white uppercase shadow-[0_10px_26px_rgba(249,115,22,0.42)]"
               onClick={handleKick}
@@ -1083,7 +1011,13 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         </div>
       )}
       {stagedKickResult && (
-        <div className="absolute inset-x-0 bottom-0 z-30 p-4 text-white">
+        <div
+          data-testid="kick-result"
+          className="absolute inset-x-0 bottom-0 z-30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-white"
+          onPointerUp={() => {
+            if (!isResultAnimating) handleNextAction();
+          }}
+        >
           <div className="mx-auto w-full max-w-md rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -1103,14 +1037,19 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               {resultDescription}
             </p>
 
-            <button
-              type="button"
-              onClick={handleNextAction}
-              disabled={isResultAnimating}
-              className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Next Action
-            </button>
+            {import.meta.env.DEV && (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleNextAction();
+                }}
+                disabled={isResultAnimating}
+                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Next Action (Debug)
+              </button>
+            )}
           </div>
         </div>
       )}

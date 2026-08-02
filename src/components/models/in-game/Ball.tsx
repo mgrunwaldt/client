@@ -10,8 +10,10 @@ import * as THREE from "three";
 import { GLTF } from "three-stdlib";
 
 const AIM_MIN_DISTANCE = 0.05;
-const AIM_POWER_NORMALIZATION_DISTANCE = 16;
-const AIM_VISIBLE_ARROW_MAX_LENGTH = 18;
+// The gesture can travel beyond the visible arrow so a full-strength touch pull
+// remains reachable without driving an arrow mesh outside the camera framing.
+const AIM_POWER_NORMALIZATION_DISTANCE = 32;
+const AIM_VISIBLE_ARROW_MAX_LENGTH = 24;
 
 export interface BallAimDraft {
   dragStart: { x: number; y: number; z: number };
@@ -58,17 +60,17 @@ function AimArrow({
   headTexture: THREE.Texture;
   tipGlowTexture: THREE.Texture;
 }) {
-  const shaftLength = Math.max(2.4, length);
+  const arrowLength = Math.max(2.4, length);
   const shaftWidth = 3.55;
-  const connectorLength = Math.min(2.4, shaftLength * 0.22);
-  const headSize = 6.3;
-  const headCenterY = shaftLength - connectorLength * 0.55 + headSize * 0.08;
-  const tipGlowY = headCenterY + headSize * 0.1;
+  const headSize = Math.min(4.6, Math.max(2.6, arrowLength * 0.26));
+  const shaftLength = Math.max(0.8, arrowLength - headSize * 0.55);
+  const headCenterY = shaftLength + headSize * 0.04;
+  const tipGlowY = headCenterY + headSize * 0.06;
 
   return (
     <group position={position} quaternion={quaternion}>
-      <mesh position={[0, shaftLength / 2 + 0.15, 0.02]}>
-        <planeGeometry args={[shaftWidth * 1.35, shaftLength + 1.2]} />
+      <mesh position={[0, shaftLength / 2, 0.02]}>
+        <planeGeometry args={[shaftWidth * 1.35, shaftLength + 0.8]} />
         <meshBasicMaterial
           map={shaftTexture}
           transparent
@@ -84,17 +86,6 @@ function AimArrow({
         <meshBasicMaterial
           map={shaftTexture}
           transparent
-          depthWrite={false}
-          side={THREE.DoubleSide}
-          toneMapped={false}
-        />
-      </mesh>
-      <mesh position={[0, shaftLength - connectorLength / 2, 0.035]}>
-        <planeGeometry args={[shaftWidth * 0.92, connectorLength]} />
-        <meshBasicMaterial
-          map={shaftTexture}
-          transparent
-          opacity={0.92}
           depthWrite={false}
           side={THREE.DoubleSide}
           toneMapped={false}
@@ -277,6 +268,17 @@ export function Ball({
     setDragCurrent(null);
   };
 
+  const handlePointerCancel = (e: ThreeEvent<PointerEvent>) => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    (e.target as unknown as PointerCaptureTarget).releasePointerCapture(
+      e.pointerId,
+    );
+    setDragStart(null);
+    setDragCurrent(null);
+    onAimChange?.(null);
+  };
+
   // Calculate arrow direction and length
   const arrowData = useMemo(() => {
     if (!isDragging || !dragStart || !dragCurrent) return null;
@@ -319,6 +321,7 @@ export function Ball({
           onPointerDown={aimEnabled ? handlePointerDown : undefined}
           onPointerMove={aimEnabled ? handlePointerMove : undefined}
           onPointerUp={aimEnabled ? handlePointerUp : undefined}
+          onPointerCancel={aimEnabled ? handlePointerCancel : undefined}
         >
           <Outlines thickness={0.5} color="black" angle={0} />
         </mesh>
@@ -327,6 +330,7 @@ export function Ball({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
           >
             <sphereGeometry args={[5, 16, 16]} />
             <meshBasicMaterial transparent opacity={0} depthWrite={false} />
