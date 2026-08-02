@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { BackendMatch, BackendTeam } from "../src/lib/backend-match";
 import {
+  hasAuthoritativeMatchIdentity,
   hasAuthoritativePrematchState,
   hasAuthoritativeTimelineState,
 } from "../src/match/authoritative-route-state";
@@ -46,34 +47,69 @@ const match: BackendMatch = {
 };
 
 describe("authoritative match route readiness", () => {
-  it("requires the exact requested match and both backend teams for Timeline", () => {
+  it("binds the requested match to its exact backend team identities", () => {
+    const state = {
+      routeMatchId: match.id,
+      match,
+      myTeam,
+      opponentTeam,
+    };
+    expect(hasAuthoritativeMatchIdentity(state)).toBe(true);
     expect(
-      hasAuthoritativeTimelineState({
-        routeMatchId: match.id,
-        match,
-        myTeam,
-        opponentTeam,
-      }),
-    ).toBe(true);
-    expect(
-      hasAuthoritativeTimelineState({
+      hasAuthoritativeMatchIdentity({
+        ...state,
         routeMatchId: "another-match",
-        match,
-        myTeam,
-        opponentTeam,
       }),
     ).toBe(false);
     expect(
-      hasAuthoritativeTimelineState({
-        routeMatchId: match.id,
-        match,
-        myTeam: null,
-        opponentTeam,
+      hasAuthoritativeMatchIdentity({
+        ...state,
+        myTeam: { ...myTeam, id: opponentTeam.id },
+      }),
+    ).toBe(false);
+    expect(
+      hasAuthoritativeMatchIdentity({
+        ...state,
+        opponentTeam: { ...opponentTeam, id: myTeam.id },
       }),
     ).toBe(false);
   });
 
-  it("also requires the authoritative Legend identity and profile for Prematch", () => {
+  it("only presents started lifecycle states on Timeline", () => {
+    const state = {
+      routeMatchId: match.id,
+      match,
+      myTeam,
+      opponentTeam,
+    };
+    expect(hasAuthoritativeTimelineState(state)).toBe(false);
+    expect(
+      hasAuthoritativeTimelineState({
+        ...state,
+        match: { ...match, match_status: "WAITING_FOR_DECISION" },
+      }),
+    ).toBe(true);
+    expect(
+      hasAuthoritativeTimelineState({
+        ...state,
+        match: { ...match, match_status: "IN_PROGRESS" },
+      }),
+    ).toBe(true);
+    expect(
+      hasAuthoritativeTimelineState({
+        ...state,
+        match: { ...match, match_status: "HALFTIME" },
+      }),
+    ).toBe(true);
+    expect(
+      hasAuthoritativeTimelineState({
+        ...state,
+        match: { ...match, match_status: "FINISHED" },
+      }),
+    ).toBe(false);
+  });
+
+  it("only presents a complete authoritative Legend before kickoff", () => {
     const state = {
       routeMatchId: match.id,
       match,
@@ -81,6 +117,12 @@ describe("authoritative match route readiness", () => {
       opponentTeam,
     };
     expect(hasAuthoritativePrematchState(state)).toBe(true);
+    expect(
+      hasAuthoritativePrematchState({
+        ...state,
+        match: { ...match, match_status: "IN_PROGRESS" },
+      }),
+    ).toBe(false);
     expect(
       hasAuthoritativePrematchState({
         ...state,

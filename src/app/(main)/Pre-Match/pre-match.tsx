@@ -13,7 +13,10 @@ import {
   fetchBackendMatch,
   startBackendMatch,
 } from "../../../lib/backend-match";
-import { hasAuthoritativePrematchState } from "../../../match/authoritative-route-state";
+import {
+  hasAuthoritativeMatchIdentity,
+  hasAuthoritativePrematchState,
+} from "../../../match/authoritative-route-state";
 import { preloadMatchExperience } from "../../../match/match-preload";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { cn } from "../../../utils/utils";
@@ -57,16 +60,22 @@ export default function PreMatchScreen() {
   const phase = useMatchSessionStore((state) => state.phase);
   const legendProfile = match?.legend_profile;
   const legendPlayerId = match?.legend_player_id;
-  const authoritativeMatchReady = hasAuthoritativePrematchState({
+  const routeState = {
     routeMatchId: params.matchId,
     match,
     myTeam,
     opponentTeam,
-  });
+  };
+  const authoritativeMatchIdentity = hasAuthoritativeMatchIdentity(routeState);
+  const authoritativeMatchReady = hasAuthoritativePrematchState(routeState);
 
   useEffect(() => {
     const matchId = params.matchId;
-    if (!matchId || authoritativeMatchReady) {
+    if (
+      !matchId ||
+      authoritativeMatchReady ||
+      (authoritativeMatchIdentity && match?.match_status !== "NOT_STARTED")
+    ) {
       return;
     }
 
@@ -108,8 +117,10 @@ export default function PreMatchScreen() {
     };
   }, [
     hydrateMatchSession,
+    authoritativeMatchIdentity,
     authoritativeMatchReady,
     match?.id,
+    match?.match_status,
     params.matchId,
     reloadKey,
     setError,
@@ -118,7 +129,7 @@ export default function PreMatchScreen() {
 
   useEffect(() => {
     const matchId = match?.id;
-    if (!authoritativeMatchReady || !matchId) return;
+    if (!authoritativeMatchIdentity || !matchId) return;
     if (startLock.current || startCompleted.current) return;
     if (phase === "finished") {
       navigate(`/match-result/${matchId}`, { replace: true });
@@ -127,7 +138,7 @@ export default function PreMatchScreen() {
     if (match.match_status !== "NOT_STARTED") {
       navigate(`/match/${matchId}`, { replace: true });
     }
-  }, [authoritativeMatchReady, match, navigate, phase]);
+  }, [authoritativeMatchIdentity, match, navigate, phase]);
 
   useEffect(() => {
     if (!authoritativeMatchReady || phase !== "created") return;

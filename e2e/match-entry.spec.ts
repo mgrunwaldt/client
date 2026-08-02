@@ -134,6 +134,8 @@ function startedMatchResponse() {
     match: {
       ...response.match,
       revision: 2,
+      my_team_id: createdMatch.my_team_id,
+      opponent_team_id: createdMatch.opponent_team_id,
       legend_player_id: createdMatch.legend_player_id,
       legend_profile: createdMatch.legend_profile,
     },
@@ -273,6 +275,17 @@ test("enters a production match once and reports truthful loading stages", async
   await expect(page.getByTestId("legend-player-id")).toHaveText("legend-api-9");
   await expect(page.getByTestId("legend-stamina")).toHaveText("63");
   await expect(page.getByTestId("legend-energy")).toHaveText("41");
+
+  const prematureTimelinePage = await context.newPage();
+  await prematureTimelinePage.goto("/match/match-entry-e2e");
+  await expect(prematureTimelinePage).toHaveURL(
+    /\/pre-match\/match-entry-e2e$/u,
+    { timeout: 30_000 },
+  );
+  await expect(
+    prematureTimelinePage.getByText("LIVE", { exact: true }),
+  ).toHaveCount(0);
+  await prematureTimelinePage.close();
 
   const startButton = page.getByRole("button", { name: "Play" });
   await expect(startButton).toBeVisible();

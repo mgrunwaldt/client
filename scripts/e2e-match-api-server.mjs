@@ -146,7 +146,17 @@ function startMatch() {
     matchId,
   );
   const result = JSON.parse(serialized);
-  result.match.revision = 2;
+  const created = createdMatch();
+  result.match = {
+    ...result.match,
+    revision: 2,
+    my_team_id: teams[0].id,
+    opponent_team_id: teams[1].id,
+    legend_player_id: created.match.legend_player_id,
+    legend_profile: created.match.legend_profile,
+  };
+  result.my_team = teams[0];
+  result.opponent_team = teams[1];
   return result;
 }
 

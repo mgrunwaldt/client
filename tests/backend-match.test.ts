@@ -301,6 +301,38 @@ describe("backend match client", () => {
     );
   });
 
+  it("rejects create and snapshot teams that do not belong to the match", async () => {
+    const create = await readFixture<Record<string, unknown>>(
+      "server/create-match-response.json",
+    );
+    const snapshot = await readFixture<Record<string, unknown>>(
+      "server/match-snapshot-response.json",
+    );
+    const mismatchedCreate = structuredClone(create) as {
+      my_team: { id: string };
+    };
+    mismatchedCreate.my_team.id = "stale-team";
+    const mismatchedSnapshot = structuredClone(snapshot) as {
+      opponent_team: { id: string };
+    };
+    mismatchedSnapshot.opponent_team.id = "stale-opponent";
+
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(mismatchedCreate, 201))
+      .mockResolvedValueOnce(jsonResponse(mismatchedSnapshot));
+
+    await expect(
+      createBackendMatch({
+        my_team_id: "team_1",
+        opponent_team_id: "team_2",
+        player_profile: defaultLegendProfile(),
+      }),
+    ).rejects.toBeInstanceOf(MatchApiContractError);
+    await expect(fetchBackendMatch("match-fixture-1")).rejects.toBeInstanceOf(
+      MatchApiContractError,
+    );
+  });
+
   it("rejects a response whose pending action and field state disagree", async () => {
     const response = await readFixture<BackendMatchResponse>(
       "server/waiting-open-play-response.json",

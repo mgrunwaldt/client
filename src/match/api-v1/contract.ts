@@ -349,6 +349,30 @@ function requirePrematchLegendData(
   }
 }
 
+function requireMatchTeamIdentity(
+  response: {
+    match: BackendMatch;
+    my_team: BackendTeam;
+    opponent_team: BackendTeam;
+  },
+  context: z.RefinementCtx,
+) {
+  if (response.my_team.id !== response.match.my_team_id) {
+    context.addIssue({
+      code: "custom",
+      message: "My team must match match.my_team_id.",
+      path: ["my_team", "id"],
+    });
+  }
+  if (response.opponent_team.id !== response.match.opponent_team_id) {
+    context.addIssue({
+      code: "custom",
+      message: "Opponent team must match match.opponent_team_id.",
+      path: ["opponent_team", "id"],
+    });
+  }
+}
+
 export const BackendTimelineEventSchema: z.ZodType<BackendTimelineEvent> = z
   .object({
     match_id: identifier,
@@ -477,6 +501,7 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
   })
   .passthrough()
   .superRefine((response, context) => {
+    requireMatchTeamIdentity(response, context);
     requirePrematchLegendData(response.match, context, ["match"]);
     const pendingAction = response.pending_action;
     if (pendingAction?.id !== response.match.pending_action?.id) {
@@ -529,6 +554,7 @@ export const BackendCreateMatchResponseSchema = z
   })
   .passthrough()
   .superRefine((response, context) => {
+    requireMatchTeamIdentity(response, context);
     requirePrematchLegendData(response.match, context, ["match"]);
   });
 

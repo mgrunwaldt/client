@@ -6,7 +6,10 @@ import { useNavigate, useParams } from "react-router";
 import LoadingScreen from "../../../components/loader/LoadingScreen";
 import { Button } from "../../../components/ui/button";
 import { fetchBackendMatch } from "../../../lib/backend-match";
-import { hasAuthoritativeTimelineState } from "../../../match/authoritative-route-state";
+import {
+  hasAuthoritativeMatchIdentity,
+  hasAuthoritativeTimelineState,
+} from "../../../match/authoritative-route-state";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { EventFeed } from "./components/EventFeed";
 import { LiveHeader } from "./components/LiveHeader";
@@ -73,18 +76,20 @@ export default function MatchScreen() {
     (state) => state.hideTransitionLoader,
   );
   const fieldTransitionTimeout = useRef<number | null>(null);
-  const authoritativeTimelineReady = hasAuthoritativeTimelineState({
+  const routeState = {
     routeMatchId: params.matchId,
     match,
     myTeam,
     opponentTeam,
-  });
+  };
+  const authoritativeMatchIdentity = hasAuthoritativeMatchIdentity(routeState);
+  const authoritativeTimelineReady = hasAuthoritativeTimelineState(routeState);
 
   const targetMinute = pendingAction?.minute || match?.current_time || 0;
 
   useEffect(() => {
     const matchId = params.matchId;
-    if (!matchId || authoritativeTimelineReady) {
+    if (!matchId || authoritativeMatchIdentity) {
       return;
     }
 
@@ -126,7 +131,7 @@ export default function MatchScreen() {
       cancelled = true;
     };
   }, [
-    authoritativeTimelineReady,
+    authoritativeMatchIdentity,
     hideTransitionLoader,
     hydrateMatchSession,
     params.matchId,
@@ -136,7 +141,18 @@ export default function MatchScreen() {
   ]);
 
   useEffect(() => {
-    if (!match?.id || !params.matchId || match.id !== params.matchId) {
+    if (!authoritativeMatchIdentity || !match) return;
+    if (match.match_status === "NOT_STARTED") {
+      navigate(`/pre-match/${match.id}`, { replace: true });
+      return;
+    }
+    if (match.match_status === "FINISHED") {
+      navigate(`/match-result/${match.id}`, { replace: true });
+    }
+  }, [authoritativeMatchIdentity, match, navigate]);
+
+  useEffect(() => {
+    if (!authoritativeTimelineReady || !match?.id || !params.matchId) {
       return;
     }
 
@@ -151,7 +167,13 @@ export default function MatchScreen() {
     }, 220);
 
     return () => window.clearTimeout(timeout);
-  }, [hideTransitionLoader, match?.id, params.matchId, updateTransitionLoader]);
+  }, [
+    authoritativeTimelineReady,
+    hideTransitionLoader,
+    match?.id,
+    params.matchId,
+    updateTransitionLoader,
+  ]);
 
   useEffect(() => {
     if (!match?.id || !params.matchId || match.id !== params.matchId) {
