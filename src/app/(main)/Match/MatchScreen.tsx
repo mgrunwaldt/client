@@ -111,6 +111,7 @@ export default function MatchScreen() {
 
     updateTransitionLoader({
       progress: 100,
+      stage: "Live feed",
       subtitle: "Live feed ready.",
     });
 

@@ -76,6 +76,7 @@ const initialUiState: MatchSessionUiState = {
     visible: false,
     title: "Loading",
     subtitle: "",
+    stage: "Preparing match",
     progress: 0,
   },
 };
@@ -179,6 +180,7 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
         visible: true,
         title: payload.title ?? state.transitionLoader.title,
         subtitle: payload.subtitle ?? state.transitionLoader.subtitle,
+        stage: payload.stage ?? state.transitionLoader.stage,
         progress: payload.progress ?? state.transitionLoader.progress,
       },
     })),

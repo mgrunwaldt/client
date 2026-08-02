@@ -1,7 +1,7 @@
+import { useRef } from "react";
 import { useNavigate } from "react-router";
 
 import { Button } from "../../../../components/ui/button";
-import { Countdown } from "../../../../components/ui/countdown";
 import {
   type BackendTeam,
   createBackendMatch,
@@ -13,7 +13,7 @@ import { useMatchSessionStore } from "../../../../match/session-store";
 import { cn } from "../../../../utils/utils";
 import { getIcon } from "../../../../utils/utils";
 import teamsData from "../../Seasons/components/teams.json";
-import { HOME_MENU_ITEMS, SEASON_COUNTDOWN_TARGET_DATE } from "../constants";
+import { HOME_MENU_ITEMS } from "../constants";
 import MenuItem from "./menu-item";
 
 function pickTeams(backendTeams: BackendTeam[]) {
@@ -38,18 +38,23 @@ function pickTeams(backendTeams: BackendTeam[]) {
 
 export default function MenuFooter() {
   const navigate = useNavigate();
+  const createLock = useRef(false);
   const setCreatedMatch = useMatchSessionStore(
     (state) => state.setCreatedMatch,
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
   const loading = useMatchSessionStore((state) => state.loading);
+  const error = useMatchSessionStore((state) => state.error);
   const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
   const beginCreateCommand = useMatchSessionStore(
     (state) => state.beginCreateCommand,
   );
 
   const handleCreateMatch = async () => {
+    if (createLock.current) return;
+    createLock.current = true;
+
     try {
       setLoading(true);
       setError(null);
@@ -70,7 +75,11 @@ export default function MenuFooter() {
         pendingCommand?.operation === "create"
           ? pendingCommand
           : createMatchCommand("create", body);
-      if (!beginCreateCommand(command)) return;
+      if (!beginCreateCommand(command)) {
+        setLoading(false);
+        createLock.current = false;
+        return;
+      }
       const created = await createBackendMatch(body, command);
 
       setCreatedMatch({
@@ -82,6 +91,7 @@ export default function MenuFooter() {
     } catch (error) {
       setError(error);
       setLoading(false);
+      createLock.current = false;
     }
   };
 
@@ -95,29 +105,26 @@ export default function MenuFooter() {
           "disabled:opacity-90",
         )}
       >
-        {!import.meta.env.DEV && !import.meta.env.VITE_E2E_LOCAL_CI_WALLETS ? (
-          <div className="flex flex-col items-center justify-center">
-            <span className="font-orbitron text-base text-white">
-              Season 0 Starts:
-            </span>
-            <Countdown
-              targetDate={SEASON_COUNTDOWN_TARGET_DATE}
-              className="text-overgoal-blue font-orbitron text-center text-xl font-bold"
-              readyText="SEASON IS LIVE!"
-            />
-          </div>
-        ) : (
-          <Button
-            className="h-full w-full"
-            onClick={handleCreateMatch}
-            disabled={loading}
-          >
-            <p className="airstrike-normal !text-5xl text-white uppercase">
-              {loading ? "..." : "Play"}
-            </p>
-          </Button>
-        )}
+        <Button
+          className="h-full w-full"
+          onClick={handleCreateMatch}
+          disabled={loading}
+          aria-describedby={error ? "create-match-error" : undefined}
+        >
+          <p className="airstrike-normal !text-5xl text-white uppercase">
+            {loading ? "..." : error ? "Retry" : "Play"}
+          </p>
+        </Button>
       </div>
+      {error ? (
+        <p
+          id="create-match-error"
+          role="alert"
+          className="absolute -top-14 left-1/2 z-[110] w-[88%] -translate-x-1/2 rounded-xl border border-pink-400/50 bg-slate-950/92 px-3 py-2 text-center text-xs font-medium text-pink-100 shadow-[0_0_20px_rgba(234,36,112,0.16)]"
+        >
+          {error}
+        </p>
+      ) : null}
       <div className="relative flex h-full w-full flex-row items-end justify-center gap-8 p-4 text-white">
         {HOME_MENU_ITEMS.map((item) => (
           <MenuItem

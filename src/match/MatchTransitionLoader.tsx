@@ -17,7 +17,12 @@ export default function MatchTransitionLoader() {
   const progress = normalizedProgress(loader.progress);
 
   return (
-    <div className="fixed inset-0 z-[200] overflow-hidden bg-[#020816] text-white">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-label={`${loader.stage}: ${loader.subtitle}`}
+      className="fixed inset-0 z-[200] overflow-hidden bg-[#020816] text-white"
+    >
       <img
         src={glitchBackground}
         alt="transition background"
@@ -57,21 +62,27 @@ export default function MatchTransitionLoader() {
 
           <div className="rounded-[1.6rem] border border-cyan-300/28 bg-[linear-gradient(180deg,rgba(5,18,36,0.88),rgba(3,12,24,0.96))] px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03),0_0_24px_rgba(5,122,166,0.08)]">
             <div className="mb-3 flex items-center justify-between text-[11px] font-bold tracking-[0.26em] text-cyan-100/78 uppercase">
-              <span>Preparing Match State</span>
+              <span>{loader.stage}</span>
               <span>{Math.round(progress)}%</span>
             </div>
 
-            <div className="relative h-3.5 overflow-hidden rounded-full border border-cyan-300/14 bg-white/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]">
+            <div
+              role="progressbar"
+              aria-label={loader.stage}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(progress)}
+              className="relative h-3.5 overflow-hidden rounded-full border border-cyan-300/14 bg-white/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.02)]"
+            >
               <div
                 className="transition-loader-shimmer relative h-full rounded-full bg-[linear-gradient(90deg,#35d7ff_0%,#2de1d2_45%,#86f4bf_100%)] shadow-[0_0_14px_rgba(53,215,255,0.38)] transition-[width] duration-300 ease-out"
                 style={{ width: `${progress}%` }}
               />
             </div>
 
-            <div className="mt-3 flex items-center justify-between text-[10px] font-bold tracking-[0.22em] text-white/52 uppercase">
-              <span>Backend Sync</span>
-              <span>Timeline Ready</span>
-            </div>
+            <p className="mt-3 min-h-4 text-[10px] font-bold tracking-[0.18em] text-white/52 uppercase">
+              {loader.subtitle}
+            </p>
           </div>
         </div>
       </div>

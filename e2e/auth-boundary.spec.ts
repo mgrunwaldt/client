@@ -292,10 +292,10 @@ test("uses the real LOCAL_CI wallet, cookie hydration, CSRF, switch, and logout 
   expect(switchedAddress).toBe(wallets[1].address);
   await expect.poll(() => logoutCalls).toBe(1);
   await expect.poll(() => challengeSequence).toBe(sessionsBeforeRefresh + 1);
-  await page.getByRole("button", { name: "Play" }).click();
+  await expect(page.getByText("Match unavailable")).toBeVisible();
   expect(startMatchCalls).toBe(0);
 
-  await page.locator("button").first().click();
+  await page.getByRole("button", { name: "Back to home" }).click();
   await page.locator('a[href="/settings"]').click();
   await page.getByRole("button", { name: "Disconnect" }).click();
   await expect(page).toHaveURL(/\/login$/u);

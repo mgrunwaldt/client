@@ -1,12 +1,12 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import preMatchBackground from "/backgrounds/glitch-bg.webp";
 
 import playersData from "../../../../data/players.json";
+import LoadingScreen from "../../../components/loader/LoadingScreen";
 import { BackButton } from "../../../components/ui/back-button";
 import { Button } from "../../../components/ui/button";
-import { Countdown } from "../../../components/ui/countdown";
 import { GlitchText } from "../../../components/ui/glitch-text";
 import { StaminaBar } from "../../../components/ui/stamina-bar";
 import {
@@ -14,12 +14,12 @@ import {
   fetchBackendMatch,
   startBackendMatch,
 } from "../../../lib/backend-match";
+import { preloadMatchExperience } from "../../../match/match-preload";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { cn } from "../../../utils/utils";
 import useAppStore from "../../../zustand/store";
 import CyberContainer from "../Home/components/cyber-container";
 import SemiSquareContainer from "../Home/components/semi-square/semi-square-container";
-import { SEASON_COUNTDOWN_TARGET_DATE } from "../Home/constants";
 import teamsData from "../Seasons/components/teams.json";
 import PreMatchTeam from "./components/pre-match-team";
 
@@ -35,6 +35,9 @@ function findClaimedPlayerTeam(claimedPlayerLinkId: string | null) {
 export default function PreMatchScreen() {
   const navigate = useNavigate();
   const params = useParams();
+  const startLock = useRef(false);
+  const startCompleted = useRef(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const { claimedPlayerLinkId } = useAppStore();
   const match = useMatchSessionStore((state) => state.match);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
@@ -58,12 +61,15 @@ export default function PreMatchScreen() {
     (state) => state.updateTransitionLoader,
   );
   const loading = useMatchSessionStore((state) => state.loading);
+  const error = useMatchSessionStore((state) => state.error);
   const playerTeam =
     teamsData.find((team) => team.name === myTeam?.name) ??
     findClaimedPlayerTeam(claimedPlayerLinkId) ??
     teamsData[3];
   const enemyTeam =
     teamsData.find((team) => team.name === opponentTeam?.name) ?? teamsData[0];
+  const authoritativeMatchReady =
+    match?.id === params.matchId && Boolean(myTeam) && Boolean(opponentTeam);
 
   useEffect(() => {
     const matchId = params.matchId;
@@ -97,74 +103,141 @@ export default function PreMatchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [hydrateMatchSession, match?.id, params.matchId, setError, setLoading]);
+  }, [
+    hydrateMatchSession,
+    match?.id,
+    params.matchId,
+    reloadKey,
+    setError,
+    setLoading,
+  ]);
+
+  useEffect(() => {
+    if (!authoritativeMatchReady) return;
+    // PREMATCH is the earliest safe point to warm the timeline and field
+    // without loading game assets on login or unrelated routes.
+    void preloadMatchExperience().catch(() => undefined);
+  }, [authoritativeMatchReady]);
 
   const handleStartMatch = async () => {
-    const matchId = match?.id || params.matchId;
-    if (!matchId) return;
+    if (startLock.current) return;
+    startLock.current = true;
 
-    let progressTimer: number | null = null;
+    const matchId = match?.id || params.matchId;
+    if (!matchId) {
+      startLock.current = false;
+      return;
+    }
 
     try {
-      showTransitionLoader({
-        title: "Starting Match",
-        subtitle: "Connecting to the match engine.",
-        progress: 12,
-      });
-      setLoading(true);
       setError(null);
-      progressTimer = window.setInterval(() => {
-        const currentProgress =
-          useMatchSessionStore.getState().transitionLoader.progress;
-        if (currentProgress >= 56) {
-          return;
-        }
-        updateTransitionLoader({
-          progress: Math.min(56, currentProgress + 4),
-          subtitle: "Loading kickoff state and match timeline.",
-        });
-      }, 220);
       const matchSnapshot = match;
       if (!matchSnapshot) {
         throw new Error("Match state is unavailable. Reconnect and try again.");
       }
-      const command =
-        pendingCommand?.operation === "start" &&
-        pendingCommand.matchId === matchId
-          ? pendingCommand
-          : createMatchCommand(
-              "start",
-              { match_id: matchId },
-              { matchId, revision: matchSnapshot.revision ?? null },
-            );
-      if (!beginStartCommand(command)) {
-        if (progressTimer) window.clearInterval(progressTimer);
-        useMatchSessionStore.getState().hideTransitionLoader();
-        return;
+
+      if (!startCompleted.current) {
+        const command =
+          pendingCommand?.operation === "start" &&
+          pendingCommand.matchId === matchId
+            ? pendingCommand
+            : createMatchCommand(
+                "start",
+                { match_id: matchId },
+                { matchId, revision: matchSnapshot.revision ?? null },
+              );
+        if (!beginStartCommand(command)) {
+          startLock.current = false;
+          return;
+        }
+
+        showTransitionLoader({
+          title: "Starting Match",
+          subtitle: "Waiting for the authoritative kickoff state.",
+          stage: "Match engine",
+          progress: 8,
+        });
+        const response = await startBackendMatch(matchSnapshot, command);
+        updateTransitionLoader({
+          stage: "Backend response",
+          progress: 38,
+          subtitle: "Kickoff state and live events received.",
+        });
+        setStartResponse(response);
+        startCompleted.current = true;
+      } else {
+        showTransitionLoader({
+          title: "Starting Match",
+          subtitle: "Retrying the local match presentation.",
+          stage: "Match presentation",
+          progress: 38,
+        });
       }
-      const response = await startBackendMatch(matchSnapshot, command);
-      if (progressTimer) {
-        window.clearInterval(progressTimer);
-      }
-      updateTransitionLoader({
-        progress: 68,
-        subtitle: "Syncing live events and player state.",
+
+      await preloadMatchExperience((update) => {
+        updateTransitionLoader({
+          stage: update.stage,
+          progress: 40 + update.progress * 0.54,
+          subtitle: update.detail,
+        });
       });
-      setStartResponse(response);
       updateTransitionLoader({
-        progress: 84,
-        subtitle: "Opening the live match feed.",
+        stage: "Live feed",
+        progress: 96,
+        subtitle: "Opening the minute-by-minute timeline.",
       });
       navigate(`/match/${matchId}`);
     } catch (error) {
-      if (progressTimer) {
-        window.clearInterval(progressTimer);
-      }
       setError(error);
       setLoading(false);
       useMatchSessionStore.getState().hideTransitionLoader();
+      startLock.current = false;
     }
   };
+
+  if (!authoritativeMatchReady && !error) {
+    return (
+      <LoadingScreen
+        isLoading={true}
+        progress={loading ? 32 : 18}
+        title="Preparing matchup"
+        detail="Loading authoritative teams and match state"
+        label="Loading pre-match data"
+      />
+    );
+  }
+
+  if (!authoritativeMatchReady && error) {
+    return (
+      <main className="fixed inset-0 flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.15),transparent_34%),linear-gradient(180deg,#061124,#020816)] px-6 text-white">
+        <section
+          role="alert"
+          className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/85 px-7 py-8 text-center"
+        >
+          <p className="font-orbitron text-xs font-bold tracking-[0.32em] text-pink-300 uppercase">
+            Match unavailable
+          </p>
+          <p className="mt-5 text-sm leading-relaxed text-white/72">{error}</p>
+          <Button
+            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
+            onClick={() => {
+              setError(null);
+              setReloadKey((value) => value + 1);
+            }}
+          >
+            Retry match
+          </Button>
+          <Button
+            variant="ghost"
+            className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"
+            onClick={() => navigate("/")}
+          >
+            Back to home
+          </Button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <div className="bg-overgoal-dark-blue h-full min-h-dvh w-full p-4">
@@ -238,7 +311,7 @@ export default function PreMatchScreen() {
             </div>
           </div>
 
-          <div className="mt-16 flex w-full items-center justify-center">
+          <div className="mt-16 flex w-full flex-col items-center justify-center">
             <div
               className={cn(
                 "z-100 h-full max-h-[73px] w-full max-w-[236px]",
@@ -248,36 +321,26 @@ export default function PreMatchScreen() {
                 "bg-no-repeat",
               )}
             >
-              {!import.meta.env.DEV &&
-              !import.meta.env.VITE_E2E_LOCAL_CI_WALLETS ? (
-                <div
-                  className={cn(
-                    "z-100 mt-2 flex h-full w-full flex-col items-center justify-center gap-2",
-                    "flex items-center justify-center",
-                  )}
-                >
-                  <GlitchText
-                    text="Next Season Starts in:"
-                    className="text-xl"
-                  />
-                  <Countdown
-                    targetDate={SEASON_COUNTDOWN_TARGET_DATE}
-                    className="text-overgoal-blue font-orbitron text-center text-3xl font-bold"
-                    readyText="SEASON IS LIVE!"
-                  />
-                </div>
-              ) : (
-                <Button
-                  className="h-full w-full"
-                  onClick={handleStartMatch}
-                  disabled={loading}
-                >
-                  <p className="airstrike-normal !text-5xl text-white uppercase">
-                    {loading ? "..." : "Play"}
-                  </p>
-                </Button>
-              )}
+              <Button
+                className="h-full w-full"
+                onClick={handleStartMatch}
+                disabled={loading}
+                aria-describedby={error ? "start-match-error" : undefined}
+              >
+                <p className="airstrike-normal !text-5xl text-white uppercase">
+                  {loading ? "..." : error ? "Retry" : "Play"}
+                </p>
+              </Button>
             </div>
+            {error ? (
+              <p
+                id="start-match-error"
+                role="alert"
+                className="mt-4 w-full max-w-sm rounded-xl border border-pink-400/45 bg-slate-950/90 px-4 py-3 text-center text-sm text-pink-100"
+              >
+                {error}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

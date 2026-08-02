@@ -59,6 +59,7 @@ export interface MatchTransitionLoaderState {
   visible: boolean;
   title: string;
   subtitle: string;
+  stage: string;
   progress: number;
 }
 
