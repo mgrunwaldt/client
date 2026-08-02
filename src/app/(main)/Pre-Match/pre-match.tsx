@@ -13,6 +13,7 @@ import {
   fetchBackendMatch,
   startBackendMatch,
 } from "../../../lib/backend-match";
+import { hasAuthoritativePrematchState } from "../../../match/authoritative-route-state";
 import { preloadMatchExperience } from "../../../match/match-preload";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { cn } from "../../../utils/utils";
@@ -56,12 +57,16 @@ export default function PreMatchScreen() {
   const phase = useMatchSessionStore((state) => state.phase);
   const legendProfile = match?.legend_profile;
   const legendPlayerId = match?.legend_player_id;
-  const authoritativeMatchReady =
-    match?.id === params.matchId && Boolean(myTeam) && Boolean(opponentTeam);
+  const authoritativeMatchReady = hasAuthoritativePrematchState({
+    routeMatchId: params.matchId,
+    match,
+    myTeam,
+    opponentTeam,
+  });
 
   useEffect(() => {
     const matchId = params.matchId;
-    if (!matchId || (match?.id && match.id === matchId)) {
+    if (!matchId || authoritativeMatchReady) {
       return;
     }
 
@@ -103,6 +108,7 @@ export default function PreMatchScreen() {
     };
   }, [
     hydrateMatchSession,
+    authoritativeMatchReady,
     match?.id,
     params.matchId,
     reloadKey,
@@ -250,7 +256,7 @@ export default function PreMatchScreen() {
     );
   }
 
-  if (!match || !myTeam || !opponentTeam) {
+  if (!match || !myTeam || !opponentTeam || !legendProfile || !legendPlayerId) {
     return (
       <LoadingScreen
         isLoading={true}
@@ -295,12 +301,10 @@ export default function PreMatchScreen() {
             />
           </div>
 
-          {legendProfile && legendPlayerId ? (
-            <PreMatchLegend
-              legendPlayerId={legendPlayerId}
-              legendProfile={legendProfile}
-            />
-          ) : null}
+          <PreMatchLegend
+            legendPlayerId={legendPlayerId}
+            legendProfile={legendProfile}
+          />
 
           <div className="mt-16 flex w-full flex-col items-center justify-center">
             <div

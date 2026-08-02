@@ -3,6 +3,8 @@ import { sepolia } from "@starknet-react/chains";
 
 import waitingOpenPlayFixture from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
 
+test.describe.configure({ timeout: 90_000 });
+
 interface LocalCiWallet {
   address: string;
 }
@@ -126,8 +128,16 @@ function startedMatchResponse() {
     "match-entry-e2e",
   );
   const response = JSON.parse(serialized) as typeof waitingOpenPlayFixture;
-  response.match.revision = 2;
-  return response;
+  const createdMatch = createMatchResponse().match;
+  return {
+    ...response,
+    match: {
+      ...response.match,
+      revision: 2,
+      legend_player_id: createdMatch.legend_player_id,
+      legend_profile: createdMatch.legend_profile,
+    },
+  };
 }
 
 test("enters a production match once and reports truthful loading stages", async ({
@@ -308,14 +318,18 @@ test("enters a production match once and reports truthful loading stages", async
     refreshedPage.getByText("LIVE", { exact: true }).first(),
   ).toBeVisible();
   await refreshedPage.close();
+  await page.close();
 
   const refreshedTimelinePage = await context.newPage();
+  await refreshedTimelinePage.clock.install();
   await refreshedTimelinePage.goto("/match/match-entry-e2e");
+  await refreshedTimelinePage.bringToFront();
   await expect(
     refreshedTimelinePage.getByText("LIVE", { exact: true }).first(),
   ).toBeVisible();
+  await refreshedTimelinePage.clock.runFor(20_000);
   await expect(refreshedTimelinePage).toHaveURL(/\/game$/u, {
-    timeout: 45_000,
+    timeout: 15_000,
   });
   await refreshedTimelinePage.close();
 
@@ -334,4 +348,81 @@ test("enters a production match once and reports truthful loading stages", async
     ),
     contentType: "application/json",
   });
+});
+
+test("shows a recoverable Timeline error without fabricated match state", async ({
+  context,
+  page,
+}) => {
+  let snapshotCalls = 0;
+
+  await context.route("**/api/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+
+    if (request.method() === "POST" && pathname === "/api/auth/v1/challenges") {
+      return route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(challengeResponse()),
+      });
+    }
+    if (request.method() === "POST" && pathname === "/api/auth/v1/sessions") {
+      return route.fulfill({
+        status: 201,
+        headers: {
+          "Set-Cookie":
+            "__Host-overgoal_session=timeline-error; Path=/; Secure; HttpOnly; SameSite=Lax",
+        },
+        contentType: "application/json",
+        body: JSON.stringify(sessionResponse()),
+      });
+    }
+    if (request.method() === "GET" && pathname === "/api/auth/v1/session") {
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(sessionResponse()),
+      });
+    }
+    if (
+      request.method() === "GET" &&
+      pathname === "/api/match/match-unavailable"
+    ) {
+      snapshotCalls += 1;
+      return route.fulfill({
+        status: 503,
+        headers: apiHeaders,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "The live match is temporarily unavailable.",
+          code: "MATCH_ENGINE_UNAVAILABLE",
+          retryable: true,
+        }),
+      });
+    }
+
+    return route.fulfill({ status: 404, body: "not found" });
+  });
+
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Connect Controller" }).click();
+  await expect(page).toHaveURL(/\/post-login-screen$/u);
+  await page.getByRole("button", { name: "Continue" }).click();
+  await page.goto("/match/match-unavailable");
+
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Live match unavailable" }),
+  ).toContainText("The live match is temporarily unavailable.");
+  await expect(page.getByText("LIVE", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Dojo United", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Cartridge City", { exact: true })).toHaveCount(
+    0,
+  );
+
+  await page.getByRole("button", { name: "Retry match" }).click();
+  await expect.poll(() => snapshotCalls).toBe(2);
+  await expect(page.getByRole("alert")).toContainText(
+    "The live match is temporarily unavailable.",
+  );
 });

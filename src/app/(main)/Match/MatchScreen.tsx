@@ -1,9 +1,12 @@
 import "../../(game)/field-assets";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
+import LoadingScreen from "../../../components/loader/LoadingScreen";
+import { Button } from "../../../components/ui/button";
 import { fetchBackendMatch } from "../../../lib/backend-match";
+import { hasAuthoritativeTimelineState } from "../../../match/authoritative-route-state";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { EventFeed } from "./components/EventFeed";
 import { LiveHeader } from "./components/LiveHeader";
@@ -39,6 +42,7 @@ function mapBackendEventType(event: {
 export default function MatchScreen() {
   const navigate = useNavigate();
   const params = useParams();
+  const [reloadKey, setReloadKey] = useState(0);
   const match = useMatchSessionStore((state) => state.match);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
@@ -60,6 +64,8 @@ export default function MatchScreen() {
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
+  const loading = useMatchSessionStore((state) => state.loading);
+  const error = useMatchSessionStore((state) => state.error);
   const updateTransitionLoader = useMatchSessionStore(
     (state) => state.updateTransitionLoader,
   );
@@ -67,12 +73,18 @@ export default function MatchScreen() {
     (state) => state.hideTransitionLoader,
   );
   const fieldTransitionTimeout = useRef<number | null>(null);
+  const authoritativeTimelineReady = hasAuthoritativeTimelineState({
+    routeMatchId: params.matchId,
+    match,
+    myTeam,
+    opponentTeam,
+  });
 
   const targetMinute = pendingAction?.minute || match?.current_time || 0;
 
   useEffect(() => {
     const matchId = params.matchId;
-    if (!matchId || (match?.id && match.id === matchId)) {
+    if (!matchId || authoritativeTimelineReady) {
       return;
     }
 
@@ -104,6 +116,7 @@ export default function MatchScreen() {
         if (cancelled) return;
         setError(error);
         setLoading(false);
+        hideTransitionLoader();
       }
     };
 
@@ -112,7 +125,15 @@ export default function MatchScreen() {
     return () => {
       cancelled = true;
     };
-  }, [hydrateMatchSession, match?.id, params.matchId, setError, setLoading]);
+  }, [
+    authoritativeTimelineReady,
+    hideTransitionLoader,
+    hydrateMatchSession,
+    params.matchId,
+    reloadKey,
+    setError,
+    setLoading,
+  ]);
 
   useEffect(() => {
     if (!match?.id || !params.matchId || match.id !== params.matchId) {
@@ -204,13 +225,69 @@ export default function MatchScreen() {
   const awayScore =
     lastScoreEvent?.opponent_team_score ?? match?.opponent_team_score ?? 0;
 
+  if (!authoritativeTimelineReady && !error) {
+    return (
+      <LoadingScreen
+        isLoading={true}
+        progress={loading ? 42 : 18}
+        title="Opening live match"
+        detail="Loading authoritative teams, score, and timeline"
+        label="Loading live match"
+      />
+    );
+  }
+
+  if (error) {
+    return (
+      <main className="fixed inset-0 flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.15),transparent_34%),linear-gradient(180deg,#061124,#020816)] px-6 text-white">
+        <section
+          role="alert"
+          className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/85 px-7 py-8 text-center"
+        >
+          <p className="font-orbitron text-xs font-bold tracking-[0.32em] text-pink-300 uppercase">
+            Live match unavailable
+          </p>
+          <p className="mt-5 text-sm leading-relaxed text-white/72">{error}</p>
+          <Button
+            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
+            onClick={() => {
+              setError(null);
+              setReloadKey((value) => value + 1);
+            }}
+          >
+            Retry match
+          </Button>
+          <Button
+            variant="ghost"
+            className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"
+            onClick={() => navigate("/")}
+          >
+            Back to home
+          </Button>
+        </section>
+      </main>
+    );
+  }
+
+  if (!match || !myTeam || !opponentTeam) {
+    return (
+      <LoadingScreen
+        isLoading={true}
+        progress={42}
+        title="Opening live match"
+        detail="Restoring authoritative timeline presentation"
+        label="Restoring live match"
+      />
+    );
+  }
+
   return (
     <div className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white">
       <div className="z-10 flex h-full w-full max-w-4xl flex-col items-center justify-between gap-4 pb-4">
         <div className="flex min-h-0 w-full shrink flex-col items-center justify-center rounded-2xl">
           <LiveHeader
-            homeTeamName={myTeam?.name || "Dojo United"}
-            awayTeamName={opponentTeam?.name || "Cartridge City"}
+            homeTeamName={myTeam.name}
+            awayTeamName={opponentTeam.name}
             homeScore={homeScore}
             awayScore={awayScore}
             time={playbackMinute}
