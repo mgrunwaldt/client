@@ -75,7 +75,7 @@ function RouteLoadingSurface() {
     >
       <div className="w-full max-w-xs rounded-3xl border border-cyan-300/30 bg-slate-950/70 px-8 py-9 text-center shadow-[0_0_48px_rgba(34,211,238,0.12)]">
         <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-cyan-300/20 border-t-cyan-300" />
-        <p className="text-xs font-bold tracking-[0.34em] text-cyan-200 uppercase">
+        <p className="text-xs font-bold uppercase tracking-[0.34em] text-cyan-200">
           Loading Overgoal
         </p>
         <p className="mt-3 text-sm text-cyan-50/65">

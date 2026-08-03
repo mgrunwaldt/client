@@ -31,7 +31,7 @@ export default function SeasonCountdownScreen() {
       {/* Devconnect Logo */}
       <div className="flex flex-col items-center justify-center gap-2">
         <GlitchText text="Congratulations!" className="text-3xl" />
-        <h3 className="font-orbitron mt-4 text-center text-2xl leading-tight font-bold text-white uppercase">
+        <h3 className="font-orbitron mt-4 text-center text-2xl font-bold uppercase leading-tight text-white">
           You claimed your{" "}
           <span className="text-overgoal-blue underline underline-offset-2">
             unique pre-season
@@ -46,7 +46,7 @@ export default function SeasonCountdownScreen() {
       /> */}
 
       {/* Main Label */}
-      <h1 className="font-orbitron mb-8 text-center text-2xl leading-tight font-bold text-white uppercase">
+      <h1 className="font-orbitron mb-8 text-center text-2xl font-bold uppercase leading-tight text-white">
         Get ready to the next season!
       </h1>
 
@@ -62,7 +62,7 @@ export default function SeasonCountdownScreen() {
           variant="outline"
           className="bg-overgoal-dark-blue/90 text-white"
         >
-          <span className="font-orbitron text-base font-bold text-white uppercase">
+          <span className="font-orbitron text-base font-bold uppercase text-white">
             Continue
           </span>
         </Button>

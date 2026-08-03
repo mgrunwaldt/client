@@ -24,7 +24,7 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
       {/* EFFORT SECTION */}
       <div className="flex flex-col gap-3">
         <div className="rounded-t-lg border border-cyan-500/30 bg-cyan-950/30 px-4 py-1">
-          <span className="font-orbitron text-sm font-bold tracking-widest text-cyan-400 uppercase">
+          <span className="font-orbitron text-sm font-bold uppercase tracking-widest text-cyan-400">
             Effort
           </span>
         </div>
@@ -101,7 +101,7 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
       {/* PLAYSTYLE SECTION */}
       <div className="flex flex-col gap-3">
         <div className="rounded-t-lg border border-cyan-500/30 bg-cyan-950/30 px-4 py-1">
-          <span className="font-orbitron text-sm font-bold tracking-widest text-cyan-400 uppercase">
+          <span className="font-orbitron text-sm font-bold uppercase tracking-widest text-cyan-400">
             Playstyle
           </span>
         </div>
@@ -110,7 +110,7 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
           <button
             onClick={() => setPlaystyle("defense")}
             className={cn(
-              "group border-overgoal-blue relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
+              "border-overgoal-blue group relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
               playstyle === "defense"
                 ? "border-overgoal-blue"
                 : "hover:border-overgoal-blue border-gray-800 opacity-60 hover:opacity-100",
@@ -134,7 +134,7 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
           <button
             onClick={() => setPlaystyle("balanced")}
             className={cn(
-              "group border-overgoal-blue relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
+              "border-overgoal-blue group relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
               playstyle === "balanced"
                 ? "border-overgoal-blue"
                 : "hover:border-overgoal-blue border-gray-800 opacity-60 hover:opacity-100",
@@ -158,7 +158,7 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
           <button
             onClick={() => setPlaystyle("offensive")}
             className={cn(
-              "group border-overgoal-blue relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
+              "border-overgoal-blue group relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
               playstyle === "offensive"
                 ? "border-overgoal-blue"
                 : "hover:border-overgoal-blue border-gray-800 opacity-60 hover:opacity-100",

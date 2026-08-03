@@ -490,16 +490,14 @@ test("recovers an injected persisted unknown scene through the real HTTPS API", 
   await page.getByRole("link", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/$/u);
 
-  const reloadSnapshotPromise = page.waitForResponse(
-    (response) => {
-      const url = new URL(response.url());
-      return (
-        response.request().method() === "GET" &&
-        url.origin === matchApiOrigin &&
-        url.pathname === `/match/${created.id}`
-      );
-    },
-  );
+  const reloadSnapshotPromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      response.request().method() === "GET" &&
+      url.origin === matchApiOrigin &&
+      url.pathname === `/match/${created.id}`
+    );
+  });
   await page.evaluate((pathname) => {
     window.history.pushState({}, "", pathname);
     window.dispatchEvent(new PopStateEvent("popstate"));

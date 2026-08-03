@@ -42,9 +42,9 @@ export const EventFeed: React.FC<EventFeedProps> = ({ events }) => {
 
   return (
     <div className="relative flex h-full w-full max-w-2xl flex-col overflow-hidden rounded-xl p-4">
-      <div className="absolute top-0 right-0 left-0 z-10 h-8 bg-linear-to-b from-black/80 to-transparent" />
+      <div className="bg-linear-to-b absolute left-0 right-0 top-0 z-10 h-8 from-black/80 to-transparent" />
 
-      <div className="scrollbar-none flex flex-1 flex-col gap-2 overflow-y-auto pt-4 pb-2">
+      <div className="scrollbar-none flex flex-1 flex-col gap-2 overflow-y-auto pb-2 pt-4">
         {events.length === 0 && (
           <div className="font-orbitron flex h-full items-center justify-center text-gray-500">
             Match starting...
@@ -71,7 +71,7 @@ export const EventFeed: React.FC<EventFeedProps> = ({ events }) => {
         ))}
         <div ref={bottomRef} />
       </div>
-      <div className="pointer-events-none absolute right-0 bottom-0 left-0 h-8 bg-linear-to-t from-black/80 to-transparent" />
+      <div className="bg-linear-to-t pointer-events-none absolute bottom-0 left-0 right-0 h-8 from-black/80 to-transparent" />
     </div>
   );
 };

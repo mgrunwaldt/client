@@ -22,7 +22,7 @@ export default function MenuNav() {
     }
   }, [account]);
   return (
-    <div className="mt-2 flex h-full max-h-1/4 w-full flex-col items-start justify-start">
+    <div className="max-h-1/4 mt-2 flex h-full w-full flex-col items-start justify-start">
       <div className="flex w-full flex-col gap-4 p-2">
         <div className="flex w-full flex-row items-center justify-start gap-2 p-2">
           <div className="h-[75px] w-[75px] flex-shrink-0">
@@ -31,19 +31,19 @@ export default function MenuNav() {
                 loading="lazy"
                 src="/logo.png"
                 alt="profile_container"
-                className="absolute top-1/2 left-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 object-contain"
+                className="absolute left-1/2 top-1/2 h-12 w-12 -translate-x-1/2 -translate-y-1/2 object-contain"
               />
             </div>
           </div>
 
           <div className="flex h-full w-full items-center justify-between gap-3">
             <div className="flex w-full flex-col gap-2">
-              <CyberContainer className="flex h-1/3! w-3/4! flex-row items-center justify-center">
+              <CyberContainer className="h-1/3! w-3/4! flex flex-row items-center justify-center">
                 <span className="font-orbitron text-overgoal-cyan text-sm font-medium">
                   {username}
                 </span>
               </CyberContainer>
-              <CyberContainer className="flex h-1/3! w-2/4! flex-row items-center justify-around pr-2">
+              <CyberContainer className="h-1/3! w-2/4! flex flex-row items-center justify-around pr-2">
                 <img src="/icons/Coins.webp" alt="coins" className="h-4 w-4" />
                 <h2 className="font-orbitron text-sm font-medium text-white">
                   5000

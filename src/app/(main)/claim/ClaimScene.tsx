@@ -96,12 +96,12 @@ function ClaimSceneContent({
           <img
             src={getCategoyContainer(player?.player_category || "bronze")}
             alt=""
-            className="absolute top-10 left-0 z-90 h-25 w-full"
+            className="z-90 h-25 absolute left-0 top-10 w-full"
           />
           <img
             src="/claim/claim-container-gradient.webp"
             alt=""
-            className="absolute top-10 left-0 z-20 h-24 w-full"
+            className="absolute left-0 top-10 z-20 h-24 w-full"
           />
           <GlitchText
             text={player?.player_name || ""}
@@ -112,7 +112,7 @@ function ClaimSceneContent({
             alt=""
             loading="eager"
             className={cn(
-              "absolute top-30 left-1/2 z-100 h-20 w-20 -translate-x-1/2",
+              "top-30 z-100 absolute left-1/2 h-20 w-20 -translate-x-1/2",
               player?.team_id === 3 || player?.team_id === 1 ? "h-18 w-16" : "",
             )}
           />
@@ -259,7 +259,7 @@ const ClaimScene = ({ playerLinkId, onLoadComplete }: ClaimSceneProps) => {
       <img
         src="/claim/claims-bg.webp"
         alt=""
-        className="absolute top-0 left-0 h-full w-full object-cover"
+        className="absolute left-0 top-0 h-full w-full object-cover"
       />
       <Canvas
         camera={cameraSettings}

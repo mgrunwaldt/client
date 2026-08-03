@@ -21,13 +21,13 @@ export const LifestylesButton = ({ icon, title, href }: Props) => {
     >
       <Link to={href}>
         <Button className="lifestyle-inner-container flex h-full w-full flex-col items-center justify-center gap-2 p-4">
-          <div className="flex -rotate-10 flex-col items-center justify-center gap-2">
+          <div className="-rotate-10 flex flex-col items-center justify-center gap-2">
             <img
               src={getIcon(icon)}
               alt={title}
               className="h-10 w-10 -rotate-2"
             />
-            <p className="orbitron-medium text-[8px] text-white uppercase">
+            <p className="orbitron-medium text-[8px] uppercase text-white">
               {title}
             </p>
           </div>

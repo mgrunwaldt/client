@@ -44,7 +44,7 @@ export function StaminaBar({ value, className }: StaminaBarProps) {
     >
       {/* Filled bar */}
       <div
-        className="absolute top-0 left-0 flex h-full items-center overflow-hidden transition-all duration-300 ease-out"
+        className="absolute left-0 top-0 flex h-full items-center overflow-hidden transition-all duration-300 ease-out"
         style={{ width: filledWidth }}
       >
         {allSegments.map((segment) => (

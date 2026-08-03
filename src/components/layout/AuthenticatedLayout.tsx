@@ -147,9 +147,9 @@ export function AuthenticatedLayout() {
       <main className="fixed inset-0 z-[190] flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.16),transparent_34%),linear-gradient(180deg,#061124,#020816)] px-6 text-white">
         <section
           role="alert"
-          className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/84 px-7 py-8 text-center shadow-[0_0_48px_rgba(234,36,112,0.12)]"
+          className="bg-slate-950/84 w-full max-w-sm rounded-[2rem] border border-pink-400/45 px-7 py-8 text-center shadow-[0_0_48px_rgba(234,36,112,0.12)]"
         >
-          <p className="font-orbitron text-xs font-bold tracking-[0.35em] text-pink-300 uppercase">
+          <p className="font-orbitron text-xs font-bold uppercase tracking-[0.35em] text-pink-300">
             Session interrupted
           </p>
           <h1 className="airstrike-normal mt-4 text-4xl uppercase">
@@ -161,7 +161,7 @@ export function AuthenticatedLayout() {
           <button
             type="button"
             onClick={retryAuthentication}
-            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 px-5 py-3 text-sm font-bold tracking-[0.18em] text-cyan-100 uppercase"
+            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 px-5 py-3 text-sm font-bold uppercase tracking-[0.18em] text-cyan-100"
           >
             Retry session
           </button>

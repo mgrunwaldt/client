@@ -404,8 +404,7 @@ export default function MatchScreen() {
         </div>
 
         <div className="w-full shrink-0">
-          {(phase === "halftime" || phase === "resuming") &&
-          halftimeSummary ? (
+          {(phase === "halftime" || phase === "resuming") && halftimeSummary ? (
             <HalftimePanel
               summary={halftimeSummary}
               pending={resumePending}

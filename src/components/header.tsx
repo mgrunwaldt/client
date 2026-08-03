@@ -34,7 +34,7 @@ export function Header() {
         </div>
       </div>
 
-      <h1 className="mb-2 bg-gradient-to-r from-red-500 via-white to-blue-600 bg-clip-text py-2 text-3xl leading-normal font-bold text-transparent md:text-5xl">
+      <h1 className="mb-2 bg-gradient-to-r from-red-500 via-white to-blue-600 bg-clip-text py-2 text-3xl font-bold leading-normal text-transparent md:text-5xl">
         Se viene Overgoal papa
       </h1>
       <p className="mx-auto max-w-2xl px-4 text-lg text-slate-300 md:text-xl">

@@ -179,10 +179,10 @@ export function DribbleControls({
       className="absolute inset-x-0 top-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white sm:px-5"
     >
       <div className="mx-auto max-w-md overflow-hidden rounded-[1.65rem] border border-cyan-300/55 bg-[linear-gradient(140deg,rgba(3,19,52,0.94),rgba(5,39,67,0.91)_55%,rgba(40,8,67,0.92))] shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_1px_rgba(255,255,255,0.16)] backdrop-blur-md">
-        <div className="border-b border-cyan-300/25 px-4 pt-3 pb-2">
+        <div className="border-b border-cyan-300/25 px-4 pb-2 pt-3">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black tracking-[0.3em] text-cyan-200 uppercase">
+              <p className="text-[10px] font-black uppercase tracking-[0.3em] text-cyan-200">
                 Dribble Run
               </p>
               <p className="mt-0.5 text-sm font-semibold text-white">
@@ -264,9 +264,9 @@ export function DribbleControls({
                 data-dribble-lane={lane}
                 data-testid={`dribble-lane-${lane.toLowerCase()}`}
                 disabled={disabled || !isReachable}
-                className={`relative min-h-14 rounded-xl border px-2 py-2 text-xs font-black tracking-[0.16em] uppercase transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:opacity-45 ${
+                className={`relative min-h-14 rounded-xl border px-2 py-2 text-xs font-black uppercase tracking-[0.16em] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:opacity-45 ${
                   selected
-                    ? "border-lime-200/80 bg-lime-300/14 text-lime-100"
+                    ? "bg-lime-300/14 border-lime-200/80 text-lime-100"
                     : "border-cyan-200/22 bg-cyan-400/5 text-cyan-100"
                 }`}
                 onClick={(event) => switchLane(lane, event.timeStamp)}
@@ -288,15 +288,15 @@ export function DribbleControls({
           {`${laneLabel(currentLane)} lane. ${pressureWindow ? "Pressure window active." : "No pressure window."}`}
         </p>
 
-        <div className="grid grid-cols-[1fr_auto] gap-2 px-3 pt-3 pb-3">
-          <div className="rounded-xl border border-cyan-200/16 bg-black/25 px-3 py-2 text-[10px] tracking-[0.12em] text-cyan-100/75 uppercase">
+        <div className="grid grid-cols-[1fr_auto] gap-2 px-3 pb-3 pt-3">
+          <div className="border-cyan-200/16 rounded-xl border bg-black/25 px-3 py-2 text-[10px] uppercase tracking-[0.12em] text-cyan-100/75">
             Trace: {trace.length} input{trace.length === 1 ? "" : "s"}
           </div>
           <button
             type="button"
             data-testid="dribble-simulate-foul"
             disabled={!canSimulate}
-            className="min-h-11 rounded-xl border border-amber-300/55 bg-[linear-gradient(135deg,rgba(251,146,60,0.32),rgba(244,63,94,0.28))] px-3 text-xs font-black tracking-[0.1em] text-amber-50 uppercase shadow-[0_0_16px_rgba(251,146,60,0.2)] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/35 disabled:shadow-none"
+            className="min-h-11 rounded-xl border border-amber-300/55 bg-[linear-gradient(135deg,rgba(251,146,60,0.32),rgba(244,63,94,0.28))] px-3 text-xs font-black uppercase tracking-[0.1em] text-amber-50 shadow-[0_0_16px_rgba(251,146,60,0.2)] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/35 disabled:shadow-none"
             onClick={() => submitDecision("SIMULATE_FOUL", elapsedRef.current)}
           >
             Simulate Foul
