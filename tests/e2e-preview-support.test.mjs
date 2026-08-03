@@ -61,8 +61,9 @@ describe("E2E production preview support", () => {
       "public, max-age=31536000, immutable",
     );
     expect(previewCacheControl(join(root, "models", "Ball.glb"))).toBe(
-      "no-cache",
+      "public, max-age=31536000, immutable",
     );
+    expect(previewCacheControl(join(root, "index.html"))).toBe("no-cache");
     expect(previewContentType("index.css")).toBe("text/css; charset=utf-8");
     expect(previewContentType("engine.wasm")).toBe("application/wasm");
     expect(previewContentType("model.unknown")).toBe(

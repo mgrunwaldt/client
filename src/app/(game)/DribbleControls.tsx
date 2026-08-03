@@ -165,7 +165,7 @@ export function DribbleControls({
       data-testid="dribble-controls"
       aria-label="Dribble challenge"
       aria-describedby="dribble-instructions"
-      className="absolute inset-x-0 bottom-0 z-30 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] text-white sm:px-5"
+      className="absolute inset-x-0 top-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white sm:px-5"
     >
       <div className="mx-auto max-w-md overflow-hidden rounded-[1.65rem] border border-cyan-300/55 bg-[linear-gradient(140deg,rgba(3,19,52,0.94),rgba(5,39,67,0.91)_55%,rgba(40,8,67,0.92))] shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_1px_rgba(255,255,255,0.16)] backdrop-blur-md">
         <div className="border-b border-cyan-300/25 px-4 pt-3 pb-2">

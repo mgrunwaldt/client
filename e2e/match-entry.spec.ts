@@ -306,9 +306,11 @@ test("enters a production match once and reports truthful loading stages", async
   await expect(page).toHaveURL(/\/pre-match\/match-entry-e2e$/u);
   expect(startCalls).toBe(1);
 
-  await expect(
-    page.getByText("The match engine is warming up. Try again."),
-  ).toBeVisible();
+  const warmingMessage = page.getByText(
+    "The match engine is warming up. Try again.",
+  );
+  await expect(warmingMessage).toHaveCount(1);
+  await expect(warmingMessage).toBeVisible();
   const retryButton = page.getByRole("button", { name: "Retry" });
   await retryButton.dblclick();
 

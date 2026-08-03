@@ -5,7 +5,6 @@ import {
   test,
   type TestInfo,
 } from "@playwright/test";
-import { sepolia } from "@starknet-react/chains";
 import sharp from "sharp";
 
 import {
@@ -16,8 +15,13 @@ import cornerScene from "../tests/fixtures/tactical-kick-scenes/corner.json" wit
 import freeKickScene from "../tests/fixtures/tactical-kick-scenes/free-kick.json" with { type: "json" };
 import openPlayScene from "../tests/fixtures/tactical-kick-scenes/open-play.json" with { type: "json" };
 import penaltyScene from "../tests/fixtures/tactical-kick-scenes/penalty.json" with { type: "json" };
+import { authenticateForContinuation } from "./support/auth";
 
-const FIELD_READY_TIMEOUT_MS = 45_000;
+// The production scene mounts real stadium and player assets before asserting
+// an interactive field. Keep that evidence bounded but allow cold Chromium
+// contexts to finish instead of timing out mid-contract.
+const FIELD_READY_TIMEOUT_MS = 90_000;
+test.describe.configure({ timeout: 240_000 });
 const tacticalScenes = {
   OPEN_PLAY: openPlayScene,
   FREE_KICK: freeKickScene,
@@ -81,16 +85,6 @@ const sceneExpectations: Record<
     opponentRoles: "CAM,GK,LAM,LB,LCB,LDM,RAM,RB,RCB,RDM,ST",
   },
 };
-const encodedWallets = process.env.OVERGOAL_LOCAL_CI_WALLETS;
-
-if (!encodedWallets) {
-  throw new Error("OVERGOAL_LOCAL_CI_WALLETS is required by tactical E2E.");
-}
-
-const [wallet] = JSON.parse(encodedWallets) as Array<{ address: string }>;
-const walletChainId = `0x${sepolia.id.toString(16)}`;
-const csrfToken = `0x${"a".repeat(64)}`;
-
 const teams = {
   myTeam: {
     id: "team_1",
@@ -107,93 +101,6 @@ const teams = {
     intensity: 70,
   },
 };
-
-function authChallengeResponse() {
-  return {
-    challenge_id: `0x${"1".repeat(32)}`,
-    action: "CREATE_SESSION",
-    account_address: wallet.address,
-    chain_id: walletChainId,
-    expires_at: "2026-07-19T12:05:00.000Z",
-    typed_data: {
-      types: {
-        StarknetDomain: [
-          { name: "name", type: "shortstring" },
-          { name: "version", type: "shortstring" },
-          { name: "chainId", type: "shortstring" },
-          { name: "revision", type: "shortstring" },
-        ],
-        OvergoalAuthChallenge: [{ name: "challenge_hash", type: "felt" }],
-      },
-      primaryType: "OvergoalAuthChallenge",
-      domain: {
-        name: "Overgoal Auth",
-        version: "1",
-        chainId: walletChainId,
-        revision: "1",
-      },
-      message: { challenge_hash: "0x1" },
-    },
-  };
-}
-
-function authSessionResponse() {
-  return {
-    session: {
-      issued_at: "2026-07-19T12:00:00.000Z",
-      idle_expires_at: "2026-07-19T12:15:00.000Z",
-      absolute_expires_at: "2026-07-20T12:00:00.000Z",
-      subject: {
-        provider: "starknet",
-        chain_id: walletChainId,
-        account_address: wallet.address,
-      },
-    },
-    legend: { legend_id: "legend-tactical-e2e" },
-    response_context: { cookie_csrf_token: csrfToken },
-  };
-}
-
-async function authenticateForContinuation(page: Page) {
-  await page.route("**/api/auth/v1/challenges", (route) =>
-    route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify(authChallengeResponse()),
-    }),
-  );
-  await page.route("**/api/auth/v1/sessions", (route) =>
-    route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      headers: {
-        "Set-Cookie":
-          "__Host-overgoal_session=tactical-e2e; Path=/; Secure; HttpOnly; SameSite=Lax",
-      },
-      body: JSON.stringify(authSessionResponse()),
-    }),
-  );
-  await page.route("**/api/auth/v1/session", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(authSessionResponse()),
-    }),
-  );
-
-  await page.goto("/login");
-  await page.getByRole("button", { name: "Connect Controller" }).click();
-  await expect(page).toHaveURL(/\/post-login-screen$/u);
-  await expect
-    .poll(async () => {
-      const cookies = await page.context().cookies();
-      return cookies.some(
-        (cookie) => cookie.name === "__Host-overgoal_session",
-      );
-    })
-    .toBe(true);
-  await page.goto("/game");
-}
 
 function canonicalScene(sceneType: TacticalSceneType) {
   return structuredClone(tacticalScenes[sceneType]);
@@ -464,6 +371,8 @@ async function waitForRenderableTacticalScene(
     "data-kick-maximum-power",
     expectation.maximumPower,
   );
+  // The dribble/result HUD must not suppress the normal field-play marker.
+  await expect(page.getByTestId("legend-player-label")).toBeVisible();
   if (expectation.penaltyNonparticipantCount) {
     await expect(field).toHaveAttribute(
       "data-penalty-nonparticipant-count",
@@ -509,8 +418,7 @@ test("renders each canonical tactical scene with preloaded field assets", async 
 }, testInfo) => {
   test.slow();
   // Each isolated page must preload the actual stadium and 22-player assets.
-  // The production preview deliberately serves these large assets without a
-  // cache lifetime, so this matrix can exceed Playwright's default slow limit.
+  // This matrix deliberately mounts all four scenes in one test.
   test.setTimeout(240_000);
   const sceneTypes = ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"] as const;
   for (const sceneType of sceneTypes) {

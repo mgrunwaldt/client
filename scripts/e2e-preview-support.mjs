@@ -18,7 +18,26 @@ const contentTypes = new Map([
 ]);
 
 export function previewCacheControl(path) {
-  return path.includes(`${sep}assets${sep}`)
+  const extension = extname(path).toLowerCase();
+  const isStaticBuildResource =
+    path.includes(`${sep}assets${sep}`) ||
+    [
+      ".css",
+      ".fbx",
+      ".glb",
+      ".ico",
+      ".jpeg",
+      ".jpg",
+      ".js",
+      ".png",
+      ".svg",
+      ".wasm",
+      ".webp",
+    ].includes(extension);
+
+  // Every browser run uses a fresh random HTTPS origin and immutable build
+  // directory, so public assets are safe to reuse across isolated pages.
+  return isStaticBuildResource
     ? "public, max-age=31536000, immutable"
     : "no-cache";
 }

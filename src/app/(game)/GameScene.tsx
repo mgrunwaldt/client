@@ -80,6 +80,8 @@ const DEFAULT_CAMERA_WINDOW = {
   maxFieldX: 75,
 };
 const DYNAMIC_PLAYER_SCREEN_NDC_Y = -0.6;
+const DRIBBLE_PLAYER_SCREEN_NDC_Y = DYNAMIC_PLAYER_SCREEN_NDC_Y;
+const DRIBBLE_VISUAL_FIELD_Y_OFFSET = -14;
 
 function fieldToWorld(x: number, y: number): [number, number, number] {
   return [
@@ -165,6 +167,7 @@ function projectPointAtCameraZ(
 function findDynamicCameraZ(
   baseCamera: THREE.OrthographicCamera,
   playerWorldPosition: [number, number, number],
+  targetNdcY: number,
 ) {
   const probe = baseCamera.clone() as THREE.OrthographicCamera;
   probe.left = baseCamera.left;
@@ -184,7 +187,7 @@ function findDynamicCameraZ(
       playerPoint,
       playerWorldPosition[0],
       previousZ,
-    ) - DYNAMIC_PLAYER_SCREEN_NDC_Y;
+    ) - targetNdcY;
   let bracket: [number, number] | null = null;
 
   const updateBest = (z: number, delta: number) => {
@@ -204,7 +207,7 @@ function findDynamicCameraZ(
   ) {
     const delta =
       projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], z) -
-      DYNAMIC_PLAYER_SCREEN_NDC_Y;
+      targetNdcY;
     updateBest(z, delta);
 
     if (previousDelta === 0 || delta === 0 || previousDelta * delta < 0) {
@@ -225,7 +228,7 @@ function findDynamicCameraZ(
     const mid = (low + high) / 2;
     const delta =
       projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], mid) -
-      DYNAMIC_PLAYER_SCREEN_NDC_Y;
+      targetNdcY;
     updateBest(mid, delta);
 
     if (delta === 0) {
@@ -249,30 +252,49 @@ function FieldCameraController({
   legendPlayer,
   legendWorldPosition,
   cameraLocked,
+  framingKey,
+  targetNdcY,
 }: {
   legendPlayer: BackendFieldPlayer | null;
   legendWorldPosition: [number, number, number] | null;
   cameraLocked: boolean;
+  framingKey: string;
+  targetNdcY: number;
 }) {
   const camera = useThree((state) => state.camera) as THREE.OrthographicCamera;
   const size = useThree((state) => state.size);
+  const framedKeyRef = useRef("");
 
   useEffect(() => {
     if (cameraLocked) {
       return;
     }
 
-    camera.rotation.set(...DEFAULT_CAMERA_ROTATION);
-    camera.zoom = DEFAULT_CAMERA_ZOOM;
-
-    if (!legendWorldPosition || shouldUseDefaultCamera(legendPlayer)) {
-      camera.position.set(...DEFAULT_CAMERA_POSITION);
-      camera.updateProjectionMatrix();
-      camera.updateMatrixWorld();
+    const nextFrameKey = `${framingKey}:${size.width}:${size.height}`;
+    if (framedKeyRef.current === nextFrameKey) {
       return;
     }
 
-    const dynamicCameraZ = findDynamicCameraZ(camera, legendWorldPosition);
+    if (!legendWorldPosition) {
+      return;
+    }
+
+    camera.rotation.set(...DEFAULT_CAMERA_ROTATION);
+    camera.zoom = DEFAULT_CAMERA_ZOOM;
+
+    if (shouldUseDefaultCamera(legendPlayer)) {
+      camera.position.set(...DEFAULT_CAMERA_POSITION);
+      camera.updateProjectionMatrix();
+      camera.updateMatrixWorld();
+      framedKeyRef.current = nextFrameKey;
+      return;
+    }
+
+    const dynamicCameraZ = findDynamicCameraZ(
+      camera,
+      legendWorldPosition,
+      targetNdcY,
+    );
     camera.position.set(
       legendWorldPosition[0],
       DEFAULT_CAMERA_POSITION[1],
@@ -280,13 +302,16 @@ function FieldCameraController({
     );
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
+    framedKeyRef.current = nextFrameKey;
   }, [
     camera,
     cameraLocked,
+    framingKey,
     legendPlayer,
     legendWorldPosition,
     size.height,
     size.width,
+    targetNdcY,
   ]);
 
   return null;
@@ -456,11 +481,13 @@ function PlayerLabel({
   player,
   legendPlayerId,
   isTeammate,
+  visible,
   worldPosition,
 }: {
   player: BackendFieldPlayer;
   legendPlayerId: string | null;
   isTeammate: boolean;
+  visible: boolean;
   worldPosition: [number, number, number];
 }) {
   if (player.id !== legendPlayerId) {
@@ -471,6 +498,8 @@ function PlayerLabel({
     <Html
       position={[worldPosition[0], FIELD_Y + 0.5, worldPosition[2]]}
       center
+      zIndexRange={[20, 20]}
+      style={{ display: visible ? "block" : "none" }}
       className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold tracking-[0.18em] uppercase ${
         isTeammate ? "bg-black/65 text-[#d8ff6f]" : "bg-black/65 text-[#9fd1ff]"
       }`}
@@ -478,6 +507,36 @@ function PlayerLabel({
       <span data-testid="legend-player-label" data-player-id={player.id}>
         YOU
       </span>
+    </Html>
+  );
+}
+
+function PlayerScreenAnchor({
+  testId,
+  playerId,
+  worldPosition,
+}: {
+  testId: string | null;
+  playerId: string;
+  worldPosition: [number, number, number];
+}) {
+  if (!testId) {
+    return null;
+  }
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{
+        height: 2,
+        opacity: 0,
+        pointerEvents: "none",
+        width: 2,
+      }}
+    >
+      <span data-testid={testId} data-player-id={playerId} />
     </Html>
   );
 }
@@ -540,7 +599,10 @@ function BackendPlayerModel({
   stagedDecisionResult,
   isResultAnimating,
   legendPlayerId,
+  screenAnchorTestId = null,
+  showPlayerLabel = true,
   visualFieldXOffset = 0,
+  visualFieldYOffset = 0,
 }: {
   player: BackendFieldPlayer;
   isTeammate: boolean;
@@ -548,9 +610,15 @@ function BackendPlayerModel({
   stagedDecisionResult?: BackendMatchResponse["decision_result"];
   isResultAnimating: boolean;
   legendPlayerId: string | null;
+  screenAnchorTestId?: string | null;
+  showPlayerLabel?: boolean;
   visualFieldXOffset?: number;
+  visualFieldYOffset?: number;
 }) {
-  const worldPosition = fieldToWorld(player.x + visualFieldXOffset, player.y);
+  const worldPosition = fieldToWorld(
+    player.x + visualFieldXOffset,
+    player.y + visualFieldYOffset,
+  );
   const renderWorldPosition: [number, number, number] = [
     worldPosition[0],
     worldPosition[1],
@@ -627,6 +695,12 @@ function BackendPlayerModel({
         player={player}
         legendPlayerId={legendPlayerId}
         isTeammate={isTeammate}
+        visible={showPlayerLabel}
+        worldPosition={renderWorldPosition}
+      />
+      <PlayerScreenAnchor
+        testId={screenAnchorTestId}
+        playerId={player.id}
         worldPosition={renderWorldPosition}
       />
     </>
@@ -734,6 +808,22 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         opponentPlayers.filter((player) => player.role === "GK").length
       : null;
   const isDribbleScene = pendingAction?.scene_type === "DRIBBLE";
+  // Drei Html labels share the DOM overlay with the active-scene HUD. Hide the
+  // legend label whenever either dribble or a result takes over that region.
+  const showLegendPlayerLabel = !isDribbleScene && !stagedKickResult;
+  const dribbleDefenderId =
+    isDribbleScene && legendPlayer
+      ? (opponentPlayers.reduce<BackendFieldPlayer | null>(
+          (closest, player) => {
+            if (!closest) return player;
+            return distanceInField(player, legendPlayer) <
+              distanceInField(closest, legendPlayer)
+              ? player
+              : closest;
+          },
+          null,
+        )?.id ?? null)
+      : null;
   const parsedDribblePattern = isDribbleScene
     ? parseDribblePattern(displayFieldState?.dribble_pattern)
     : { pattern: null, error: null };
@@ -746,6 +836,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     isDribbleScene && !stagedKickResult && activeDribbleLane
       ? (DRIBBLE_LANES.indexOf(activeDribbleLane) - 1) * 4
       : 0;
+  // Compress the 1v1 into the unobstructed field viewport without altering
+  // the authoritative field-state coordinates submitted to the backend.
+  const dribbleVisualFieldYOffset =
+    isDribbleScene && !stagedKickResult ? DRIBBLE_VISUAL_FIELD_Y_OFFSET : 0;
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
     : { x: 50, y: VISIBLE_FIELD_CENTER_Y };
@@ -754,7 +848,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     y: baseBallFieldPosition.y,
   };
   const [ballX, , logicalBallZ] = displayFieldState
-    ? fieldToWorld(ballFieldPosition.x, ballFieldPosition.y)
+    ? fieldToWorld(
+        ballFieldPosition.x,
+        ballFieldPosition.y + dribbleVisualFieldYOffset,
+      )
     : [0, BALL_Y, 0];
   const ballY = BALL_Y + (animatedBallFlightPoint?.z ?? 0);
   const ballZ = logicalBallZ + PLAYER_RENDER_Z_OFFSET;
@@ -1132,7 +1229,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       aria-hidden={!active}
     >
       <FieldBackdrop />
-      {!stagedKickResult && (
+      {!stagedKickResult && !isDribbleScene && (
         <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
           <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
             {pendingAction?.title || "Field"}
@@ -1145,7 +1242,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               {pendingAction?.description || "Waiting for field state."}
             </div>
           </div>
-          {!displayFieldState && (
+          {active && !displayFieldState && (
             <div
               role="alert"
               className="max-w-sm rounded-xl bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-sm"
@@ -1190,6 +1287,12 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           legendPlayer={legendPlayer}
           legendWorldPosition={legendWorldPosition}
           cameraLocked={Boolean(stagedKickResult)}
+          framingKey={pendingAction?.id ?? "no-action"}
+          targetNdcY={
+            isDribbleScene
+              ? DRIBBLE_PLAYER_SCREEN_NDC_Y
+              : DYNAMIC_PLAYER_SCREEN_NDC_Y
+          }
         />
 
         <Suspense fallback={null}>
@@ -1233,12 +1336,20 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 stagedDecisionResult={stagedDecisionResult}
                 isResultAnimating={isResultAnimating}
                 legendPlayerId={displayFieldState?.legend_player_id ?? null}
+                screenAnchorTestId={
+                  isDribbleScene &&
+                  player.id === displayFieldState?.legend_player_id
+                    ? "legend-player-anchor"
+                    : null
+                }
+                showPlayerLabel={showLegendPlayerLabel}
                 visualFieldXOffset={
                   isDribbleScene &&
                   player.id === displayFieldState?.legend_player_id
                     ? dribbleVisualFieldXOffset
                     : 0
                 }
+                visualFieldYOffset={dribbleVisualFieldYOffset}
               />
             ))}
             {opponentPlayers.map((player) => (
@@ -1250,6 +1361,13 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 stagedDecisionResult={stagedDecisionResult}
                 isResultAnimating={isResultAnimating}
                 legendPlayerId={displayFieldState?.legend_player_id ?? null}
+                screenAnchorTestId={
+                  isDribbleScene && player.id === dribbleDefenderId
+                    ? "dribble-defender-anchor"
+                    : null
+                }
+                showPlayerLabel={showLegendPlayerLabel}
+                visualFieldYOffset={dribbleVisualFieldYOffset}
               />
             ))}
             <Preload all />
@@ -1317,6 +1435,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       {stagedKickResult && (
         <div
           data-testid="kick-result"
+          data-outcome-type={
+            stagedKickResult.response.decision_result?.outcome_type ?? ""
+          }
           className="absolute inset-x-0 bottom-0 z-30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-white"
           onPointerUp={() => {
             if (!isResultAnimating) handleNextAction();
