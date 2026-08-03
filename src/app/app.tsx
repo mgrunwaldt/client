@@ -1,5 +1,11 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import {
+  BrowserRouter,
+  matchPath,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router";
 
 // Import layout components
 import { useAuthSessionStore } from "../auth/session-store";
@@ -12,6 +18,7 @@ import {
   career,
   claim,
   connectionTest,
+  game,
   login,
   main,
   market,
@@ -89,12 +96,14 @@ function RouteLoadingSurface() {
 function PersistentGameSceneHost() {
   const location = useLocation();
   const pathname = location.pathname;
+  const gameRouteMatch = matchPath({ path: game, end: true }, pathname);
+  const gameMatchId = gameRouteMatch?.params.matchId ?? null;
   const hasRenderableField = useMatchSessionStore((state) =>
     Boolean(state.pendingAction?.field_state ?? state.fieldState),
   );
   const authStatus = useAuthSessionStore((state) => state.status);
   const shouldMount =
-    (pathname === "/game" && authStatus === "authenticated") ||
+    (Boolean(gameRouteMatch) && authStatus === "authenticated") ||
     (hasRenderableField &&
       (pathname.startsWith("/match/") || pathname.startsWith("/pre-match/")));
 
@@ -104,7 +113,7 @@ function PersistentGameSceneHost() {
 
   return (
     <Suspense fallback={<RouteLoadingSurface />}>
-      <GameScene active={pathname === "/game"} />
+      <GameScene active={Boolean(gameRouteMatch)} matchId={gameMatchId} />
     </Suspense>
   );
 }
@@ -124,7 +133,7 @@ function App() {
           {/* All authenticated routes under AuthenticatedLayout */}
           <Route element={<AuthenticatedLayout />}>
             <Route
-              path={"/game"}
+              path={game}
               element={<div className="h-dvh w-full bg-black" />}
             />
             <Route path={main} element={<HomePage />} />

@@ -67,6 +67,7 @@ function snapshotFromResponse(
     legend_availability: response.legend_availability,
     halftime_summary: response.halftime_summary,
     full_time_handoff: response.full_time_handoff,
+    latest_operation: response.latest_operation ?? null,
   };
 }
 
@@ -243,6 +244,7 @@ test("renders persisted halftime, refreshes it, and sends one guarded resume com
         legend_availability: halftimeResponse.legend_availability,
         halftime_summary: halftimeResponse.halftime_summary,
         full_time_handoff: halftimeResponse.full_time_handoff,
+        latest_operation: null,
       }),
     }),
   );

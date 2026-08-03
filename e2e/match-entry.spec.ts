@@ -150,6 +150,7 @@ test("enters a production match once and reports truthful loading stages", async
   let createCalls = 0;
   let startCalls = 0;
   let acceptedStart: ReturnType<typeof startedMatchResponse> | null = null;
+  let hydrateCommittedAction = false;
   const startCommandKeys: string[] = [];
   let sessionHydrationGate: {
     promise: Promise<void>;
@@ -223,6 +224,7 @@ test("enters a production match once and reports truthful loading stages", async
             error: "The match engine is warming up. Try again.",
             code: "MATCH_ENGINE_UNAVAILABLE",
             retryable: true,
+            recovery_action: "RETRY_SAME_REQUEST",
           }),
         });
       }
@@ -239,17 +241,36 @@ test("enters a production match once and reports truthful loading stages", async
       pathname === "/api/match/match-entry-e2e"
     ) {
       const current = acceptedStart ?? createMatchResponse();
+      const submittedAction = acceptedStart?.pending_action ?? null;
+      const submittedFieldState = acceptedStart?.field_state ?? null;
+      const committedMatch =
+        hydrateCommittedAction && acceptedStart
+          ? {
+              ...acceptedStart.match,
+              revision: acceptedStart.match.revision + 1,
+              match_status: "IN_PROGRESS",
+              pending_action: null,
+            }
+          : current.match;
       return route.fulfill({
         status: 200,
         headers: apiHeaders,
         contentType: "application/json",
         body: JSON.stringify({
-          match: current.match,
+          match: committedMatch,
           my_team: teams[0],
           opponent_team: teams[1],
           timeline: acceptedStart ? acceptedStart.events : [],
-          pending_action: acceptedStart ? acceptedStart.pending_action : null,
-          field_state: acceptedStart ? acceptedStart.field_state : null,
+          pending_action: hydrateCommittedAction
+            ? null
+            : acceptedStart
+              ? acceptedStart.pending_action
+              : null,
+          field_state: hydrateCommittedAction
+            ? null
+            : acceptedStart
+              ? acceptedStart.field_state
+              : null,
           pending_settlement_events: acceptedStart
             ? acceptedStart.pending_settlement_events
             : [],
@@ -272,6 +293,30 @@ test("enters a production match once and reports truthful loading stages", async
           full_time_handoff: acceptedStart
             ? acceptedStart.full_time_handoff
             : null,
+          latest_operation:
+            hydrateCommittedAction && acceptedStart && submittedAction
+              ? {
+                  version: 1,
+                  operation_id: "committed-action-receipt",
+                  operation: "processMatchAction",
+                  status: "COMMITTED",
+                  request_revision: acceptedStart.match.revision,
+                  committed_revision: committedMatch.revision,
+                  action_id: submittedAction.id,
+                  playback: {
+                    version: 1,
+                    submitted_action: submittedAction,
+                    submitted_field_state: submittedFieldState,
+                    last_decision: { choice: "KICK" },
+                    decision_result: {
+                      description: "Successful pass.",
+                      success: true,
+                      outcome_type: "PASS_COMPLETED",
+                    },
+                    events: acceptedStart.events,
+                  },
+                }
+              : null,
         }),
       });
     }
@@ -397,10 +442,63 @@ test("enters a production match once and reports truthful loading stages", async
     refreshedTimelinePage.getByText("LIVE", { exact: true }).first(),
   ).toBeVisible();
   await refreshedTimelinePage.clock.runFor(20_000);
-  await expect(refreshedTimelinePage).toHaveURL(/\/game$/u, {
+  await expect(refreshedTimelinePage).toHaveURL(/\/game\/match-entry-e2e$/u, {
     timeout: 15_000,
   });
   await refreshedTimelinePage.close();
+
+  const directGamePage = await context.newPage();
+  const directHydration = directGamePage.waitForRequest(
+    "**/api/match/match-entry-e2e",
+  );
+  await directGamePage.goto("/game/match-entry-e2e");
+  await directHydration;
+  await expect(directGamePage.getByTestId("game-field")).toBeVisible({
+    timeout: 30_000,
+  });
+  await directGamePage.reload();
+  await expect(directGamePage.getByTestId("game-field")).toBeVisible({
+    timeout: 30_000,
+  });
+  await directGamePage.close();
+
+  hydrateCommittedAction = true;
+  const directResultPage = await context.newPage();
+  await directResultPage.addInitScript(
+    ({ actionId, revision }) => {
+      window.sessionStorage.setItem(
+        "overgoal.match-recovery.v1",
+        JSON.stringify({
+          version: 1,
+          pendingCommand: {
+            operation: "action",
+            idempotencyKey: "committed-action-key",
+            matchId: "match-entry-e2e",
+            revision,
+            actionId,
+            payload: {
+              match_id: "match-entry-e2e",
+              action_id: actionId,
+              match_decision: { choice: "KICK" },
+            },
+          },
+          fieldDraft: null,
+        }),
+      );
+    },
+    {
+      actionId: acceptedStart!.pending_action!.id,
+      revision: acceptedStart!.match.revision,
+    },
+  );
+  await directResultPage.goto("/game/match-entry-e2e");
+  await expect(directResultPage.getByTestId("kick-result")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(directResultPage.getByTestId("kick-result")).toContainText(
+    "Successful pass.",
+  );
+  await directResultPage.close();
 
   await testInfo.attach("match-entry-timing", {
     body: Buffer.from(
@@ -467,6 +565,7 @@ test("shows a recoverable Timeline error without fabricated match state", async 
           error: "The live match is temporarily unavailable.",
           code: "MATCH_ENGINE_UNAVAILABLE",
           retryable: true,
+          recovery_action: "RETRY_SAME_REQUEST",
         }),
       });
     }

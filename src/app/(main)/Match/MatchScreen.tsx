@@ -90,6 +90,7 @@ export default function MatchScreen() {
   );
   const loading = useMatchSessionStore((state) => state.loading);
   const error = useMatchSessionStore((state) => state.error);
+  const diagnostic = useMatchSessionStore((state) => state.diagnostic);
   const updateTransitionLoader = useMatchSessionStore(
     (state) => state.updateTransitionLoader,
   );
@@ -98,6 +99,7 @@ export default function MatchScreen() {
   );
   const fieldTransitionTimeout = useRef<number | null>(null);
   const resumeLock = useRef(false);
+  const reconnectHydrationInFlight = useRef(false);
   const routeState = {
     routeMatchId: params.matchId,
     match,
@@ -118,7 +120,7 @@ export default function MatchScreen() {
 
   useEffect(() => {
     const matchId = params.matchId;
-    if (!matchId || authoritativeMatchIdentity) {
+    if (!matchId || (authoritativeMatchIdentity && reloadKey === 0)) {
       return;
     }
 
@@ -149,12 +151,15 @@ export default function MatchScreen() {
           legendAvailability: response.legend_availability,
           halftimeSummary: response.halftime_summary,
           fullTimeHandoff: response.full_time_handoff,
+          latestOperation: response.latest_operation,
         });
       } catch (error) {
         if (cancelled) return;
         setError(error);
         setLoading(false);
         hideTransitionLoader();
+      } finally {
+        reconnectHydrationInFlight.current = false;
       }
     };
 
@@ -172,6 +177,16 @@ export default function MatchScreen() {
     setError,
     setLoading,
   ]);
+
+  useEffect(() => {
+    const retryAfterReconnect = () => {
+      if (reconnectHydrationInFlight.current) return;
+      reconnectHydrationInFlight.current = true;
+      setReloadKey((value) => value + 1);
+    };
+    window.addEventListener("online", retryAfterReconnect);
+    return () => window.removeEventListener("online", retryAfterReconnect);
+  }, []);
 
   useEffect(() => {
     if (!authoritativeMatchIdentity || !match) return;
@@ -250,12 +265,12 @@ export default function MatchScreen() {
   ]);
 
   useEffect(() => {
-    if (phase !== "scene_ready") {
+    if (phase !== "scene_ready" || !match?.id) {
       return;
     }
 
     fieldTransitionTimeout.current = window.setTimeout(() => {
-      navigate("/game");
+      navigate(`/game/${match.id}`);
     }, 2000);
 
     return () => {
@@ -263,7 +278,7 @@ export default function MatchScreen() {
         window.clearTimeout(fieldTransitionTimeout.current);
       }
     };
-  }, [navigate, phase]);
+  }, [match?.id, navigate, phase]);
 
   const visibleBackendEvents = useMemo(
     () => timelineEvents.filter((event) => event.minute <= playbackMinute),
@@ -286,8 +301,10 @@ export default function MatchScreen() {
   const awayScore =
     lastScoreEvent?.opponent_team_score ?? match?.opponent_team_score ?? 0;
 
-  const resumePending =
-    phase === "resuming" || pendingCommand?.operation === "resume";
+  // A retained resume command is retryable only after hydration has shown that
+  // it did not commit. Do not disable the halftime control merely because the
+  // exact command is still kept for that safe retry.
+  const resumePending = phase === "resuming";
 
   const continueSecondHalf = async () => {
     if (
@@ -341,6 +358,19 @@ export default function MatchScreen() {
   }
 
   if (error) {
+    const recoveryAction = diagnostic?.recoveryAction;
+    const title =
+      recoveryAction === "REAUTHENTICATE"
+        ? "Session expired"
+        : recoveryAction === "STOP"
+          ? "Match unavailable"
+          : "Live match unavailable";
+    const retryLabel =
+      recoveryAction === "HYDRATE_MATCH"
+        ? "Refresh match state"
+        : recoveryAction === "CHECK_TRANSPORT"
+          ? "Check connection"
+          : "Retry match";
     return (
       <main className="fixed inset-0 flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.15),transparent_34%),linear-gradient(180deg,#061124,#020816)] px-6 text-white">
         <section
@@ -348,18 +378,26 @@ export default function MatchScreen() {
           className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/85 px-7 py-8 text-center"
         >
           <p className="font-orbitron text-xs font-bold tracking-[0.32em] text-pink-300 uppercase">
-            Live match unavailable
+            {title}
           </p>
           <p className="mt-5 text-sm leading-relaxed text-white/72">{error}</p>
-          <Button
-            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
-            onClick={() => {
-              setError(null);
-              setReloadKey((value) => value + 1);
-            }}
-          >
-            Retry match
-          </Button>
+          {recoveryAction !== "STOP" && (
+            <Button
+              className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
+              onClick={() => {
+                if (recoveryAction === "REAUTHENTICATE") {
+                  navigate("/login");
+                  return;
+                }
+                setError(null);
+                setReloadKey((value) => value + 1);
+              }}
+            >
+              {recoveryAction === "REAUTHENTICATE"
+                ? "Sign in again"
+                : retryLabel}
+            </Button>
+          )}
           <Button
             variant="ghost"
             className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"

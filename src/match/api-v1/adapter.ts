@@ -14,6 +14,7 @@ import {
 } from "./contract";
 import {
   BackendRequestError,
+  MATCH_RECOVERY_ACTIONS,
   MatchApiContractError,
   type MatchApiResponseMetadata,
 } from "./errors";
@@ -138,6 +139,12 @@ async function request<T>(
       parsedError.data.retryable === true ||
         response.status >= 500 ||
         response.status === 429,
+      MATCH_RECOVERY_ACTIONS.includes(
+        parsedError.data
+          .recovery_action as (typeof MATCH_RECOVERY_ACTIONS)[number],
+      )
+        ? parsedError.data.recovery_action
+        : null,
       metadata,
     );
   }

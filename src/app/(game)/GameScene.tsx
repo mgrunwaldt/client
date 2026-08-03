@@ -31,6 +31,7 @@ import {
   type BackendFieldState,
   type BackendMatchResponse,
   createMatchCommand,
+  fetchBackendMatch,
   processBackendMatchAction,
 } from "../../lib/backend-match";
 import {
@@ -723,13 +724,20 @@ function BackendPlayerModel({
   );
 }
 
-export default function GameScene({ active = true }: { active?: boolean }) {
+export default function GameScene({
+  active = true,
+  matchId: routeMatchId = null,
+}: {
+  active?: boolean;
+  matchId?: string | null;
+}) {
   const navigate = useNavigate();
   const {
     active: assetsActive,
     progress: assetsProgress,
     loaded: assetsLoaded,
     total: assetsTotal,
+    errors: assetErrors,
   } = useProgress();
   const match = useMatchSessionStore((state) => state.match);
   const phase = useMatchSessionStore((state) => state.phase);
@@ -739,6 +747,19 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   );
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
+  const resultPlayback = useMatchSessionStore((state) => state.resultPlayback);
+  const latestOperation = useMatchSessionStore(
+    (state) => state.latestOperation,
+  );
+  const legendAvailability = useMatchSessionStore(
+    (state) => state.legendAvailability,
+  );
+  const halftimeSummary = useMatchSessionStore(
+    (state) => state.halftimeSummary,
+  );
+  const fullTimeHandoff = useMatchSessionStore(
+    (state) => state.fullTimeHandoff,
+  );
   const myTeam = useMatchSessionStore((state) => state.myTeam);
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
   const setActionResponse = useMatchSessionStore(
@@ -749,7 +770,22 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
+  const hydrateMatchSession = useMatchSessionStore(
+    (state) => state.hydrateMatchSession,
+  );
+  const markSceneReady = useMatchSessionStore((state) => state.markSceneReady);
+  const setPlaybackMinute = useMatchSessionStore(
+    (state) => state.setPlaybackMinute,
+  );
+  const retainedFieldDraft = useMatchSessionStore((state) => state.fieldDraft);
+  const retainFieldDraft = useMatchSessionStore(
+    (state) => state.retainFieldDraft,
+  );
+  const clearFieldDraft = useMatchSessionStore(
+    (state) => state.clearFieldDraft,
+  );
   const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
+  const retrySafe = useMatchSessionStore((state) => state.retrySafe);
   const beginActionCommand = useMatchSessionStore(
     (state) => state.beginActionCommand,
   );
@@ -779,6 +815,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     actionId: string;
     lane: DribbleLane;
   } | null>(null);
+  const [rehydrationKey, setRehydrationKey] = useState(0);
   const animationFrameRef = useRef<number | null>(null);
   const resultTimerRef = useRef<number | null>(null);
   const kickSubmissionGateRef = useRef(createKickSubmissionGate());
@@ -786,7 +823,190 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const randomEventSubmissionGateRef = useRef(
     createRandomEventSubmissionGate(),
   );
+  const assetErrorBaselineRef = useRef<number | null>(null);
+  const fieldRehydrationInFlightRef = useRef(false);
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
+
+  useEffect(() => {
+    const playback = resultPlayback?.playback;
+    const submittedAction = playback?.submitted_action;
+    if (
+      stagedKickResult ||
+      phase !== "result_playback" ||
+      !match ||
+      !submittedAction ||
+      !playback?.decision_result
+    ) {
+      return;
+    }
+    setResolvedSceneFieldState(playback.submitted_field_state);
+    setStagedKickResult({
+      sceneType: submittedAction.scene_type,
+      response: {
+        minute: match.current_time,
+        status: match.match_status,
+        prev_time: submittedAction.minute,
+        pending_action: pendingAction,
+        field_state: fieldState,
+        action: submittedAction.scene_type,
+        action_team: submittedAction.action_team,
+        events: playback.events,
+        match,
+        decision_result: playback.decision_result,
+        pending_settlement_events: [],
+        unsupported_scene: null,
+        legend_availability: legendAvailability ?? {
+          version: 1,
+          status: "AVAILABLE",
+          availability: "AVAILABLE",
+          participation: "PARTICIPATING",
+          interactive_controls: true,
+          unavailable_since_minute: null,
+        },
+        halftime_summary: halftimeSummary,
+        full_time_handoff: fullTimeHandoff,
+        latest_operation: resultPlayback,
+      },
+    });
+  }, [
+    fieldState,
+    fullTimeHandoff,
+    halftimeSummary,
+    legendAvailability,
+    match,
+    pendingAction,
+    phase,
+    resultPlayback,
+    stagedKickResult,
+  ]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      !routeMatchId ||
+      (match?.id === routeMatchId && rehydrationKey === 0)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    void fetchBackendMatch(routeMatchId)
+      .then((response) => {
+        if (cancelled) return;
+        const pendingAction =
+          response.pending_action &&
+          !response.pending_action.field_state &&
+          response.field_state
+            ? { ...response.pending_action, field_state: response.field_state }
+            : response.pending_action;
+        hydrateMatchSession({
+          match: response.match,
+          myTeam: response.my_team,
+          opponentTeam: response.opponent_team,
+          timelineEvents: response.timeline,
+          pendingAction,
+          unsupportedScene: response.unsupported_scene,
+          legendAvailability: response.legend_availability,
+          halftimeSummary: response.halftime_summary,
+          fullTimeHandoff: response.full_time_handoff,
+          latestOperation: response.latest_operation,
+        });
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setError(error);
+      })
+      .finally(() => {
+        fieldRehydrationInFlightRef.current = false;
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    active,
+    hydrateMatchSession,
+    match?.id,
+    rehydrationKey,
+    routeMatchId,
+    setError,
+  ]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      !routeMatchId ||
+      match?.id !== routeMatchId ||
+      phase !== "timeline_playback" ||
+      !pendingAction
+    ) {
+      return;
+    }
+
+    // A direct /game/:matchId route explicitly requests the authoritative
+    // pending field scene. The timeline route owns normal timeline playback;
+    // this only restores the presentation phase after direct hydration.
+    setPlaybackMinute(pendingAction.minute);
+    markSceneReady();
+  }, [
+    active,
+    markSceneReady,
+    match?.id,
+    pendingAction,
+    phase,
+    routeMatchId,
+    setPlaybackMinute,
+  ]);
+
+  useEffect(() => {
+    if (!active || !routeMatchId) return;
+    const rehydrateAfterReconnect = () => {
+      if (fieldRehydrationInFlightRef.current) return;
+      fieldRehydrationInFlightRef.current = true;
+      setRehydrationKey((value) => value + 1);
+    };
+    window.addEventListener("online", rehydrateAfterReconnect);
+    return () => window.removeEventListener("online", rehydrateAfterReconnect);
+  }, [active, routeMatchId]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      !routeMatchId ||
+      match?.id !== routeMatchId ||
+      phase !== "timeline_playback" ||
+      resultPlayback ||
+      latestOperation?.playback?.decision_result?.outcome_type !==
+        "SKIPPED_NO_EFFECT"
+    ) {
+      return;
+    }
+    // A durable unsupported-scene receipt has no playable field/result. Its
+    // authoritative continuation belongs to the Timeline, never to a
+    // fabricated kick playback on this persistent field route.
+    navigate(`/match/${match.id}`, { replace: true });
+  }, [
+    active,
+    latestOperation?.playback?.decision_result?.outcome_type,
+    match?.id,
+    navigate,
+    phase,
+    resultPlayback,
+    routeMatchId,
+  ]);
+
+  useEffect(() => {
+    if (
+      !retainedFieldDraft ||
+      !match ||
+      !pendingAction ||
+      retainedFieldDraft.matchId !== match.id ||
+      retainedFieldDraft.revision !== match.revision ||
+      retainedFieldDraft.actionId !== pendingAction.id ||
+      releasedAimDraft
+    ) {
+      return;
+    }
+    setReleasedAimDraft(retainedFieldDraft.aim);
+    setStrikeContact(retainedFieldDraft.contact);
+  }, [match, pendingAction, releasedAimDraft, retainedFieldDraft]);
   const handleRenderReadiness = useCallback(
     (sceneKey: string, ready: boolean) => {
       if (!ready) {
@@ -964,6 +1184,27 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!active) {
+      assetErrorBaselineRef.current = null;
+      return;
+    }
+
+    if (assetErrorBaselineRef.current === null) {
+      assetErrorBaselineRef.current = assetErrors.length;
+      return;
+    }
+
+    if (assetErrors.length <= assetErrorBaselineRef.current) return;
+
+    // Drei retains historical loader failures globally. Only errors that occur
+    // after this field route becomes active can make this scene unrecoverable.
+    const failedAsset =
+      assetErrors[assetErrors.length - 1] ?? "an unknown match asset";
+    assetErrorBaselineRef.current = assetErrors.length;
+    setError(new Error(`Unable to load match asset ${failedAsset}.`));
+  }, [active, assetErrors, setError]);
+
   const clearStagedKickResult = () => {
     if (animationFrameRef.current) {
       window.cancelAnimationFrame(animationFrameRef.current);
@@ -1034,12 +1275,36 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     setActiveAimDraft(null);
     setReleasedAimDraft(draft);
     setStrikeContact(DEFAULT_STRIKE_CONTACT);
+    if (match && pendingAction) {
+      retainFieldDraft({
+        kind: "kick",
+        matchId: match.id,
+        revision: match.revision,
+        actionId: pendingAction.id,
+        aim: draft,
+        contact: DEFAULT_STRIKE_CONTACT,
+      });
+    }
   };
 
   const closeContactDialog = () => {
     setReleasedAimDraft(null);
     setSubmitError(null);
     setRestoreAimFocus(true);
+    clearFieldDraft();
+  };
+
+  const handleStrikeContactChange = (contact: { x: number; y: number }) => {
+    setStrikeContact(contact);
+    if (!match || !pendingAction || !releasedAimDraft) return;
+    retainFieldDraft({
+      kind: "kick",
+      matchId: match.id,
+      revision: match.revision,
+      actionId: pendingAction.id,
+      aim: releasedAimDraft,
+      contact,
+    });
   };
 
   const handleKick = async () => {
@@ -1102,6 +1367,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       const submittedFieldState = fieldState;
       setActionResponse(response);
       setReleasedAimDraft(null);
+      clearFieldDraft();
       setResolvedSceneFieldState(submittedFieldState);
       setStagedKickResult({
         response,
@@ -1264,19 +1530,24 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       setLoading(true);
       setError(null);
       const payload = { choice: choiceId };
-      const command = createMatchCommand(
-        "action",
-        {
-          match_id: match.id,
-          action_id: actionId,
-          match_decision: payload,
-        },
-        {
-          matchId: match.id,
-          revision: match.revision ?? null,
-          actionId,
-        },
-      );
+      const command =
+        pendingCommand?.operation === "action" &&
+        pendingCommand.matchId === match.id &&
+        pendingCommand.actionId === actionId
+          ? pendingCommand
+          : createMatchCommand(
+              "action",
+              {
+                match_id: match.id,
+                action_id: actionId,
+                match_decision: payload,
+              },
+              {
+                matchId: match.id,
+                revision: match.revision ?? null,
+                actionId,
+              },
+            );
       if (!beginActionCommand(command)) {
         randomEventSubmissionGateRef.current.reset(actionId);
         return;
@@ -1294,6 +1565,42 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       randomEventSubmissionGateRef.current.reset(actionId);
       setError(error);
       setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const retryPendingAction = async () => {
+    if (
+      !match ||
+      !pendingCommand ||
+      !retrySafe ||
+      pendingCommand.operation !== "action" ||
+      pendingCommand.matchId !== match.id ||
+      pendingCommand.actionId !== pendingAction?.id
+    ) {
+      return;
+    }
+    const decision = pendingCommand.payload.match_decision;
+    if (!decision || typeof decision !== "object") return;
+
+    try {
+      setError(null);
+      if (!beginActionCommand(pendingCommand)) return;
+      setIsSubmitting(true);
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        decision as Record<string, unknown>,
+        pendingCommand,
+      );
+      setActionResponse(response);
+      clearFieldDraft();
+      setResolvedSceneFieldState(fieldState);
+      setStagedKickResult({ response, sceneType: pendingAction.scene_type });
+      startBallPlayback(response);
+    } catch (error) {
+      setError(error);
     } finally {
       setIsSubmitting(false);
     }
@@ -1596,8 +1903,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         />
       )}
       {(phase === "recoverable_error" || phase === "unsupported_contract") &&
-        !stagedKickResult &&
-        !releasedAimDraft && (
+        !stagedKickResult && (
           <div
             data-testid="scene-contract-error"
             role="alert"
@@ -1611,13 +1917,38 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 "The live match scene could not be rendered safely."}
             </p>
             <div className="mt-5 flex gap-3">
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
-              >
-                Refresh
-              </button>
+              {diagnostic?.recoveryAction !== "STOP" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (diagnostic?.recoveryAction === "REAUTHENTICATE") {
+                      navigate("/login");
+                      return;
+                    }
+                    setRehydrationKey((value) => value + 1);
+                  }}
+                  className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
+                >
+                  {diagnostic?.recoveryAction === "REAUTHENTICATE"
+                    ? "Sign in again"
+                    : diagnostic?.recoveryAction === "HYDRATE_MATCH"
+                      ? "Refresh match state"
+                      : diagnostic?.recoveryAction === "CHECK_TRANSPORT"
+                        ? "Check connection"
+                        : "Refresh"}
+                </button>
+              )}
+              {retrySafe &&
+                diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
+                pendingCommand?.operation === "action" && (
+                  <button
+                    type="button"
+                    onClick={retryPendingAction}
+                    className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
+                  >
+                    Retry exact action
+                  </button>
+                )}
               {match?.id && (
                 <button
                   type="button"
@@ -1637,7 +1968,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           submittedPower={displayedKickDecision?.kick_input.power ?? 0}
           submitError={submitError}
           isSubmitting={isSubmitting}
-          onContactChange={setStrikeContact}
+          onContactChange={handleStrikeContactChange}
           onClose={closeContactDialog}
           onSubmit={handleKick}
         />

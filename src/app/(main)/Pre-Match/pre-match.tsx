@@ -57,6 +57,7 @@ export default function PreMatchScreen() {
   );
   const loading = useMatchSessionStore((state) => state.loading);
   const error = useMatchSessionStore((state) => state.error);
+  const diagnostic = useMatchSessionStore((state) => state.diagnostic);
   const phase = useMatchSessionStore((state) => state.phase);
   const legendProfile = match?.legend_profile;
   const legendPlayerId = match?.legend_player_id;
@@ -106,6 +107,7 @@ export default function PreMatchScreen() {
           legendAvailability: response.legend_availability,
           halftimeSummary: response.halftime_summary,
           fullTimeHandoff: response.full_time_handoff,
+          latestOperation: response.latest_operation,
         });
       } catch (error) {
         if (cancelled) return;
@@ -150,6 +152,14 @@ export default function PreMatchScreen() {
     // without loading game assets on login or unrelated routes.
     void preloadMatchExperience().catch(() => undefined);
   }, [authoritativeMatchReady, phase]);
+
+  useEffect(() => {
+    const rehydrateAfterReconnect = () => {
+      setReloadKey((value) => value + 1);
+    };
+    window.addEventListener("online", rehydrateAfterReconnect);
+    return () => window.removeEventListener("online", rehydrateAfterReconnect);
+  }, []);
 
   const handleStartMatch = async () => {
     if (startLock.current) return;
@@ -240,6 +250,7 @@ export default function PreMatchScreen() {
   }
 
   if (!authoritativeMatchReady && error) {
+    const recoveryAction = diagnostic?.recoveryAction;
     return (
       <main className="fixed inset-0 flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.15),transparent_34%),linear-gradient(180deg,#061124,#020816)] px-6 text-white">
         <section
@@ -247,18 +258,30 @@ export default function PreMatchScreen() {
           className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/85 px-7 py-8 text-center"
         >
           <p className="font-orbitron text-xs font-bold tracking-[0.32em] text-pink-300 uppercase">
-            Match unavailable
+            {recoveryAction === "REAUTHENTICATE"
+              ? "Session expired"
+              : "Match unavailable"}
           </p>
           <p className="mt-5 text-sm leading-relaxed text-white/72">{error}</p>
-          <Button
-            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
-            onClick={() => {
-              setError(null);
-              setReloadKey((value) => value + 1);
-            }}
-          >
-            Retry match
-          </Button>
+          {recoveryAction !== "STOP" && (
+            <Button
+              className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
+              onClick={() => {
+                if (recoveryAction === "REAUTHENTICATE") {
+                  navigate("/login");
+                  return;
+                }
+                setError(null);
+                setReloadKey((value) => value + 1);
+              }}
+            >
+              {recoveryAction === "REAUTHENTICATE"
+                ? "Sign in again"
+                : recoveryAction === "CHECK_TRANSPORT"
+                  ? "Check connection"
+                  : "Retry match"}
+            </Button>
+          )}
           <Button
             variant="ghost"
             className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"

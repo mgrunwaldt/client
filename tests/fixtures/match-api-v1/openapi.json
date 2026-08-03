@@ -1273,7 +1273,6 @@
           "red_card": { "type": "boolean" },
           "injured": { "type": "boolean" },
           "substituted": { "type": "boolean" },
-          "administrative_result": { "$ref": "#/components/schemas/AdministrativeResult" },
           "energy_start": { "type": "number", "minimum": 0, "maximum": 100 },
           "energy_current": { "type": "number", "minimum": 0, "maximum": 100 },
           "stamina": { "type": "number", "minimum": 0, "maximum": 100 }
@@ -1394,7 +1393,8 @@
           "dribble_resolution": { "$ref": "#/components/schemas/DribbleResolution" },
           "dribble_foul": { "$ref": "#/components/schemas/DribbleFoulResolution" },
           "simulation_resolution": { "$ref": "#/components/schemas/SimulationResolution" },
-          "resulting_attack_position": { "$ref": "#/components/schemas/DribbleAttackPosition" }
+          "resulting_attack_position": { "$ref": "#/components/schemas/DribbleAttackPosition" },
+          "unsupported_scene_recovery": { "$ref": "#/components/schemas/UnsupportedSceneRecoveryResult" }
         },
         "allOf": [
           {
@@ -1541,12 +1541,14 @@
       },
       "UnsupportedSceneRecoveryState": {
         "type": "object",
-        "required": ["version", "status", "code", "scene_type", "action_id", "action_sequence", "minute", "recovery"],
+        "required": ["version", "status", "code", "scene_type", "contract_version", "supported_contract_version", "action_id", "action_sequence", "minute", "recovery"],
         "properties": {
           "version": { "const": 1 },
           "status": { "const": "RECOVERY_REQUIRED" },
-          "code": { "const": "UNSUPPORTED_SCENE_TYPE" },
+          "code": { "enum": ["UNSUPPORTED_SCENE_TYPE", "UNSUPPORTED_SCENE_VERSION"] },
           "scene_type": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+          "contract_version": { "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
+          "supported_contract_version": { "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }] },
           "action_id": { "$ref": "#/components/schemas/Identifier" },
           "action_sequence": { "type": "integer", "minimum": 1 },
           "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
@@ -1587,6 +1589,49 @@
         },
         "additionalProperties": false
       },
+      "MatchOperationPlayback": {
+        "type": "object",
+        "required": ["version", "submitted_action", "submitted_field_state", "last_decision", "decision_result", "events"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "submitted_action": { "oneOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "null" }] },
+          "submitted_field_state": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["id", "match_id", "minute", "action_sequence"],
+                "properties": {
+                  "id": { "$ref": "#/components/schemas/Identifier" },
+                  "match_id": { "$ref": "#/components/schemas/Identifier" },
+                  "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
+                  "action_sequence": { "type": "integer", "minimum": 1 }
+                },
+                "additionalProperties": true
+              },
+              { "type": "null" }
+            ]
+          },
+          "last_decision": { "$ref": "#/components/schemas/LastDecision" },
+          "decision_result": { "$ref": "#/components/schemas/DecisionResult" },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } }
+        },
+        "additionalProperties": false
+      },
+      "MatchOperationReceipt": {
+        "type": "object",
+        "required": ["version", "operation_id", "operation", "status", "request_revision", "committed_revision", "action_id", "playback"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "operation_id": { "$ref": "#/components/schemas/Identifier" },
+          "operation": { "type": "string", "enum": ["createMatch", "startMatch", "resumeMatch", "abandonMatch", "processMatchAction"] },
+          "status": { "type": "string", "const": "COMMITTED" },
+          "request_revision": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+          "committed_revision": { "type": "integer", "minimum": 0 },
+          "action_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "playback": { "oneOf": [{ "$ref": "#/components/schemas/MatchOperationPlayback" }, { "type": "null" }] }
+        },
+        "additionalProperties": false
+      },
       "MatchProgressResponse": {
         "type": "object",
         "required": ["minute", "status", "prev_time", "pending_action", "field_state", "action", "action_team", "events", "pending_settlement_events", "unsupported_scene", "legend_availability", "halftime_summary", "full_time_handoff", "match"],
@@ -1607,7 +1652,8 @@
           "full_time_handoff": { "oneOf": [{ "$ref": "#/components/schemas/FullTimeHandoff" }, { "type": "null" }] },
           "match": { "$ref": "#/components/schemas/Match" },
           "decision_result": { "$ref": "#/components/schemas/DecisionResult" },
-          "last_decision": { "$ref": "#/components/schemas/LastDecision" }
+          "last_decision": { "$ref": "#/components/schemas/LastDecision" },
+          "latest_operation": { "$ref": "#/components/schemas/MatchOperationReceipt" }
         },
         "additionalProperties": true
       },
@@ -1644,7 +1690,8 @@
           "id": { "$ref": "#/components/schemas/Identifier" },
           "match": { "$ref": "#/components/schemas/Match" },
           "my_team": { "$ref": "#/components/schemas/Team" },
-          "opponent_team": { "$ref": "#/components/schemas/Team" }
+          "opponent_team": { "$ref": "#/components/schemas/Team" },
+          "latest_operation": { "$ref": "#/components/schemas/MatchOperationReceipt" }
         },
         "additionalProperties": false
       },
@@ -1920,7 +1967,7 @@
       },
       "MatchSnapshotResponse": {
         "type": "object",
-        "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state", "pending_settlement_events", "unsupported_scene", "legend_availability", "halftime_summary", "full_time_handoff"],
+        "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state", "pending_settlement_events", "unsupported_scene", "legend_availability", "halftime_summary", "full_time_handoff", "latest_operation"],
         "properties": {
           "match": { "$ref": "#/components/schemas/Match" },
           "my_team": { "$ref": "#/components/schemas/Team" },
@@ -1932,7 +1979,8 @@
           "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] },
           "legend_availability": { "$ref": "#/components/schemas/LegendAvailability" },
           "halftime_summary": { "oneOf": [{ "$ref": "#/components/schemas/HalftimeSummary" }, { "type": "null" }] },
-          "full_time_handoff": { "oneOf": [{ "$ref": "#/components/schemas/FullTimeHandoff" }, { "type": "null" }] }
+          "full_time_handoff": { "oneOf": [{ "$ref": "#/components/schemas/FullTimeHandoff" }, { "type": "null" }] },
+          "latest_operation": { "oneOf": [{ "$ref": "#/components/schemas/MatchOperationReceipt" }, { "type": "null" }] }
         },
         "additionalProperties": false
       },
@@ -2054,12 +2102,12 @@
       },
       "ErrorResponse": {
         "type": "object",
-        "required": ["error", "code", "status"],
+        "required": ["error", "code", "status", "retryable", "recovery_action"],
         "properties": {
           "error": { "type": "string", "minLength": 1, "maxLength": 256 },
           "code": {
             "type": "string",
-            "enum": ["MALFORMED_JSON", "VALIDATION_ERROR", "INVALID_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "RESOURCE_NOT_FOUND", "INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "UNSUPPORTED_SCENE_RECOVERY_REQUIRED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE", "VALIDATION_FAILED", "RATE_LIMITED", "NOT_READY", "INTERNAL_ERROR"],
+            "enum": ["MALFORMED_JSON", "VALIDATION_ERROR", "INVALID_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "RESOURCE_NOT_FOUND", "INVALID_MATCH_TRANSITION", "MATCH_FINISHED", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "UNSUPPORTED_SCENE_RECOVERY_REQUIRED", "UNSUPPORTED_INTENT_VERSION", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE", "VALIDATION_FAILED", "RATE_LIMITED", "NOT_READY", "INTERNAL_ERROR"],
             "x-overgoal-m1-required": true,
             "x-overgoal-public-safe": true
           },
@@ -2081,6 +2129,7 @@
           },
           "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
           "retryable": { "type": "boolean" },
+          "recovery_action": { "type": "string", "enum": ["REAUTHENTICATE", "CHECK_TRANSPORT", "HYDRATE_MATCH", "USE_RECOVERY_INTENT", "FIX_REQUEST", "RETRY_SAME_REQUEST", "STOP"] },
           "recoverable": { "type": "boolean" },
           "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] }
         },
@@ -2090,63 +2139,69 @@
       "BadRequestErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "enum": ["MALFORMED_JSON", "INVALID_REQUEST", "INVALID_MATCH_TRANSITION"] }, "status": { "const": 400 } } }
+          { "properties": { "code": { "enum": ["MALFORMED_JSON", "INVALID_REQUEST", "INVALID_MATCH_TRANSITION"] }, "status": { "const": 400 }, "retryable": { "const": false }, "recovery_action": { "const": "FIX_REQUEST" } } }
         ],
         "unevaluatedProperties": false
       },
       "UnauthorizedErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "const": "UNAUTHORIZED" }, "status": { "const": 401 } } }
+          { "properties": { "code": { "const": "UNAUTHORIZED" }, "status": { "const": 401 }, "retryable": { "const": false }, "recovery_action": { "const": "REAUTHENTICATE" } } }
         ],
         "unevaluatedProperties": false
       },
       "ForbiddenErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "const": "FORBIDDEN" }, "status": { "const": 403 } } }
+          { "properties": { "code": { "const": "FORBIDDEN" }, "status": { "const": 403 }, "retryable": { "const": false }, "recovery_action": { "const": "CHECK_TRANSPORT" } } }
         ],
         "unevaluatedProperties": false
       },
       "NotFoundErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "const": "RESOURCE_NOT_FOUND" }, "status": { "const": 404 } } }
+          { "properties": { "code": { "const": "RESOURCE_NOT_FOUND" }, "status": { "const": 404 }, "retryable": { "const": false }, "recovery_action": { "const": "STOP" } } }
         ],
         "unevaluatedProperties": false
       },
       "ConflictErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "enum": ["INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "UNSUPPORTED_SCENE_RECOVERY_REQUIRED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE"] }, "status": { "const": 409 } } }
+          {
+            "oneOf": [
+              { "properties": { "code": { "enum": ["MATCH_FINISHED", "STALE_ACTION", "MATCH_REVISION_CONFLICT"] }, "status": { "const": 409 }, "retryable": { "const": false }, "recovery_action": { "const": "HYDRATE_MATCH" } } },
+              { "properties": { "code": { "const": "UNSUPPORTED_SCENE_RECOVERY_REQUIRED" }, "status": { "const": 409 }, "retryable": { "const": false }, "recovery_action": { "const": "USE_RECOVERY_INTENT" } } },
+              { "properties": { "code": { "enum": ["INVALID_MATCH_TRANSITION", "IDEMPOTENCY_KEY_REUSED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE"] }, "status": { "const": 409 }, "retryable": { "const": false }, "recovery_action": { "const": "STOP" } } }
+            ]
+          }
         ],
         "unevaluatedProperties": false
       },
       "ValidationErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "enum": ["VALIDATION_ERROR", "VALIDATION_FAILED"] }, "status": { "const": 422 } } }
+          { "properties": { "code": { "enum": ["VALIDATION_ERROR", "VALIDATION_FAILED", "UNSUPPORTED_INTENT_VERSION"] }, "status": { "const": 422 }, "retryable": { "const": false }, "recovery_action": { "const": "FIX_REQUEST" } } }
         ],
         "unevaluatedProperties": false
       },
       "InternalErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "const": "INTERNAL_ERROR" }, "status": { "const": 500 } } }
+          { "properties": { "code": { "const": "INTERNAL_ERROR" }, "status": { "const": 500 }, "retryable": { "const": true }, "recovery_action": { "const": "RETRY_SAME_REQUEST" } } }
         ],
         "unevaluatedProperties": false
       },
       "RateLimitedErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "const": "RATE_LIMITED" }, "status": { "const": 429 } } }
+          { "properties": { "code": { "const": "RATE_LIMITED" }, "status": { "const": 429 }, "retryable": { "const": true }, "recovery_action": { "const": "RETRY_SAME_REQUEST" } } }
         ],
         "unevaluatedProperties": false
       },
       "NotReadyErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "const": "NOT_READY" }, "status": { "const": 503 } } }
+          { "properties": { "code": { "const": "NOT_READY" }, "status": { "const": 503 }, "retryable": { "const": true }, "recovery_action": { "const": "RETRY_SAME_REQUEST" } } }
         ],
         "unevaluatedProperties": false
       }

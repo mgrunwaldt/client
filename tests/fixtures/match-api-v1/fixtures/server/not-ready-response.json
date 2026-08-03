@@ -3,5 +3,6 @@
   "code": "NOT_READY",
   "status": 503,
   "request_id": "request-fixture-0002",
-  "retryable": true
+  "retryable": true,
+  "recovery_action": "RETRY_SAME_REQUEST"
 }

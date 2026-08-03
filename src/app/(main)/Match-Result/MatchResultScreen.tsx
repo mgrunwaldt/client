@@ -37,6 +37,7 @@ export default function MatchResultScreen() {
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
   const error = useMatchSessionStore((state) => state.error);
+  const diagnostic = useMatchSessionStore((state) => state.diagnostic);
   const [reloadKey, setReloadKey] = useState(0);
   const authoritativeIdentity = hasAuthoritativeMatchIdentity({
     routeMatchId: matchId,
@@ -67,6 +68,7 @@ export default function MatchResultScreen() {
           legendAvailability: response.legend_availability,
           halftimeSummary: response.halftime_summary,
           fullTimeHandoff: response.full_time_handoff,
+          latestOperation: response.latest_operation,
         });
       } catch (reason) {
         if (!cancelled) {
@@ -87,7 +89,16 @@ export default function MatchResultScreen() {
     }
   }, [authoritativeIdentity, match, navigate]);
 
+  useEffect(() => {
+    const rehydrateAfterReconnect = () => {
+      setReloadKey((value) => value + 1);
+    };
+    window.addEventListener("online", rehydrateAfterReconnect);
+    return () => window.removeEventListener("online", rehydrateAfterReconnect);
+  }, []);
+
   if (error) {
+    const recoveryAction = diagnostic?.recoveryAction;
     return (
       <main className="fixed inset-0 flex items-center justify-center bg-[#020816] px-6 text-white">
         <section
@@ -95,18 +106,30 @@ export default function MatchResultScreen() {
           className="w-full max-w-sm rounded-3xl border border-pink-300/45 bg-slate-950 p-7 text-center"
         >
           <p className="font-orbitron text-xs tracking-[0.28em] text-pink-200 uppercase">
-            Result unavailable
+            {recoveryAction === "REAUTHENTICATE"
+              ? "Session expired"
+              : "Result unavailable"}
           </p>
           <p className="mt-4 text-sm text-slate-200">{error}</p>
-          <Button
-            className="font-orbitron mt-6 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
-            onClick={() => {
-              setError(null);
-              setReloadKey((value) => value + 1);
-            }}
-          >
-            Retry result
-          </Button>
+          {recoveryAction !== "STOP" && (
+            <Button
+              className="font-orbitron mt-6 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
+              onClick={() => {
+                if (recoveryAction === "REAUTHENTICATE") {
+                  navigate("/login");
+                  return;
+                }
+                setError(null);
+                setReloadKey((value) => value + 1);
+              }}
+            >
+              {recoveryAction === "REAUTHENTICATE"
+                ? "Sign in again"
+                : recoveryAction === "CHECK_TRANSPORT"
+                  ? "Check connection"
+                  : "Retry result"}
+            </Button>
+          )}
         </section>
       </main>
     );

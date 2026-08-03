@@ -58,8 +58,23 @@ The state machine recognizes `OPEN_PLAY`, `DRIBBLE`, `FREE_KICK`, `CORNER`,
 the server-provided minute. Unknown future scene values never route to a blank
 screen; they enter `unsupported_contract`.
 
-## Non-Goals Of M2-I1
+## Reconnect And Recovery (M2-I7)
 
-This layer does not implement final controls, scene visual design, reconnect
-transport, asset preloading, or complete browser certification. Those features
-consume this contract in later M2 issues.
+- Every match route hydrates from `GET /api/match/:matchId`; the snapshot is the
+  only source of match phase, field state, lifecycle status, and result state.
+- The client records a local command journal in `sessionStorage` containing the
+  exact idempotency key, payload, match ID, revision, and action ID. A command
+  survives a transport ambiguity only long enough to hydrate and reconcile it.
+- `latest_operation` is an authoritative receipt. A matching committed action
+  receipt with playback restores the result presentation after refresh. A
+  retained command is safe to retry only when its match ID and requested
+  revision still exactly match the hydrated snapshot and no matching receipt
+  exists.
+- Aim/contact drafts are local presentation state. They are restored only when
+  their match ID, revision, and pending action ID exactly match the hydrated
+  snapshot; otherwise they are discarded.
+- Network reconnection uses one bounded `online` listener per mounted route and
+  rehydrates rather than creating a new match or resending an uncertain input.
+- Backend `retryable` and `recovery_action` drive visible recovery UI. The
+  client never silently restarts, fabricates an outcome, or converts an
+  unavailable/finished/unknown scene into a playable scene.

@@ -199,6 +199,7 @@ export interface BackendDecisionResult {
   receiver?: BackendFieldPlayer;
   interceptor?: BackendFieldPlayer;
   receiver_control?: BackendReceiverControl;
+  unsupported_scene_recovery?: BackendUnsupportedSceneRecoveryResult;
   [key: string]: unknown;
 }
 
@@ -357,8 +358,10 @@ export interface BackendFullTimeHandoff {
 export interface BackendUnsupportedSceneRecovery {
   version: 1;
   status: "RECOVERY_REQUIRED";
-  code: "UNSUPPORTED_SCENE_TYPE";
+  code: "UNSUPPORTED_SCENE_TYPE" | "UNSUPPORTED_SCENE_VERSION";
   scene_type: string;
+  contract_version: number | null;
+  supported_contract_version: number | null;
   action_id: string;
   action_sequence: number;
   minute: number;
@@ -373,6 +376,31 @@ export interface BackendUnsupportedSceneRecovery {
       additional_properties: false;
     };
   };
+}
+
+export interface BackendOperationPlayback {
+  version: 1;
+  submitted_action: BackendPendingAction | null;
+  submitted_field_state: BackendFieldState | null;
+  last_decision: Record<string, unknown> | null;
+  decision_result: BackendDecisionResult | null;
+  events: BackendTimelineEvent[];
+}
+
+export interface BackendMatchOperationReceipt {
+  version: 1;
+  operation_id: string;
+  operation:
+    | "createMatch"
+    | "startMatch"
+    | "resumeMatch"
+    | "abandonMatch"
+    | "processMatchAction";
+  status: "COMMITTED";
+  request_revision: number | null;
+  committed_revision: number;
+  action_id: string | null;
+  playback: BackendOperationPlayback | null;
 }
 
 export interface BackendMatchResponse {
@@ -391,6 +419,7 @@ export interface BackendMatchResponse {
   legend_availability: BackendLegendAvailabilityState;
   halftime_summary: BackendHalftimeSummary | null;
   full_time_handoff: BackendFullTimeHandoff | null;
+  latest_operation?: BackendMatchOperationReceipt | null;
   [key: string]: unknown;
 }
 
@@ -406,6 +435,7 @@ export interface BackendMatchSnapshot {
   legend_availability: BackendLegendAvailabilityState;
   halftime_summary: BackendHalftimeSummary | null;
   full_time_handoff: BackendFullTimeHandoff | null;
+  latest_operation: BackendMatchOperationReceipt | null;
   [key: string]: unknown;
 }
 
@@ -924,8 +954,10 @@ export const BackendUnsupportedSceneRecoverySchema: z.ZodType<BackendUnsupported
     .object({
       version: z.literal(1),
       status: z.literal("RECOVERY_REQUIRED"),
-      code: z.literal("UNSUPPORTED_SCENE_TYPE"),
+      code: z.enum(["UNSUPPORTED_SCENE_TYPE", "UNSUPPORTED_SCENE_VERSION"]),
       scene_type: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/u),
+      contract_version: z.number().int().min(1).nullable(),
+      supported_contract_version: z.number().int().min(1).nullable(),
       action_id: identifier,
       action_sequence: z.number().int().min(1),
       minute: z.number().int().min(1).max(89),
@@ -937,6 +969,27 @@ export const BackendUnsupportedSceneRecoverySchema: z.ZodType<BackendUnsupported
           input_schema: RecoveryInputSchema,
         })
         .strict(),
+    })
+    .strict();
+
+export interface BackendUnsupportedSceneRecoveryResult {
+  version: 1;
+  status: "RECOVERED";
+  outcome: "SKIPPED_NO_EFFECT";
+  scene_type: string;
+  action_id: string;
+  recovered_revision: number;
+}
+
+export const BackendUnsupportedSceneRecoveryResultSchema: z.ZodType<BackendUnsupportedSceneRecoveryResult> =
+  z
+    .object({
+      version: z.literal(1),
+      status: z.literal("RECOVERED"),
+      outcome: z.literal("SKIPPED_NO_EFFECT"),
+      scene_type: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/u),
+      action_id: identifier,
+      recovered_revision: z.number().int().min(1),
     })
     .strict();
 
@@ -955,6 +1008,8 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
     pending_settlement_events: z
       .array(BackendPendingSettlementEventSchema)
       .optional(),
+    unsupported_scene_recovery:
+      BackendUnsupportedSceneRecoveryResultSchema.optional(),
     unsupported_scene:
       BackendUnsupportedSceneRecoverySchema.nullable().optional(),
     yellow_card: z.boolean().optional(),
@@ -996,6 +1051,37 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
     }
   });
 
+const BackendOperationPlaybackSchema: z.ZodType<BackendOperationPlayback> = z
+  .object({
+    version: z.literal(1),
+    submitted_action: BackendPendingActionSchema.nullable(),
+    submitted_field_state: BackendFieldStateSchema.nullable(),
+    last_decision: z.record(z.string(), z.unknown()).nullable(),
+    decision_result: BackendDecisionResultSchema.nullable(),
+    events: z.array(BackendTimelineEventSchema),
+  })
+  .strict();
+
+export const BackendMatchOperationReceiptSchema: z.ZodType<BackendMatchOperationReceipt> =
+  z
+    .object({
+      version: z.literal(1),
+      operation_id: identifier,
+      operation: z.enum([
+        "createMatch",
+        "startMatch",
+        "resumeMatch",
+        "abandonMatch",
+        "processMatchAction",
+      ]),
+      status: z.literal("COMMITTED"),
+      request_revision: z.number().int().min(0).nullable(),
+      committed_revision: z.number().int().min(0),
+      action_id: identifier.nullable(),
+      playback: BackendOperationPlaybackSchema.nullable(),
+    })
+    .strict();
+
 export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
   .object({
     minute: z.number().int().min(1).max(90),
@@ -1013,6 +1099,7 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
     legend_availability: BackendLegendAvailabilitySchema,
     halftime_summary: BackendHalftimeSummarySchema.nullable(),
     full_time_handoff: BackendFullTimeHandoffSchema.nullable(),
+    latest_operation: BackendMatchOperationReceiptSchema.nullable().optional(),
   })
   .passthrough()
   .superRefine((response, context) => {
@@ -1246,6 +1333,7 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
     legend_availability: BackendLegendAvailabilitySchema,
     halftime_summary: BackendHalftimeSummarySchema.nullable(),
     full_time_handoff: BackendFullTimeHandoffSchema.nullable(),
+    latest_operation: BackendMatchOperationReceiptSchema.nullable(),
   })
   .strict()
   .superRefine((response, context) => {
@@ -1390,7 +1478,16 @@ export const BackendErrorEnvelopeSchema = z
   .object({
     error: z.string().trim().min(1),
     code: z.string().trim().min(1).optional(),
-    retryable: z.boolean().optional(),
+    retryable: z.boolean(),
+    recovery_action: z.enum([
+      "REAUTHENTICATE",
+      "CHECK_TRANSPORT",
+      "HYDRATE_MATCH",
+      "USE_RECOVERY_INTENT",
+      "FIX_REQUEST",
+      "RETRY_SAME_REQUEST",
+      "STOP",
+    ]),
   })
   .passthrough();
 

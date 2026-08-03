@@ -1,5 +1,7 @@
 {
   "error": "Match is not waiting for decision.",
   "code": "INVALID_MATCH_TRANSITION",
-  "status": 400
+  "status": 400,
+  "retryable": false,
+  "recovery_action": "FIX_REQUEST"
 }

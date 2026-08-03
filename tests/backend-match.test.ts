@@ -170,6 +170,7 @@ describe("backend match client", () => {
         },
         halftime_summary: null,
         full_time_handoff: null,
+        latest_operation: null,
       }).success,
     ).toBe(true);
   });
@@ -183,6 +184,8 @@ describe("backend match client", () => {
       status: "RECOVERY_REQUIRED",
       code: "UNSUPPORTED_SCENE_TYPE",
       scene_type: "FUTURE_RANDOM_EVENT_V99",
+      contract_version: null,
+      supported_contract_version: null,
       action_id: "action-future-1",
       action_sequence: 4,
       minute: 53,

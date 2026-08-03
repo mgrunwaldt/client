@@ -3,5 +3,6 @@
   "code": "VALIDATION_ERROR",
   "status": 422,
   "details": { "issues": ["MISSING_REQUIRED_FIELD"] },
-  "retryable": false
+  "retryable": false,
+  "recovery_action": "FIX_REQUEST"
 }

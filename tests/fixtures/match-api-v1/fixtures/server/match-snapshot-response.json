@@ -20,6 +20,16 @@
     "created_time": { "match_minute": 53, "decision_sequence": 4 }, "status": "PENDING"
   }],
   "unsupported_scene": null,
+  "latest_operation": {
+    "version": 1,
+    "operation_id": "operation-fixture-1",
+    "operation": "resumeMatch",
+    "status": "COMMITTED",
+    "request_revision": 0,
+    "committed_revision": 1,
+    "action_id": null,
+    "playback": null
+  },
   "legend_availability": { "version": 1, "status": "AVAILABLE", "availability": "AVAILABLE", "participation": "NOT_PARTICIPATING", "interactive_controls": true, "unavailable_since_minute": null },
   "halftime_summary": {
     "version": 1, "match_id": "match-fixture-1", "minute": 45, "score": { "my_team": 1, "opponent_team": 0 },

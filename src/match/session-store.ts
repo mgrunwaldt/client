@@ -11,6 +11,11 @@ import {
   createInitialMatchSession,
   matchSessionReducer,
 } from "./session-machine";
+import {
+  type MatchFieldDraft,
+  readMatchRecoveryJournal,
+  writeMatchRecoveryJournal,
+} from "./session-recovery";
 import type {
   EffortLevel,
   HydratedMatchSession,
@@ -37,6 +42,8 @@ interface MatchSessionActions {
   setError: (error: unknown | null) => void;
   retainPendingCommand: (command: MatchCommand) => void;
   clearPendingCommand: () => void;
+  retainFieldDraft: (draft: MatchFieldDraft) => void;
+  clearFieldDraft: () => void;
   showTransitionLoader: (payload: Partial<MatchTransitionLoaderState>) => void;
   updateTransitionLoader: (
     payload: Partial<MatchTransitionLoaderState>,
@@ -81,6 +88,23 @@ const initialUiState: MatchSessionUiState = {
   },
 };
 
+function initialSessionState() {
+  const journal = readMatchRecoveryJournal();
+  return {
+    ...createInitialMatchSession(),
+    pendingCommand: journal.pendingCommand,
+    fieldDraft: journal.fieldDraft,
+  };
+}
+
+function persistRecoveryJournal(state: MatchSessionData) {
+  writeMatchRecoveryJournal({
+    version: 1,
+    pendingCommand: state.pendingCommand,
+    fieldDraft: state.fieldDraft,
+  });
+}
+
 function loadingForPhase(phase: MatchSessionData["phase"]) {
   return (
     phase === "creating" ||
@@ -108,6 +132,7 @@ function updateSession(
     };
   });
   if (!result) throw new Error("The match session transition did not run.");
+  persistRecoveryJournal(result);
   return result;
 }
 
@@ -138,6 +163,7 @@ function diagnosticFromError(error: unknown): MatchSessionDiagnostic {
       retryable: error.retryable,
       status: error.status,
       code: error.code,
+      recoveryAction: error.recoveryAction,
       metadata: error.metadata,
     };
   }
@@ -149,10 +175,14 @@ function diagnosticFromError(error: unknown): MatchSessionDiagnostic {
 }
 
 export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
-  ...createInitialMatchSession(),
+  ...initialSessionState(),
   ...initialUiState,
   resetMatchSession: () =>
-    set({ ...createInitialMatchSession(), ...initialUiState }),
+    set(() => {
+      const next = { ...createInitialMatchSession(), ...initialUiState };
+      persistRecoveryJournal(next);
+      return next;
+    }),
   beginCreateCommand: (command) =>
     commandAccepted(
       updateSession(set, { type: "CREATE_REQUESTED", command }),
@@ -173,6 +203,9 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
   retainPendingCommand: (command) =>
     updateSession(set, { type: "COMMAND_RETAINED", command }),
   clearPendingCommand: () => updateSession(set, { type: "COMMAND_CLEARED" }),
+  retainFieldDraft: (draft) =>
+    updateSession(set, { type: "FIELD_DRAFT_RETAINED", draft }),
+  clearFieldDraft: () => updateSession(set, { type: "FIELD_DRAFT_CLEARED" }),
   showTransitionLoader: (payload) =>
     set((state) => ({
       transitionLoader: {
@@ -264,6 +297,7 @@ if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
         legendAvailability: response.legend_availability,
         halftimeSummary: response.halftime_summary,
         fullTimeHandoff: response.full_time_handoff,
+        latestOperation: response.latest_operation ?? null,
       });
     },
   });

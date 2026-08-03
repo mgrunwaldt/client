@@ -1,5 +1,7 @@
 {
   "error": "Request transport is not allowed.",
   "code": "FORBIDDEN",
-  "status": 403
+  "status": 403,
+  "retryable": false,
+  "recovery_action": "CHECK_TRANSPORT"
 }

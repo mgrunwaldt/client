@@ -24,8 +24,8 @@ method/path/status/body associations, complete scene coverage, lifecycle minute
 boundaries, field-state linkage, and timeline ordering. It is intentionally not
 treated as a replacement for AJV or Redocly.
 
-Public errors use `ErrorResponse` with required `error`, `code`, and integer
-`status` fields. Each public HTTP status references its exact status-specific
+Public errors use `ErrorResponse` with required `error`, `code`, integer
+`status`, `retryable`, and `recovery_action` fields. Each public HTTP status references its exact status-specific
 schema component: `400` malformed/request/transition codes, `401 UNAUTHORIZED`,
 `403 FORBIDDEN`, `404 RESOURCE_NOT_FOUND`, explicit `409` conflict codes,
 explicit `422` validation codes, and `500 INTERNAL_ERROR`. Error schemas reject
@@ -34,6 +34,9 @@ Negative AJV fixtures cover credential, wallet, signature, verifier-output, and
 generic unknown-field injection. Live tests require malformed/oversized JSON and
 malformed URI failures to remain safe JSON without HTML, stacks, or paths. AJV
 fixtures include each status and reject code/status mismatches.
+Status-specific schemas also pin retryability and recovery action. Status is evaluated before
+code: `400 INVALID_MATCH_TRANSITION` is `FIX_REQUEST`, while the same code at `409` is `STOP`.
+Conflict variants separately pin stale/terminal hydration and unsupported-scene recovery.
 
 Human-facing lifecycle, compatibility, and M0/M1 implementation semantics are
 defined in `docs/contracts/match-api-v1.md`.
@@ -59,3 +62,10 @@ dependency closure. Legend availability, halftime summary, and full-time handoff
 are mandatory progress/snapshot projections. Halftime Continue, administrative
 abandonment, regulation point deltas, pending settlement handoff, and terminal
 contribution/event summaries are server-authored, persisted, and replayable.
+
+M2-I7 adds a version-1 latest committed-operation receipt to exact snapshot hydration. It stores
+known submitted-scene/result playback and unsupported-scene `SKIPPED_NO_EFFECT` recovery playback
+outside canonical engine state, so replay hashes and frozen engine history remain unchanged.
+Unsupported scene contract versions fail closed into the same explicit recovery path as unknown
+scenes. Typed terminal, stale, intent-version, authentication,
+transport, and transient error recovery is executable in OpenAPI, AJV, Redocly, and live tests.

@@ -493,7 +493,7 @@ describe("match session store hydration", () => {
       {
         matchId: response.match.id,
         actionId: scene.id,
-        revision: 3,
+        revision: response.match.revision,
         idempotencyKey: "reconnect-key",
       },
     );

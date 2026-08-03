@@ -6,6 +6,7 @@ import type {
   BackendHalftimeSummary,
   BackendLegendAvailabilityState,
   BackendMatch,
+  BackendMatchOperationReceipt,
   BackendMatchResponse,
   BackendPendingAction,
   BackendTeam,
@@ -14,6 +15,8 @@ import type {
   KnownPlayableScene,
 } from "./api-v1/contract";
 import type { MatchApiResponseMetadata } from "./api-v1/errors";
+import type { MatchRecoveryAction } from "./api-v1/errors";
+import type { MatchFieldDraft } from "./session-recovery";
 
 export type EffortLevel = "low" | "medium" | "high";
 export type Playstyle = "defense" | "balanced" | "offensive";
@@ -57,6 +60,7 @@ export interface MatchSessionDiagnostic {
   retryable: boolean;
   status?: number;
   code?: string | null;
+  recoveryAction?: MatchRecoveryAction | null;
   metadata?: MatchApiResponseMetadata;
 }
 
@@ -83,11 +87,15 @@ export interface MatchSessionData {
   effort: EffortLevel;
   playstyle: Playstyle;
   pendingCommand: MatchCommand | null;
+  retrySafe: boolean;
+  fieldDraft: MatchFieldDraft | null;
   decisionResult: BackendDecisionResult | null;
+  resultPlayback: BackendMatchOperationReceipt | null;
   unsupportedScene: BackendUnsupportedSceneRecovery | null;
   legendAvailability: BackendLegendAvailabilityState | null;
   halftimeSummary: BackendHalftimeSummary | null;
   fullTimeHandoff: BackendFullTimeHandoff | null;
+  latestOperation: BackendMatchOperationReceipt | null;
   diagnostic: MatchSessionDiagnostic | null;
   error: string | null;
 }
@@ -102,6 +110,7 @@ export interface HydratedMatchSession {
   legendAvailability?: BackendLegendAvailabilityState;
   halftimeSummary?: BackendHalftimeSummary | null;
   fullTimeHandoff?: BackendFullTimeHandoff | null;
+  latestOperation?: BackendMatchOperationReceipt | null;
 }
 
 export type MatchSessionEvent =
@@ -117,6 +126,8 @@ export type MatchSessionEvent =
     }
   | { type: "COMMAND_RETAINED"; command: MatchCommand }
   | { type: "COMMAND_CLEARED" }
+  | { type: "FIELD_DRAFT_RETAINED"; draft: MatchFieldDraft }
+  | { type: "FIELD_DRAFT_CLEARED" }
   | { type: "START_REQUESTED"; command: MatchCommand }
   | { type: "RESUME_REQUESTED"; command: MatchCommand }
   | { type: "ACTION_REQUESTED"; command: MatchCommand }
