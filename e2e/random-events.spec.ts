@@ -5,8 +5,13 @@ import argumentTeammate from "../tests/fixtures/match-api-v1/scenes/argument-tea
 import bathroom from "../tests/fixtures/match-api-v1/scenes/bathroom.json" with { type: "json" };
 import brawl from "../tests/fixtures/match-api-v1/scenes/brawl.json" with { type: "json" };
 import jumper from "../tests/fixtures/match-api-v1/scenes/jumper.json" with { type: "json" };
+import matchSnapshot from "../tests/fixtures/match-api-v1/server/match-snapshot-response.json" with { type: "json" };
 import waitingOpenPlay from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
-import { authenticateForContinuation } from "./support/auth";
+import {
+  authenticateForContinuation,
+  authenticateToHome,
+} from "./support/auth";
+import { enableDebugResultContinuation } from "./support/result-continuation";
 
 const FIELD_READY_TIMEOUT_MS = 45_000;
 const randomScenes = [
@@ -139,18 +144,31 @@ function resolvedRandomEvent(
 
 function recoveredResponse() {
   const response = structuredClone(waitingOpenPlay);
+  const minute = response.minute + 1;
+  const description = "Unsupported event skipped without applying effects.";
   return {
     ...response,
-    minute: response.minute + 1,
+    minute,
     prev_time: response.minute,
     status: "IN_PROGRESS",
     pending_action: null,
     field_state: null,
     action: null,
     action_team: null,
+    events: [
+      {
+        ...response.events[0],
+        event_id: response.events[0].event_id + 1,
+        action: "UNSUPPORTED_SCENE_SKIPPED",
+        minute,
+        description,
+      },
+    ],
+    pending_settlement_events: [],
+    unsupported_scene: null,
     match: {
       ...response.match,
-      current_time: response.minute + 1,
+      current_time: minute,
       prev_time: response.minute,
       revision: response.match.revision + 1,
       match_status: "IN_PROGRESS",
@@ -159,7 +177,49 @@ function recoveredResponse() {
   };
 }
 
-async function hydrateScene(page: Page, response: unknown) {
+function unsupportedSceneResponse(actionId: string) {
+  const response = randomEventResponse(jumper, actionId);
+  const sceneType = "FUTURE_RANDOM_EVENT_V99";
+  return {
+    ...response,
+    status: "WAITING_FOR_RECOVERY",
+    pending_action: null,
+    field_state: null,
+    action: null,
+    action_team: null,
+    unsupported_scene: {
+      version: 1,
+      status: "RECOVERY_REQUIRED",
+      code: "UNSUPPORTED_SCENE_TYPE",
+      scene_type: sceneType,
+      action_id: actionId,
+      action_sequence: 4,
+      minute: response.minute,
+      recovery: {
+        choice: "CONTINUE_WITHOUT_EVENT",
+        label: "Continue Without Event",
+        description: "Skip unsupported event content without applying effects.",
+        input_schema: {
+          type: "object",
+          required: ["choice"],
+          allowed: ["choice"],
+          additional_properties: false,
+        },
+      },
+    },
+    match: {
+      ...response.match,
+      match_status: "WAITING_FOR_RECOVERY",
+      pending_action: null,
+    },
+  };
+}
+
+async function hydrateScene(
+  page: Page,
+  response: unknown,
+  options: { waitForField?: boolean } = {},
+) {
   const currentPath = new URL(page.url()).pathname;
   if (/^\/match\/[^/]+$/u.test(currentPath)) {
     await page.goBack();
@@ -197,12 +257,14 @@ async function hydrateScene(page: Page, response: unknown) {
     },
     { matchResponse: response, ...teams },
   );
-  await expect(page.getByTestId("game-field")).toHaveAttribute(
-    "data-render-ready",
-    "true",
-    { timeout: FIELD_READY_TIMEOUT_MS },
-  );
-  await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
+  if (options.waitForField !== false) {
+    await expect(page.getByTestId("game-field")).toHaveAttribute(
+      "data-render-ready",
+      "true",
+      { timeout: FIELD_READY_TIMEOUT_MS },
+    );
+    await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
+  }
 }
 
 test("renders all five random scenes and submits each authoritative choice exactly once", async ({
@@ -224,6 +286,7 @@ test("renders all five random scenes and submits each authoritative choice exact
       body: JSON.stringify(result),
     });
   });
+  await enableDebugResultContinuation(page);
   await authenticateForContinuation(page);
 
   let index = 0;
@@ -291,7 +354,101 @@ test("uses the full-color V1 mobile and desktop event treatment", async ({
   );
 });
 
-test("recovers an unknown server scene with its advertised no-effect intent and rejects malformed events visibly", async ({
+test("submits a valid future fourth choice and auto-continues in production mode", async ({
+  context,
+  page,
+}) => {
+  test.slow();
+  const requests: unknown[] = [];
+  const actionId = "action-jumper-future-choice";
+  const futureChoice = {
+    id: "CALL_TEAMMATES",
+    label: "Call Teammates",
+    description: "Ask nearby teammates to help with the interruption.",
+    input_schema: {
+      required: ["choice"],
+      allowed: ["choice"],
+      additional_properties: false,
+    },
+  };
+  const scene = structuredClone(jumper);
+  scene.available_choices.push(futureChoice);
+  const result = resolvedRandomEvent(scene, actionId, futureChoice.id);
+  await context.route("**/api/processMatchAction", async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(result),
+    });
+  });
+  await authenticateForContinuation(page);
+  await hydrateScene(page, randomEventResponse(scene, actionId));
+
+  const choice = page.getByTestId(`random-event-choice-${futureChoice.id}`);
+  await expect(choice).toContainText(futureChoice.label);
+  await expect(choice).toContainText(futureChoice.description);
+  await choice.click();
+
+  const resultPanel = page.getByTestId("kick-result");
+  await expect(resultPanel).toContainText(
+    `Authoritative JUMPER ${futureChoice.id} result.`,
+  );
+  await expect(
+    resultPanel.getByRole("button", { name: "Tap to continue" }),
+  ).toBeVisible();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({
+    action_id: actionId,
+    match_decision: { choice: futureChoice.id },
+  });
+
+  await expect(page).toHaveURL(/\/match\/match-fixture-1$/u, {
+    timeout: 5_500,
+  });
+  await expect(page.getByTestId("timeline-screen")).toHaveAttribute(
+    "data-session-phase",
+    "timeline_playback",
+  );
+  expect(requests).toHaveLength(1);
+});
+
+test("keeps a debug result indefinitely until Next Action is activated", async ({
+  context,
+  page,
+}) => {
+  test.slow();
+  const requests: unknown[] = [];
+  const actionId = "action-jumper-debug-hold";
+  const result = resolvedRandomEvent(jumper, actionId, "DODGE");
+  await context.route("**/api/processMatchAction", async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(result),
+    });
+  });
+  await enableDebugResultContinuation(page);
+  await authenticateForContinuation(page);
+  await hydrateScene(page, randomEventResponse(jumper, actionId));
+  await page.getByTestId("random-event-choice-DODGE").click();
+
+  const resultPanel = page.getByTestId("kick-result");
+  await expect(resultPanel).toBeVisible();
+  await page.waitForTimeout(3_200);
+  await expect(page).toHaveURL(/\/game$/u);
+  await expect(resultPanel).toBeVisible();
+  expect(requests).toHaveLength(1);
+
+  await resultPanel.getByTestId("next-action").click();
+  await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
+  expect(requests).toHaveLength(1);
+});
+
+test("recovers a hidden unknown scene exactly once and exposes safe malformed-event recovery", async ({
   context,
   page,
 }) => {
@@ -308,47 +465,23 @@ test("recovers an unknown server scene with its advertised no-effect intent and 
   });
   await authenticateForContinuation(page);
 
-  const unknown = randomEventResponse(jumper, "action-future-1");
-  unknown.pending_action.scene_type = "FUTURE_RANDOM_EVENT_V99";
-  unknown.pending_action.action_type = "FUTURE_RANDOM_EVENT_V99";
-  unknown.pending_action.available_choices = [
-    {
-      id: "CONTINUE_WITHOUT_EVENT",
-      label: "Continue Without Event",
-      description: "Skip unsupported event content without applying effects.",
-      input_schema: {
-        required: ["choice"],
-        allowed: ["choice"],
-        additional_properties: false,
-      },
-    },
-  ];
-  unknown.status = "WAITING_FOR_RECOVERY";
-  unknown.match.match_status = "WAITING_FOR_RECOVERY";
-  (unknown as { unsupported_scene?: unknown }).unsupported_scene = {
-    version: 1,
-    status: "RECOVERY_REQUIRED",
-    code: "UNSUPPORTED_SCENE_TYPE",
-    scene_type: "FUTURE_RANDOM_EVENT_V99",
-    action_id: "action-future-1",
-    action_sequence: 4,
-    minute: unknown.minute,
-    recovery: {
-      choice: "CONTINUE_WITHOUT_EVENT",
-      label: "Continue Without Event",
-      description: "Skip unsupported event content without applying effects.",
-      input_schema: {
-        required: ["choice"],
-        allowed: ["choice"],
-        additional_properties: false,
-      },
-    },
-  };
-  await hydrateScene(page, unknown);
+  const unknown = unsupportedSceneResponse("action-future-1");
+  await hydrateScene(page, unknown, { waitForField: false });
   await expect(page.getByTestId("unsupported-event-recovery")).toContainText(
     "FUTURE_RANDOM_EVENT_V99",
   );
   await page.getByTestId("unsupported-event-continue").click();
+  await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
+  const timeline = page.getByTestId("timeline-screen");
+  await expect(timeline).toHaveAttribute(
+    "data-session-phase",
+    "timeline_playback",
+  );
+  await expect(timeline).toContainText(
+    "Unsupported event skipped without applying effects.",
+  );
+  await expect(page.getByTestId("unsupported-event-recovery")).toHaveCount(0);
+  await expect(page.getByTestId("kick-result")).toHaveCount(0);
   expect(requests).toHaveLength(1);
   expect(requests[0]).toMatchObject({
     action_id: "action-future-1",
@@ -365,4 +498,69 @@ test("recovers an unknown server scene with its advertised no-effect intent and 
   await expect(page.getByTestId("scene-contract-error")).toContainText(
     "invalid choice contract",
   );
+  const contractError = page.getByTestId("scene-contract-error");
+  await expect(
+    contractError.getByRole("button", { name: "Refresh" }),
+  ).toBeVisible();
+  await expect(
+    contractError.getByRole("button", { name: "Timeline" }),
+  ).toBeVisible();
+  await contractError.getByRole("button", { name: "Timeline" }).click();
+  await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
+});
+
+test("contains a malformed recovery contract with retry and safe exit", async ({
+  context,
+  page,
+}) => {
+  const malformed = structuredClone(matchSnapshot);
+  malformed.match.current_time = 53;
+  malformed.match.prev_time = 52;
+  malformed.match.match_status = "WAITING_FOR_RECOVERY";
+  malformed.match.pending_action = null;
+  malformed.pending_action = null;
+  malformed.field_state = null;
+  malformed.unsupported_scene = {
+    version: 1,
+    status: "RECOVERY_REQUIRED",
+    code: "UNSUPPORTED_SCENE_TYPE",
+    scene_type: "FUTURE_RANDOM_EVENT_V99",
+    action_id: "action-malformed-recovery",
+    action_sequence: 4,
+    minute: 53,
+    recovery: {
+      choice: "CONTINUE_WITHOUT_EVENT",
+      label: "Continue Without Event",
+      description: "Skip unsupported event content safely.",
+    },
+  } as never;
+  let requests = 0;
+  await context.route("**/api/match/match-fixture-1", async (route) => {
+    requests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(malformed),
+    });
+  });
+  await authenticateToHome(page);
+  await page.goto("/match/match-fixture-1");
+
+  const alert = page.getByRole("alert");
+  await expect(alert).toContainText("Live match unavailable");
+  await expect(alert).toContainText("invalid success response");
+  await expect(
+    alert.getByRole("button", { name: "Retry match" }),
+  ).toBeVisible();
+  await expect(
+    alert.getByRole("button", { name: "Back to home" }),
+  ).toBeVisible();
+  expect(requests).toBe(1);
+
+  await alert.getByRole("button", { name: "Retry match" }).click();
+  await expect.poll(() => requests).toBe(2);
+  await expect(alert).toBeVisible();
+  await alert.getByRole("button", { name: "Back to home" }).click();
+  await expect(page).toHaveURL(/\/$/u);
 });

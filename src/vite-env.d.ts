@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly VITE_E2E_LOCAL_CI_WALLETS?: string;
+  readonly VITE_E2E_MATCH_SESSION_BRIDGE?: string;
 }
 
 declare module "*.frag" {

@@ -14,6 +14,10 @@ import {
   processBackendMatchAction,
   startBackendMatch,
 } from "../src/lib/backend-match";
+import {
+  BackendMatchResponseSchema,
+  BackendMatchSnapshotSchema,
+} from "../src/match/api-v1/contract";
 import { readFixture } from "./match-api-v1-fixtures";
 
 function jsonResponse(
@@ -71,6 +75,121 @@ describe("backend match client", () => {
     fetchMock.mockReset();
     useAuthSessionStore.getState().clear();
     vi.unstubAllGlobals();
+  });
+
+  it("rejects progress responses that omit required settlement or recovery state", async () => {
+    const response = await readFixture<Record<string, unknown>>(
+      "server/waiting-open-play-response.json",
+    );
+    const withoutSettlements = structuredClone(response);
+    const withoutRecovery = structuredClone(response);
+    const malformedRecovery = structuredClone(response);
+    delete withoutSettlements.pending_settlement_events;
+    delete withoutRecovery.unsupported_scene;
+    malformedRecovery.unsupported_scene = {
+      version: 1,
+      status: "RECOVERY_REQUIRED",
+      code: "UNSUPPORTED_SCENE_TYPE",
+      scene_type: "future-scene",
+      action_id: "action-future-1",
+      action_sequence: 4,
+      minute: 53,
+      recovery: {
+        choice: "CONTINUE_WITHOUT_EVENT",
+        label: "Continue Without Event",
+        description: "Skip this event safely.",
+        input_schema: {
+          required: ["choice"],
+          allowed: ["choice"],
+          additional_properties: false,
+        },
+      },
+    };
+
+    expect(
+      BackendMatchResponseSchema.safeParse(withoutSettlements).success,
+    ).toBe(false);
+    expect(BackendMatchResponseSchema.safeParse(withoutRecovery).success).toBe(
+      false,
+    );
+    expect(
+      BackendMatchResponseSchema.safeParse(malformedRecovery).success,
+    ).toBe(false);
+  });
+
+  it("accepts the authoritative hidden-action recovery shape", async () => {
+    const response = await readFixture<Record<string, unknown>>(
+      "server/waiting-open-play-response.json",
+    );
+    const recovery = {
+      version: 1,
+      status: "RECOVERY_REQUIRED",
+      code: "UNSUPPORTED_SCENE_TYPE",
+      scene_type: "FUTURE_RANDOM_EVENT_V99",
+      action_id: "action-future-1",
+      action_sequence: 4,
+      minute: 53,
+      recovery: {
+        choice: "CONTINUE_WITHOUT_EVENT",
+        label: "Continue Without Event",
+        description: "Skip unsupported event content without applying effects.",
+        input_schema: {
+          type: "object",
+          required: ["choice"],
+          allowed: ["choice"],
+          additional_properties: false,
+        },
+      },
+    };
+    const hiddenAction = structuredClone(response) as Record<
+      string,
+      unknown
+    > & {
+      match: Record<string, unknown>;
+    };
+    hiddenAction.minute = 53;
+    hiddenAction.prev_time = 52;
+    hiddenAction.status = "WAITING_FOR_RECOVERY";
+    hiddenAction.pending_action = null;
+    hiddenAction.field_state = null;
+    hiddenAction.action = null;
+    hiddenAction.action_team = null;
+    hiddenAction.unsupported_scene = recovery;
+    hiddenAction.match.current_time = 53;
+    hiddenAction.match.prev_time = 52;
+    hiddenAction.match.match_status = "WAITING_FOR_RECOVERY";
+    hiddenAction.match.pending_action = null;
+
+    expect(BackendMatchResponseSchema.safeParse(hiddenAction).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects snapshots that omit required root state or contain malformed recovery", async () => {
+    const snapshot = await readFixture<Record<string, unknown>>(
+      "server/match-snapshot-response.json",
+    );
+    const withoutSettlements = structuredClone(snapshot);
+    const withoutRecovery = structuredClone(snapshot);
+    const malformedRecovery = structuredClone(snapshot);
+    delete withoutSettlements.pending_settlement_events;
+    delete withoutRecovery.unsupported_scene;
+    malformedRecovery.unsupported_scene = {
+      version: 1,
+      status: "RECOVERY_REQUIRED",
+      code: "UNSUPPORTED_SCENE_TYPE",
+      scene_type: "FUTURE_SCENE",
+    };
+
+    expect(
+      BackendMatchSnapshotSchema.safeParse(withoutSettlements).success,
+    ).toBe(false);
+    expect(BackendMatchSnapshotSchema.safeParse(withoutRecovery).success).toBe(
+      false,
+    );
+    expect(
+      BackendMatchSnapshotSchema.safeParse(malformedRecovery).success,
+    ).toBe(false);
   });
 
   it("serializes canonical commands with CSRF, revision, action, and stable idempotency metadata", async () => {

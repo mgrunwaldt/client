@@ -16,6 +16,7 @@ import freeKickScene from "../tests/fixtures/tactical-kick-scenes/free-kick.json
 import openPlayScene from "../tests/fixtures/tactical-kick-scenes/open-play.json" with { type: "json" };
 import penaltyScene from "../tests/fixtures/tactical-kick-scenes/penalty.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
+import { enableDebugResultContinuation } from "./support/result-continuation";
 
 const FIELD_READY_TIMEOUT_MS = 45_000;
 const tacticalScenes = {
@@ -440,6 +441,8 @@ function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
     status: "IN_PROGRESS",
     pending_action: null,
     field_state: null,
+    pending_settlement_events: [],
+    unsupported_scene: null,
     match: {
       ...response.match,
       current_time: continuationMinute,
@@ -863,6 +866,7 @@ test("captures the rendered authoritative tactical result", async ({
   page,
 }, testInfo) => {
   test.slow();
+  await enableDebugResultContinuation(page);
   await context.route("**/api/processMatchAction", async (route) => {
     await route.fulfill({
       status: 200,

@@ -305,7 +305,12 @@ export default function MatchScreen() {
   }
 
   return (
-    <div className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white">
+    <div
+      data-testid="timeline-screen"
+      data-session-phase={phase}
+      data-playback-minute={playbackMinute}
+      className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white"
+    >
       <div className="z-10 flex h-full w-full max-w-4xl flex-col items-center justify-between gap-4 pb-4">
         <div className="flex min-h-0 w-full shrink flex-col items-center justify-center rounded-2xl">
           <LiveHeader

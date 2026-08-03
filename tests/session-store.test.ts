@@ -81,6 +81,8 @@ function responseForScene(
     action: scene.scene_type,
     action_team: scene.action_team as BackendActionTeam,
     events: [eventFor(scene, eventId)],
+    pending_settlement_events: [],
+    unsupported_scene: null,
     match,
   };
 }

@@ -15,6 +15,7 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -56,6 +57,10 @@ import {
   authoritativeContinuationFieldState,
   authoritativeFacingTarget,
 } from "../../match/receiver-control";
+import {
+  isDebugResultContinuationEnabled,
+  RESULT_HOLD_MS,
+} from "../../match/result-continuation";
 import { useMatchSessionStore } from "../../match/session-store";
 import { BallAimSurface } from "./BallAimSurface";
 import { DribbleControls } from "./DribbleControls";
@@ -82,9 +87,6 @@ const OPPONENT_NEAR_BALL_DISTANCE = 10;
 const PLAYER_TRAJECTORY_TRACK_DISTANCE = 10;
 const PLAYER_TRACK_TURN_SPEED = 9;
 const DEFAULT_STRIKE_CONTACT = { x: 0.45, y: -0.15 };
-const RESULT_HOLD_MS = 2_500;
-const DEBUG_RESULT_CONTINUATION =
-  import.meta.env.VITE_MATCH_DEBUG_CONTINUATION === "true";
 const DEFAULT_CAMERA_POSITION: [number, number, number] = [0, 358, 234];
 const DEFAULT_CAMERA_ROTATION: [number, number, number] = [-0.7, 0, 0];
 const DEFAULT_CAMERA_ZOOM = 8;
@@ -279,7 +281,7 @@ function FieldCameraController({
   const size = useThree((state) => state.size);
   const framedKeyRef = useRef("");
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (cameraLocked) {
       return;
     }
@@ -763,6 +765,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stagedKickResult, setStagedKickResult] =
     useState<StagedKickResult | null>(null);
+  const [debugResultContinuation] = useState(isDebugResultContinuationEnabled);
   const [resolvedSceneFieldState, setResolvedSceneFieldState] =
     useState<BackendFieldState | null>(null);
   const [animatedBallFlightPoint, setAnimatedBallFlightPoint] = useState<{
@@ -932,8 +935,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const canRecoverUnsupportedScene =
     phase === "unsupported_recovery" &&
     Boolean(unsupportedScene) &&
-    Boolean(match?.id) &&
-    pendingAction?.id === unsupportedScene?.action_id;
+    Boolean(match?.id);
   const displayedKickDecision =
     releasedAimDraft && kickControlEnvelope
       ? buildCanonicalKickDecision(
@@ -1251,9 +1253,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   };
 
   const handleUnsupportedSceneRecovery = async () => {
-    if (!match?.id || !pendingAction || !unsupportedScene) return;
+    if (!match?.id || !unsupportedScene) return;
+    const actionId = unsupportedScene.action_id;
     const choiceId = unsupportedScene.recovery.choice;
-    if (!randomEventSubmissionGateRef.current.begin(pendingAction.id)) return;
+    if (!randomEventSubmissionGateRef.current.begin(actionId)) return;
 
     try {
       setIsSubmitting(true);
@@ -1265,29 +1268,30 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         "action",
         {
           match_id: match.id,
-          action_id: pendingAction.id,
+          action_id: actionId,
           match_decision: payload,
         },
         {
           matchId: match.id,
           revision: match.revision ?? null,
-          actionId: pendingAction.id,
+          actionId,
         },
       );
       if (!beginActionCommand(command)) {
-        randomEventSubmissionGateRef.current.reset(pendingAction.id);
+        randomEventSubmissionGateRef.current.reset(actionId);
         return;
       }
       const response = await processBackendMatchAction(
         match,
-        pendingAction.id,
+        actionId,
         payload,
         command,
       );
       setActionResponse(response);
       setLoading(false);
+      navigate(`/match/${match.id}`);
     } catch (error) {
-      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      randomEventSubmissionGateRef.current.reset(actionId);
       setError(error);
       setLoading(false);
     } finally {
@@ -1308,11 +1312,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const autoContinueResult = useEffectEvent(handleNextAction);
 
   useEffect(() => {
-    if (
-      !stagedKickResult ||
-      isResultAnimating ||
-      stagedKickResult.sceneType === "DRIBBLE"
-    ) {
+    if (!stagedKickResult || isResultAnimating || debugResultContinuation) {
       return;
     }
     resultTimerRef.current = window.setTimeout(
@@ -1325,7 +1325,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         resultTimerRef.current = null;
       }
     };
-  }, [isResultAnimating, stagedKickResult]);
+  }, [debugResultContinuation, isResultAnimating, stagedKickResult]);
 
   const resultDescription =
     stagedKickResult?.response.decision_result?.description ||
@@ -1673,7 +1673,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               <RandomEventResultDetails result={stagedDecisionResult} />
             )}
 
-            {DEBUG_RESULT_CONTINUATION ? (
+            {debugResultContinuation ? (
               <button
                 type="button"
                 data-testid="next-action"

@@ -132,7 +132,9 @@ function diagnosticState(
       case "resuming":
         return "halftime" as const;
       case "submitting":
-        return "scene_ready" as const;
+        return state.unsupportedScene
+          ? ("unsupported_recovery" as const)
+          : ("scene_ready" as const);
       case "recoverable_error":
       case "unsupported_contract":
         return state.recoveryPhase;
@@ -264,9 +266,10 @@ function pendingActionContractError(
     ? ["KICK", "DRIBBLE"]
     : expectedChoices;
   if (
-    actualChoices.length !== acceptedChoices.length ||
-    new Set(actualChoices).size !== actualChoices.length ||
-    acceptedChoices.some((choice) => !actualChoices.includes(choice))
+    !isRandomEventAction(pendingAction) &&
+    (actualChoices.length !== acceptedChoices.length ||
+      new Set(actualChoices).size !== actualChoices.length ||
+      acceptedChoices.some((choice) => !actualChoices.includes(choice)))
   ) {
     return `Scene ${pendingAction.scene_type} advertises an invalid choice set.`;
   }
@@ -421,7 +424,8 @@ function applyAuthoritativeSnapshot(
   if (unsupportedRecovery) {
     if (
       match.match_status !== "WAITING_FOR_RECOVERY" ||
-      pendingAction?.id !== unsupportedRecovery.action_id
+      pendingAction !== null ||
+      match.pending_action !== null
     ) {
       return diagnosticState(hydratedState, {
         kind: "contract",
@@ -434,6 +438,13 @@ function applyAuthoritativeSnapshot(
   }
   const phase = phaseForMatch(match, pendingAction);
   if (!phase) {
+    if (match.match_status === "WAITING_FOR_RECOVERY") {
+      return diagnosticState(hydratedState, {
+        kind: "contract",
+        message: "WAITING_FOR_RECOVERY requires unsupported_scene diagnostics.",
+        retryable: true,
+      });
+    }
     return pendingAction
       ? unsupportedStatus(hydratedState, match.match_status)
       : diagnosticState(hydratedState, {
@@ -674,7 +685,10 @@ export function matchSessionReducer(
           retryable: true,
         });
       }
-      if (event.command.actionId !== state.pendingAction?.id) {
+      if (
+        event.command.actionId !==
+        (state.pendingAction?.id ?? state.unsupportedScene?.action_id)
+      ) {
         return diagnosticState(state, {
           kind: "stale_command",
           message: "The submitted action no longer matches the active scene.",
@@ -754,7 +768,12 @@ export function matchSessionReducer(
           retryable: true,
         });
       }
-      const resultPlayback = event.source === "action";
+      const isNoEffectRecovery = Boolean(
+        event.source === "action" &&
+          state.unsupportedScene &&
+          state.pendingCommand?.actionId === state.unsupportedScene.action_id,
+      );
+      const resultPlayback = event.source === "action" && !isNoEffectRecovery;
       const next = applyAuthoritativeSnapshot(state, payload, {
         preservePlayback: false,
         resultPlayback,

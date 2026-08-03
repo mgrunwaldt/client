@@ -81,6 +81,7 @@ describe("match session reducer", () => {
         label: "Continue Without Event",
         description: "Skip unsupported event content without applying effects.",
         input_schema: {
+          type: "object",
           required: ["choice"],
           allowed: ["choice"],
           additional_properties: false,
@@ -100,6 +101,7 @@ describe("match session reducer", () => {
         label: "Continue Without Event",
         description: "Skip unsupported event content without applying effects.",
         input_schema: {
+          type: "object",
           required: ["choice"],
           allowed: ["choice"],
           additional_properties: false,
@@ -112,12 +114,12 @@ describe("match session reducer", () => {
         match: {
           ...matchForScene(action),
           match_status: "WAITING_FOR_RECOVERY",
-          pending_action: action,
+          pending_action: null,
         },
         myTeam: teamFixture.my_team,
         opponentTeam: teamFixture.opponent_team,
         timelineEvents: [eventFor(action)],
-        pendingAction: action,
+        pendingAction: null,
         unsupportedScene: recovery,
       },
     });
@@ -125,8 +127,107 @@ describe("match session reducer", () => {
     expect(state).toMatchObject({
       phase: "unsupported_recovery",
       route: "field",
-      pendingAction: { id: action.id },
+      pendingAction: null,
       unsupportedScene: recovery,
+    });
+  });
+
+  it("returns a successful no-effect recovery directly to timeline playback", async () => {
+    const teamFixture = await teams();
+    const knownAction =
+      await readFixture<BackendPendingAction>("scenes/jumper.json");
+    const action = {
+      ...structuredClone(knownAction),
+      action_type: "FUTURE_RANDOM_EVENT_V99",
+      scene_type: "FUTURE_RANDOM_EVENT_V99",
+    };
+    const recovery: BackendUnsupportedSceneRecovery = {
+      version: 1,
+      status: "RECOVERY_REQUIRED",
+      code: "UNSUPPORTED_SCENE_TYPE",
+      scene_type: action.scene_type,
+      action_id: action.id,
+      action_sequence: 4,
+      minute: action.minute,
+      recovery: {
+        choice: "CONTINUE_WITHOUT_EVENT",
+        label: "Continue Without Event",
+        description: "Resume without applying an event outcome.",
+        input_schema: {
+          type: "object",
+          required: ["choice"],
+          allowed: ["choice"],
+          additional_properties: false,
+        },
+      },
+    };
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: {
+          ...matchForScene(action),
+          match_status: "WAITING_FOR_RECOVERY",
+          pending_action: null,
+        },
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [eventFor(action)],
+        pendingAction: null,
+        unsupportedScene: recovery,
+      },
+    });
+    const command = createMatchCommand(
+      "action",
+      {
+        match_id: state.match!.id,
+        action_id: action.id,
+        match_decision: { choice: "CONTINUE_WITHOUT_EVENT" },
+      },
+      {
+        matchId: state.match!.id,
+        revision: state.match!.revision,
+        actionId: action.id,
+        idempotencyKey: "recover-future-scene",
+      },
+    );
+    state = matchSessionReducer(state, { type: "ACTION_REQUESTED", command });
+
+    const recovered = await readFixture<BackendMatchResponse>(
+      "server/waiting-open-play-response.json",
+    );
+    state = matchSessionReducer(state, {
+      type: "COMMAND_RESOLVED",
+      source: "action",
+      response: {
+        ...recovered,
+        minute: action.minute + 1,
+        prev_time: action.minute,
+        status: "IN_PROGRESS",
+        pending_action: null,
+        field_state: null,
+        action: null,
+        action_team: null,
+        events: [eventFor(action)],
+        pending_settlement_events: [],
+        unsupported_scene: null,
+        match: {
+          ...recovered.match,
+          id: state.match!.id,
+          current_time: action.minute + 1,
+          prev_time: action.minute,
+          revision: state.match!.revision + 1,
+          match_status: "IN_PROGRESS",
+          pending_action: null,
+        },
+      },
+    });
+
+    expect(state).toMatchObject({
+      phase: "timeline_playback",
+      route: "timeline",
+      decisionResult: null,
+      unsupportedScene: null,
+      pendingCommand: null,
     });
   });
 
@@ -429,6 +530,8 @@ describe("match session reducer", () => {
         action: scene.scene_type,
         action_team: scene.action_team,
         events: [],
+        pending_settlement_events: [],
+        unsupported_scene: null,
         match: { ...match, revision: (match.revision ?? 0) - 1 },
       },
     });
@@ -904,6 +1007,8 @@ describe("match session reducer", () => {
         action: scene.scene_type,
         action_team: scene.action_team,
         events: [],
+        pending_settlement_events: [],
+        unsupported_scene: null,
         match: {
           ...match,
           revision: match.revision + 1,

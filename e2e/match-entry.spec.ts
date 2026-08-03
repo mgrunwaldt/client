@@ -250,6 +250,12 @@ test("enters a production match once and reports truthful loading stages", async
           timeline: acceptedStart ? acceptedStart.events : [],
           pending_action: acceptedStart ? acceptedStart.pending_action : null,
           field_state: acceptedStart ? acceptedStart.field_state : null,
+          pending_settlement_events: acceptedStart
+            ? acceptedStart.pending_settlement_events
+            : [],
+          unsupported_scene: acceptedStart
+            ? acceptedStart.unsupported_scene
+            : null,
         }),
       });
     }

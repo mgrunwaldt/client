@@ -303,7 +303,6 @@ async function main() {
       env: {
         VITE_E2E_LOCAL_CI_WALLETS: encodedLocalCiWallets,
         VITE_E2E_MATCH_SESSION_BRIDGE: "true",
-        VITE_MATCH_DEBUG_CONTINUATION: "true",
       },
     },
   );
@@ -434,7 +433,6 @@ async function main() {
       env: {
         VITE_E2E_LOCAL_CI_WALLETS: encodedLocalCiWallets,
         VITE_E2E_MATCH_SESSION_BRIDGE: "true",
-        VITE_MATCH_DEBUG_CONTINUATION: "true",
         VITE_MATCH_API_BASE_URL: directApiBaseUrl,
       },
     },

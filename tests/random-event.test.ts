@@ -51,14 +51,49 @@ describe("authoritative random-event scenes", () => {
     expect(new Set(choices).size).toBe(15);
   });
 
-  it("rejects malformed or future choice contracts before they can submit", async () => {
+  it("accepts a valid future choice advertised by a known scene", async () => {
     const action =
       await readFixture<BackendPendingAction>("scenes/jumper.json");
-    const unknownChoice = structuredClone(action);
-    unknownChoice.available_choices[0].id = "TAKE_OVER_THE_STADIUM";
-    expect(parseRandomEventAction(unknownChoice)).toMatchObject({
+    const futureChoice = {
+      id: "CALL_TEAMMATES",
+      label: "Call Teammates",
+      description: "Ask nearby teammates to help with the interruption.",
+      input_schema: {
+        required: ["choice"],
+        allowed: ["choice"],
+        additional_properties: false,
+      },
+    };
+    action.available_choices.push(futureChoice);
+    const parsed = parseRandomEventAction(action);
+
+    expect(parsed.error).toBeNull();
+    expect(parsed.event?.choices).toContainEqual({
+      id: futureChoice.id,
+      label: futureChoice.label,
+      description: futureChoice.description,
+    });
+    expect(createRandomEventDecision(parsed.event!, futureChoice.id)).toEqual({
+      choice: futureChoice.id,
+    });
+  });
+
+  it("rejects empty, duplicate, or malformed choice contracts before they can submit", async () => {
+    const action =
+      await readFixture<BackendPendingAction>("scenes/jumper.json");
+
+    const empty = structuredClone(action);
+    empty.available_choices = [];
+    expect(parseRandomEventAction(empty)).toMatchObject({
       event: null,
-      error: expect.stringContaining("unsupported choice set"),
+      error: expect.stringContaining("choice"),
+    });
+
+    const duplicate = structuredClone(action);
+    duplicate.available_choices[1].id = duplicate.available_choices[0].id;
+    expect(parseRandomEventAction(duplicate)).toMatchObject({
+      event: null,
+      error: expect.stringContaining("choice"),
     });
 
     const malformedSchema = structuredClone(action);

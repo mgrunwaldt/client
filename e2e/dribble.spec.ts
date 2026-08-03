@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import dribbleScene from "../tests/fixtures/match-api-v1/scenes/dribble.json" with { type: "json" };
 import waitingOpenPlay from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
+import { enableDebugResultContinuation } from "./support/result-continuation";
 
 const FIELD_READY_TIMEOUT_MS = 45_000;
 const DRIBBLE_OUTCOMES = [
@@ -342,7 +343,7 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
   page,
 }) => {
   // One matrix case deliberately exercises eight complete authoritative
-  // result/continuation flows while preserving the fixed 49-test gate.
+  // result/continuation flows without duplicating browser setup per outcome.
   test.slow();
   test.setTimeout(240_000);
   const requests: unknown[] = [];
@@ -359,6 +360,7 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
       body: JSON.stringify(authoritativeResponse),
     });
   });
+  await enableDebugResultContinuation(page);
   await authenticateForContinuation(page);
 
   for (const [index, outcome] of DRIBBLE_OUTCOMES.entries()) {
@@ -430,6 +432,7 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
   page,
 }, testInfo) => {
   test.slow();
+  await enableDebugResultContinuation(page);
   const requests: unknown[] = [];
   const requestTimes: number[] = [];
   await page.addInitScript(() => {

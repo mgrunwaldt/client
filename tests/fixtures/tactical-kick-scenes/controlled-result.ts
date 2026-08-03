@@ -90,6 +90,8 @@ export function controlledKickResponse() {
     status: "WAITING_FOR_DECISION",
     pending_action: continuationAction,
     field_state: continuationField,
+    pending_settlement_events: [],
+    unsupported_scene: null,
     action: "OPEN_PLAY",
     action_team: "MY_TEAM",
     events: [

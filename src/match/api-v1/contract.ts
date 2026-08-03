@@ -243,7 +243,12 @@ export interface BackendUnsupportedSceneRecovery {
     choice: "CONTINUE_WITHOUT_EVENT";
     label: string;
     description: string;
-    input_schema: unknown;
+    input_schema: {
+      type: "object";
+      required: ["choice"];
+      allowed: ["choice"];
+      additional_properties: false;
+    };
   };
 }
 
@@ -258,8 +263,8 @@ export interface BackendMatchResponse {
   events: BackendTimelineEvent[];
   match: BackendMatch;
   decision_result?: BackendDecisionResult;
-  pending_settlement_events?: BackendPendingSettlementEvent[];
-  unsupported_scene?: BackendUnsupportedSceneRecovery | null;
+  pending_settlement_events: BackendPendingSettlementEvent[];
+  unsupported_scene: BackendUnsupportedSceneRecovery | null;
   [key: string]: unknown;
 }
 
@@ -270,7 +275,8 @@ export interface BackendMatchSnapshot {
   timeline: BackendTimelineEvent[];
   pending_action: BackendPendingAction | null;
   field_state: BackendFieldState | null;
-  unsupported_scene?: BackendUnsupportedSceneRecovery | null;
+  pending_settlement_events: BackendPendingSettlementEvent[];
+  unsupported_scene: BackendUnsupportedSceneRecovery | null;
   [key: string]: unknown;
 }
 
@@ -543,13 +549,22 @@ const BackendPendingSettlementEventSchema: z.ZodType<BackendPendingSettlementEve
     })
     .strict();
 
-const BackendUnsupportedSceneRecoverySchema: z.ZodType<BackendUnsupportedSceneRecovery> =
+const RecoveryInputSchema = z
+  .object({
+    type: z.literal("object"),
+    required: z.tuple([z.literal("choice")]),
+    allowed: z.tuple([z.literal("choice")]),
+    additional_properties: z.literal(false),
+  })
+  .strict();
+
+export const BackendUnsupportedSceneRecoverySchema: z.ZodType<BackendUnsupportedSceneRecovery> =
   z
     .object({
       version: z.literal(1),
       status: z.literal("RECOVERY_REQUIRED"),
       code: z.literal("UNSUPPORTED_SCENE_TYPE"),
-      scene_type: z.string().trim().min(1).max(64),
+      scene_type: z.string().regex(/^[A-Z][A-Z0-9_]{0,63}$/u),
       action_id: identifier,
       action_sequence: z.number().int().min(1),
       minute: z.number().int().min(1).max(89),
@@ -558,7 +573,7 @@ const BackendUnsupportedSceneRecoverySchema: z.ZodType<BackendUnsupportedSceneRe
           choice: z.literal("CONTINUE_WITHOUT_EVENT"),
           label: z.string().trim().min(1).max(120),
           description: z.string().trim().min(1).max(256),
-          input_schema: z.unknown(),
+          input_schema: RecoveryInputSchema,
         })
         .strict(),
     })
@@ -632,9 +647,8 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
     events: z.array(BackendTimelineEventSchema),
     match: BackendMatchSchema,
     decision_result: BackendDecisionResultSchema.optional(),
-    pending_settlement_events: z
-      .array(BackendPendingSettlementEventSchema)
-      .optional(),
+    pending_settlement_events: z.array(BackendPendingSettlementEventSchema),
+    unsupported_scene: BackendUnsupportedSceneRecoverySchema.nullable(),
   })
   .passthrough()
   .superRefine((response, context) => {
@@ -671,6 +685,27 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
 
     const pendingAction = response.pending_action;
     const matchPendingAction = response.match.pending_action;
+    if (response.unsupported_scene) {
+      if (
+        response.status !== "WAITING_FOR_RECOVERY" ||
+        pendingAction !== null ||
+        matchPendingAction !== null ||
+        response.field_state !== null
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Unsupported-scene recovery must hide playable action and field state.",
+          path: ["unsupported_scene"],
+        });
+      }
+    } else if (response.status === "WAITING_FOR_RECOVERY") {
+      context.addIssue({
+        code: "custom",
+        message: "WAITING_FOR_RECOVERY requires unsupported_scene diagnostics.",
+        path: ["unsupported_scene"],
+      });
+    }
     if (pendingAction?.id !== matchPendingAction?.id) {
       context.addIssue({
         code: "custom",
@@ -790,14 +825,35 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
     timeline: z.array(BackendTimelineEventSchema),
     pending_action: BackendPendingActionSchema.nullable(),
     field_state: BackendFieldStateSchema.nullable(),
-    unsupported_scene:
-      BackendUnsupportedSceneRecoverySchema.nullable().optional(),
+    pending_settlement_events: z.array(BackendPendingSettlementEventSchema),
+    unsupported_scene: BackendUnsupportedSceneRecoverySchema.nullable(),
   })
   .passthrough()
   .superRefine((response, context) => {
     requireMatchTeamIdentity(response, context);
     requirePrematchLegendData(response.match, context, ["match"]);
     const pendingAction = response.pending_action;
+    if (response.unsupported_scene) {
+      if (
+        response.match.match_status !== "WAITING_FOR_RECOVERY" ||
+        pendingAction !== null ||
+        response.match.pending_action !== null ||
+        response.field_state !== null
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Unsupported-scene recovery must hide playable action and field state.",
+          path: ["unsupported_scene"],
+        });
+      }
+    } else if (response.match.match_status === "WAITING_FOR_RECOVERY") {
+      context.addIssue({
+        code: "custom",
+        message: "WAITING_FOR_RECOVERY requires unsupported_scene diagnostics.",
+        path: ["unsupported_scene"],
+      });
+    }
     if (pendingAction?.id !== response.match.pending_action?.id) {
       context.addIssue({
         code: "custom",

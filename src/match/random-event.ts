@@ -15,14 +15,6 @@ export const RANDOM_EVENT_SCENES = [
 
 export type RandomEventSceneType = (typeof RANDOM_EVENT_SCENES)[number];
 
-const EXPECTED_CHOICES: Record<RandomEventSceneType, readonly string[]> = {
-  JUMPER: ["ACCEPT_HUG", "DODGE", "SECURITY_TACKLE"],
-  ARGUMENT_OPPONENT: ["TRASH_TALK", "WALK_AWAY", "HEADBUTT"],
-  ARGUMENT_TEAMMATE: ["SHOUT_BACK", "CALM_DOWN", "IGNORE"],
-  BRAWL: ["JOIN_IN", "PULL_AWAY", "STAY_OUT"],
-  BATHROOM: ["ASK_FOR_SUB", "HOLD_IT", "BEHIND_BOARDS"],
-};
-
 export interface RandomEventChoice {
   id: string;
   label: string;
@@ -71,9 +63,8 @@ function validateChoiceOnlyInputSchema(value: unknown) {
 }
 
 /**
- * Random events are sealed M2 scenes. The server supplies all player-facing
- * copy, while this check rejects an incompatible or partially deployed schema
- * before a client can submit an unintended action.
+ * The server supplies every player-facing choice and resolves its semantics.
+ * Known scene types remain forward-compatible with additional valid choices.
  */
 export function parseRandomEventAction(
   pendingAction: BackendPendingAction | null | undefined,
@@ -94,17 +85,16 @@ export function parseRandomEventAction(
     };
   }
 
-  const expectedChoices = EXPECTED_CHOICES[pendingAction.scene_type];
   const choices = pendingAction.available_choices;
   const choiceIds = choices.map((choice) => choice.id);
   if (
-    choiceIds.length !== expectedChoices.length ||
-    new Set(choiceIds).size !== choiceIds.length ||
-    expectedChoices.some((choice) => !choiceIds.includes(choice))
+    choiceIds.length === 0 ||
+    choiceIds.some((choice) => !choice.trim()) ||
+    new Set(choiceIds).size !== choiceIds.length
   ) {
     return {
       event: null,
-      error: `The ${pendingAction.scene_type} event advertises an unsupported choice set.`,
+      error: `The ${pendingAction.scene_type} event advertises an invalid choice set.`,
     };
   }
 
