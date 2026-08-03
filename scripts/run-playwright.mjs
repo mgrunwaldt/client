@@ -5,6 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ec } from "starknet";
+import {
+  collectPlaywrightCases,
+  isolatedPlaywrightArgs,
+  runIsolatedPlaywrightCases,
+} from "./playwright-isolation.mjs";
 import { extractVitePreviewUrl } from "./preview-url.mjs";
 
 const previewServerScript = fileURLToPath(
@@ -152,6 +157,34 @@ function runOwned(name, command, args, options = {}) {
     child.once("close", (code, signal) => {
       if (code === 0) resolve();
       else reject(new Error(`${name} exited with ${code ?? signal}`));
+    });
+  });
+}
+
+function runOwnedCapture(name, command, args, options = {}) {
+  const child = spawnOwned(name, command, args, {
+    stdio: ["ignore", "pipe", "pipe"],
+    ...options,
+  });
+  let stdout = "";
+  let stderr = "";
+  child.stdout.on("data", (chunk) => {
+    stdout += chunk;
+  });
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("close", (code, signal) => {
+      if (code === 0) resolve({ stdout, stderr });
+      else {
+        reject(
+          new Error(
+            `${name} exited with ${code ?? signal}${stderr ? `\n${stderr}` : ""}`,
+          ),
+        );
+      }
     });
   });
 }
@@ -383,19 +416,63 @@ async function main() {
       "mounts the login route without a fatal page error",
     );
   }
-  if (process.env.OVERGOAL_UPDATE_SNAPSHOTS === "true") {
-    playwrightArgs.push("--update-snapshots");
+  const updateSnapshots = process.env.OVERGOAL_UPDATE_SNAPSHOTS === "true";
+  const browserEnvironment = {
+    ...process.env,
+    OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
+    OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
+    PLAYWRIGHT_BASE_URL: baseUrl,
+  };
+  const isFocusedRun =
+    Boolean(focusedGrep) ||
+    process.env.OVERGOAL_RUNNER_SIGNAL_PROOF === "1" ||
+    process.env.OVERGOAL_STALE_PORT_PROOF === "1";
+
+  if (isFocusedRun) {
+    if (updateSnapshots) playwrightArgs.push("--update-snapshots");
+    const browser = spawnOwned("playwright", process.execPath, playwrightArgs, {
+      stdio: "inherit",
+      env: browserEnvironment,
+    });
+    await waitForBrowserOrPreviewExit(browser, preview);
+  } else {
+    const inventory = await runOwnedCapture(
+      "playwright-list",
+      process.execPath,
+      [playwrightCli, "test", "--list", "--reporter=json"],
+      { env: browserEnvironment },
+    );
+    const cases = collectPlaywrightCases(JSON.parse(inventory.stdout));
+    console.log(`OVERGOAL_PLAYWRIGHT_ISOLATED_TOTAL=${cases.length}`);
+    const failures = await runIsolatedPlaywrightCases(
+      cases,
+      async (entry, index) => {
+        const ordinal = String(index + 1).padStart(3, "0");
+        console.log(
+          `OVERGOAL_PLAYWRIGHT_CASE=${ordinal}/${cases.length}:${entry.projectName}:${entry.file}:${entry.line}:${entry.title}`,
+        );
+        const browser = spawnOwned(
+          `playwright-${ordinal}`,
+          process.execPath,
+          isolatedPlaywrightArgs(playwrightCli, entry, index, updateSnapshots),
+          { stdio: "inherit", env: browserEnvironment },
+        );
+        await waitForBrowserOrPreviewExit(browser, preview);
+      },
+    );
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures.map(
+          ({ entry, error }) =>
+            new Error(
+              `${entry.projectName} ${entry.file}:${entry.line} ${entry.title}`,
+              { cause: error },
+            ),
+        ),
+        `${failures.length} isolated Playwright case(s) failed`,
+      );
+    }
   }
-  const browser = spawnOwned("playwright", process.execPath, playwrightArgs, {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      OVERGOAL_LOCAL_CI_WALLETS: encodedLocalCiWallets,
-      OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
-      PLAYWRIGHT_BASE_URL: baseUrl,
-    },
-  });
-  await waitForBrowserOrPreviewExit(browser, preview);
 
   await stopOwnedChild(preview, "preview");
   if (
