@@ -467,10 +467,7 @@ test("renders each canonical tactical scene with preloaded field assets", async 
 }, testInfo) => {
   test.slow();
   const sceneTypes = ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"] as const;
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   const canvas = page.getByTestId("game-field").locator("canvas");
 
   for (const [index, sceneType] of sceneTypes.entries()) {
@@ -506,10 +503,7 @@ test("requires fresh complete frames after resize and orientation change", async
   page,
 }) => {
   test.slow();
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   await hydrateScene(page, canonicalScene("OPEN_PLAY"));
   await waitForRenderableTacticalScene(page, "OPEN_PLAY");
   const field = page.getByTestId("game-field");
@@ -547,10 +541,7 @@ test("fails safely before interaction for an unsupported kick envelope", async (
   page,
 }) => {
   test.slow();
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   const unsupported = canonicalScene("OPEN_PLAY");
   Object.assign(unsupported.pending_action.control_envelope, {
     selection_quality: 0.9,
@@ -572,10 +563,7 @@ test("keeps keyboard focus inside the contact dialog and restores the aim target
   page,
 }, testInfo) => {
   test.slow();
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   await hydrateScene(page, canonicalScene("OPEN_PLAY"));
   const target = page.getByTestId("ball-aim-target");
   await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
@@ -846,10 +834,7 @@ test("captures continuous tactical arrow visuals at short, maximum, diagonal, an
   page,
 }, testInfo) => {
   test.slow();
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   await hydrateScene(page, canonicalScene("FREE_KICK"));
   await waitForRenderableTacticalScene(page, "FREE_KICK");
   await expectTacticalCanvasFillsViewport(page);
@@ -982,10 +967,7 @@ test("invalidates field readiness across WebGL context loss and restoration", as
   page,
 }) => {
   test.slow();
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   await hydrateScene(page, canonicalScene("OPEN_PLAY"));
   await waitForRenderableTacticalScene(page, "OPEN_PLAY");
 

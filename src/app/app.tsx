@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
 // Import layout components
+import { useAuthSessionStore } from "../auth/session-store";
 import { AuthenticatedLayout } from "../components/layout/AuthenticatedLayout";
 import MatchTransitionLoader from "../match/MatchTransitionLoader";
 import { useMatchSessionStore } from "../match/session-store";
@@ -91,8 +92,9 @@ function PersistentGameSceneHost() {
   const hasRenderableField = useMatchSessionStore((state) =>
     Boolean(state.pendingAction?.field_state ?? state.fieldState),
   );
+  const authStatus = useAuthSessionStore((state) => state.status);
   const shouldMount =
-    pathname === "/game" ||
+    (pathname === "/game" && authStatus === "authenticated") ||
     (hasRenderableField &&
       (pathname.startsWith("/match/") || pathname.startsWith("/pre-match/")));
 
@@ -118,13 +120,13 @@ function App() {
           <Route path={login} element={<LoginScreen />} />
           <Route path={claim} element={<ClaimScreen />} />
           <Route path={postLoginScreen} element={<PostLoginScreen />} />
-          <Route
-            path={"/game"}
-            element={<div className="h-dvh w-full bg-black" />}
-          />
 
           {/* All authenticated routes under AuthenticatedLayout */}
           <Route element={<AuthenticatedLayout />}>
+            <Route
+              path={"/game"}
+              element={<div className="h-dvh w-full bg-black" />}
+            />
             <Route path={main} element={<HomePage />} />
             <Route path={preMatchNonMatch} element={<PreNonMatchScreen />} />
             <Route path={preMatch} element={<PreMatchScreen />} />

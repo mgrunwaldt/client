@@ -59,16 +59,29 @@ function authSessionResponse() {
   };
 }
 
-export async function authenticateForContinuation(page: Page) {
+type AuthenticationEvidence = {
+  challengeCalls: number;
+  hydrationCalls: number;
+  sessionCreationCalls: number;
+};
+
+export async function authenticateToHome(page: Page) {
   const context = page.context();
-  await context.route("**/api/auth/v1/challenges", (route) =>
+  const evidence: AuthenticationEvidence = {
+    challengeCalls: 0,
+    hydrationCalls: 0,
+    sessionCreationCalls: 0,
+  };
+  await context.route("**/api/auth/v1/challenges", (route) => {
+    evidence.challengeCalls += 1;
     route.fulfill({
       status: 201,
       contentType: "application/json",
       body: JSON.stringify(authChallengeResponse()),
-    }),
-  );
-  await context.route("**/api/auth/v1/sessions", (route) =>
+    });
+  });
+  await context.route("**/api/auth/v1/sessions", (route) => {
+    evidence.sessionCreationCalls += 1;
     route.fulfill({
       status: 201,
       contentType: "application/json",
@@ -77,15 +90,20 @@ export async function authenticateForContinuation(page: Page) {
           "__Host-overgoal_session=tactical-e2e; Path=/; Secure; HttpOnly; SameSite=Lax",
       },
       body: JSON.stringify(authSessionResponse()),
-    }),
-  );
-  await context.route("**/api/auth/v1/session", (route) =>
+    });
+  });
+  await context.route("**/api/auth/v1/session", (route) => {
+    evidence.hydrationCalls += 1;
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(authSessionResponse()),
-    }),
-  );
+    });
+  });
+  await context.route("**/api/processMatchAction", async (route) => {
+    expect(route.request().headers()["x-csrf-token"]).toBe(csrfToken);
+    await route.fallback();
+  });
 
   await page.goto("/login");
   await page.getByRole("button", { name: "Connect Controller" }).click();
@@ -100,12 +118,21 @@ export async function authenticateForContinuation(page: Page) {
     .toBe(true);
   await page.getByRole("link", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/$/u);
+  expect(evidence.challengeCalls).toBe(1);
+  expect(evidence.sessionCreationCalls).toBe(1);
+  expect(evidence.hydrationCalls).toBe(0);
 
-  // Preserve the authenticated Zustand state and memory-only CSRF token. A full
-  // document navigation here would make the continuation test race rehydration.
-  await page.evaluate(() => {
-    window.history.pushState({}, "", "/game");
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  });
+  return evidence;
+}
+
+export async function authenticateForContinuation(page: Page) {
+  const evidence = await authenticateToHome(page);
+  await page.goto("/game");
   await expect(page).toHaveURL(/\/game$/u);
+  await expect.poll(() => evidence.hydrationCalls).toBe(1);
+  expect(evidence.challengeCalls).toBe(1);
+  expect(evidence.sessionCreationCalls).toBe(1);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
 }

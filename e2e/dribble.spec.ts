@@ -195,12 +195,19 @@ async function hydrateDribble(
   await expect(page.getByTestId("dribble-controls")).toBeVisible();
 }
 
-async function swipeDribbleControls(page: Page, mobile: boolean) {
-  const controls = page.getByRole("radiogroup", { name: "Dribble lane" });
-  const box = await controls.boundingBox();
-  if (!box) throw new Error("Dribble lane controls are not measurable.");
-  const start = { x: box.x + box.width * 0.5, y: box.y + box.height * 0.5 };
-  const end = { x: box.x + box.width * 0.82, y: start.y };
+async function swipeDribbleControls(
+  page: Page,
+  mobile: boolean,
+  cached?: { start: { x: number; y: number }; end: { x: number; y: number } },
+) {
+  let { start, end } = cached ?? { start: undefined, end: undefined };
+  if (!start || !end) {
+    const controls = page.getByRole("radiogroup", { name: "Dribble lane" });
+    const box = await controls.boundingBox();
+    if (!box) throw new Error("Dribble lane controls are not measurable.");
+    start = { x: box.x + box.width * 0.5, y: box.y + box.height * 0.5 };
+    end = { x: box.x + box.width * 0.82, y: start.y };
+  }
 
   if (mobile) {
     const session = await page.context().newCDPSession(page);
@@ -234,6 +241,40 @@ async function swipeDribbleControls(page: Page, mobile: boolean) {
   await page.mouse.down();
   await page.mouse.move(end.x, end.y, { steps: 4 });
   await page.mouse.up();
+}
+
+async function tapDribbleLane(
+  page: Page,
+  lane: "center",
+  mobile: boolean,
+  cachedPoint?: { x: number; y: number },
+) {
+  let point = cachedPoint;
+  if (!point) {
+    const target = page.getByTestId(`dribble-lane-${lane}`);
+    const box = await target.boundingBox();
+    if (!box) throw new Error("Dribble lane is not measurable.");
+    point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  }
+
+  if (mobile) {
+    const session = await page.context().newCDPSession(page);
+    try {
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [point],
+      });
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+    } finally {
+      await session.detach();
+    }
+    return;
+  }
+
+  await page.mouse.click(point.x, point.y);
 }
 
 async function dribblePlayerHudGeometry(page: Page) {
@@ -372,7 +413,13 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
       const nextAction = result.getByRole("button", { name: "Next Action" });
       await expect(nextAction).toBeVisible();
       await expect(nextAction).toBeEnabled();
-      await nextAction.click();
+      if (test.info().project.name === "mobile-chromium") {
+        await nextAction.tap();
+      } else {
+        await nextAction.focus();
+        await expect(nextAction).toBeFocused();
+        await page.keyboard.press(index % 2 === 0 ? "Enter" : "Space");
+      }
       await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
     });
   }
@@ -385,6 +432,24 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
   test.slow();
   const requests: unknown[] = [];
   const requestTimes: number[] = [];
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch;
+    window.fetch = function (input, init) {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (new URL(url, location.href).pathname === "/api/processMatchAction") {
+        document.documentElement.dataset.dribbleRequestTimerStart =
+          document.querySelector<HTMLElement>(
+            '[data-testid="dribble-controls"]',
+          )?.dataset.runStartedAtMs ?? "";
+      }
+      return originalFetch.call(this, input, init);
+    };
+  });
   await context.route("**/api/processMatchAction", async (route) => {
     requests.push(route.request().postDataJSON());
     requestTimes.push(Date.now());
@@ -398,16 +463,129 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
     });
   });
   await authenticateForContinuation(page);
-  await hydrateDribble(page);
+  await page.bringToFront();
+  await hydrateDribble(page, dribbleResponse("action-dribble-real-timer"));
+  const controls = page.getByTestId("dribble-controls");
+  const setupHandle = await page.waitForFunction(() => {
+    const controlsElement = document.querySelector<HTMLElement>(
+      '[data-testid="dribble-controls"]',
+    );
+    const center = document.querySelector<HTMLElement>(
+      '[data-testid="dribble-lane-center"]',
+    );
+    const laneGroup = document.querySelector<HTMLElement>(
+      '[role="radiogroup"][aria-label="Dribble lane"]',
+    );
+    const timerStartedAtRaw = controlsElement?.dataset.runStartedAtMs;
+    const timerStartedAt = Number(timerStartedAtRaw);
+    if (
+      !controlsElement ||
+      !center ||
+      !laneGroup ||
+      !timerStartedAtRaw ||
+      !timerStartedAt
+    ) {
+      return null;
+    }
+    const centerBox = center.getBoundingClientRect();
+    const groupBox = laneGroup.getBoundingClientRect();
+    const swipeY = groupBox.top + groupBox.height * 0.5;
+    return {
+      timerOrigin: performance.timeOrigin,
+      timerStartedAtRaw,
+      timerStartedAt,
+      tap: {
+        x: centerBox.left + centerBox.width / 2,
+        y: centerBox.top + centerBox.height / 2,
+      },
+      swipe: {
+        start: { x: groupBox.left + groupBox.width * 0.5, y: swipeY },
+        end: { x: groupBox.left + groupBox.width * 0.82, y: swipeY },
+      },
+    };
+  });
+  const gestureSetup = await setupHandle.jsonValue();
+  if (!gestureSetup) throw new Error("Dribble gesture setup is unavailable.");
+  const { swipe, tap, timerOrigin, timerStartedAt, timerStartedAtRaw } =
+    gestureSetup;
+  expect(timerStartedAt).toBeGreaterThan(0);
+  await new Promise((resolve) => setTimeout(resolve, 650));
+  await tapDribbleLane(
+    page,
+    "center",
+    testInfo.project.name === "mobile-chromium",
+    tap,
+  );
+  await new Promise((resolve) => setTimeout(resolve, 650));
+  await swipeDribbleControls(
+    page,
+    testInfo.project.name === "mobile-chromium",
+    swipe,
+  );
+  await expect(page.getByTestId("dribble-lane-right")).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  const observedTrace = JSON.parse(
+    (await controls.getAttribute("data-lane-trace")) ?? "null",
+  ) as Array<{ at_second: number; lane: string }>;
+  expect(observedTrace.map(({ lane }) => lane)).toEqual([
+    "RIGHT",
+    "CENTER",
+    "RIGHT",
+  ]);
+  expect(observedTrace[0]).toEqual({ at_second: 0, lane: "RIGHT" });
+  expect(observedTrace[1].at_second).toBeGreaterThanOrEqual(0.58);
+  expect(
+    observedTrace[2].at_second - observedTrace[1].at_second,
+  ).toBeGreaterThanOrEqual(0.58);
+  await expect(page.getByTestId("kick-result")).toHaveCount(0);
+  const legendLabel = page.getByTestId("legend-player-label");
+  await expect(legendLabel).toHaveCount(1);
+  await expect(legendLabel).toBeHidden();
+
+  await expect.poll(() => requests.length, { timeout: 10_000 }).toBe(1);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-dribble-request-timer-start",
+    timerStartedAtRaw,
+  );
+  const realTimerElapsed = requestTimes[0] - (timerOrigin + timerStartedAt);
+  expect(realTimerElapsed).toBeGreaterThanOrEqual(7_500);
+  expect(realTimerElapsed).toBeLessThanOrEqual(10_000);
+  await page.waitForTimeout(300);
+
+  const result = page.getByTestId("kick-result");
+  await expect(result).toBeVisible();
+  await expect(legendLabel).toBeHidden();
+  expect(requests).toHaveLength(1);
+  expect((requests[0] as { match_decision: unknown }).match_decision).toEqual({
+    choice: "DRIBBLE_RUN",
+    lane_trace: observedTrace,
+  });
+  await expect(page).toHaveScreenshot(
+    `dribble-run-${testInfo.project.name}.png`,
+    {
+      animations: "disabled",
+      maxDiffPixelRatio: 0.0005,
+    },
+  );
+  const nextAction = result.getByRole("button", { name: "Next Action" });
+  await expect(nextAction).toBeVisible();
+  await nextAction.click();
+  await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
+
+  // The production timer contract above remains entirely on one real rAF
+  // mount. Pause only this second action so visual baselines can compare two
+  // stable active frames without the eight-second result replacing the HUD.
+  await hydrateDribble(page, dribbleResponse("action-dribble-visual-evidence"));
   await advanceDribble(page, 1);
-  const centerLane = page.getByTestId("dribble-lane-center");
-  await expect(centerLane).toBeEnabled();
-  if (testInfo.project.name === "mobile-chromium") {
-    await centerLane.tap();
-  } else {
-    await centerLane.click();
-  }
-  await expect(centerLane).toHaveAttribute("aria-checked", "true");
+  const visualCenterLane = page.getByTestId("dribble-lane-center");
+  await tapDribbleLane(
+    page,
+    "center",
+    testInfo.project.name === "mobile-chromium",
+  );
+  await expect(visualCenterLane).toHaveAttribute("aria-checked", "true");
   await advanceDribble(page, 2);
   const beforeSwipeGeometry = await dribblePlayerHudGeometry(page);
   expectDribblePlayersClearOfHud(beforeSwipeGeometry);
@@ -420,15 +598,12 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
     "aria-checked",
     "true",
   );
+  await advanceDribble(page, 2.97);
   const afterSwipeGeometry = await dribblePlayerHudGeometry(page);
   expectDribblePlayersClearOfHud(afterSwipeGeometry);
   expect(
     Math.abs(afterSwipeGeometry.legend.top - beforeSwipeGeometry.legend.top),
   ).toBeLessThanOrEqual(1);
-  await advanceDribble(page, 2.97);
-  await expect(page.getByTestId("kick-result")).toHaveCount(0);
-  const legendLabel = page.getByTestId("legend-player-label");
-  await expect(legendLabel).toHaveCount(1);
   await expect(legendLabel).toBeHidden();
   expect(
     await page.evaluate(() => {
@@ -465,43 +640,7 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
     animations: "disabled",
     maxDiffPixelRatio: 0.0005,
   });
-
-  await page.bringToFront();
-  const realTimerStartedAt = Date.now();
-  await hydrateDribble(page, dribbleResponse("action-dribble-real-timer"));
-  const countdown = page.getByTestId("dribble-controls").locator("output");
-  await expect(countdown).toHaveAttribute(
-    "aria-label",
-    /7\.[0-9] seconds remaining/u,
-    { timeout: 2_000 },
-  );
-  await expect.poll(() => requests.length, { timeout: 10_000 }).toBe(1);
-  const realTimerElapsed = requestTimes[0] - realTimerStartedAt;
-  expect(realTimerElapsed).toBeGreaterThanOrEqual(7_500);
-  expect(realTimerElapsed).toBeLessThanOrEqual(10_000);
-  await page.waitForTimeout(300);
-
-  const result = page.getByTestId("kick-result");
-  await expect(result).toBeVisible();
-  await expect(legendLabel).toBeHidden();
   expect(requests).toHaveLength(1);
-  expect(requests[0]).toMatchObject({
-    match_decision: {
-      choice: "DRIBBLE_RUN",
-      lane_trace: [{ at_second: 0, lane: "RIGHT" }],
-    },
-  });
-  await expect(page).toHaveScreenshot(
-    `dribble-run-${testInfo.project.name}.png`,
-    {
-      animations: "disabled",
-      maxDiffPixelRatio: 0.0005,
-    },
-  );
-  const nextAction = result.getByRole("button", { name: "Next Action" });
-  await expect(nextAction).toBeVisible();
-  await nextAction.click();
-  await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
 });
 
 test("fails visibly without interaction for a malformed future dribble pattern", async ({
@@ -515,10 +654,7 @@ test("fails visibly without interaction for a malformed future dribble pattern",
   malformed.field_state = malformed.pending_action.field_state;
   malformed.match.pending_action = malformed.pending_action;
 
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   await page.evaluate(
     ({ response, myTeam, opponentTeam }) => {
       const setMatchResponse = (

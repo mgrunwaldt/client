@@ -39,6 +39,7 @@ export function DribbleControls({
     { at_second: 0, lane: pattern.starting_lane },
   ]);
   const [submitted, setSubmitted] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const traceRef = useRef(trace);
   const elapsedRef = useRef(0);
   const submittedRef = useRef(false);
@@ -70,7 +71,10 @@ export function DribbleControls({
     if (disabled) return;
     const tick = (now: number) => {
       if (e2eClockPausedRef.current) return;
-      if (startedAtRef.current === null) startedAtRef.current = now;
+      if (startedAtRef.current === null) {
+        startedAtRef.current = now;
+        setStartedAt(now);
+      }
       const nextElapsed = elapsedDribbleSeconds(
         startedAtRef.current,
         now,
@@ -104,6 +108,7 @@ export function DribbleControls({
       );
       e2eClockPausedRef.current = true;
       startedAtRef.current = performance.now() - nextElapsed * 1000;
+      setStartedAt(startedAtRef.current);
       elapsedRef.current = nextElapsed;
       setElapsed(nextElapsed);
       if (nextElapsed >= pattern.duration_seconds) completeRun();
@@ -122,47 +127,53 @@ export function DribbleControls({
   );
   const canSimulate = Boolean(pressureWindow) && !disabled && !submitted;
 
-  const switchLane = (nextLane: DribbleLane) => {
+  const switchLane = (nextLane: DribbleLane, eventTime: number) => {
+    const inputElapsed =
+      e2eClockPausedRef.current || startedAtRef.current === null
+        ? elapsedRef.current
+        : elapsedDribbleSeconds(
+            startedAtRef.current,
+            eventTime,
+            pattern.duration_seconds,
+          );
     if (
       disabled ||
       submittedRef.current ||
-      !canSwitchDribbleLane(
-        pattern,
-        traceRef.current,
-        nextLane,
-        elapsedRef.current,
-      )
+      !canSwitchDribbleLane(pattern, traceRef.current, nextLane, inputElapsed)
     ) {
       return;
     }
     const nextTrace = [
       ...traceRef.current,
-      { at_second: roundDribbleSecond(elapsedRef.current), lane: nextLane },
+      { at_second: roundDribbleSecond(inputElapsed), lane: nextLane },
     ];
+    elapsedRef.current = inputElapsed;
     traceRef.current = nextTrace;
     setTrace(nextTrace);
     onLaneChange(nextLane);
   };
 
-  const switchRelative = (direction: -1 | 1) => {
+  const switchRelative = (direction: -1 | 1, eventTime: number) => {
     const next = DRIBBLE_LANES[DRIBBLE_LANES.indexOf(currentLane) + direction];
-    if (next) switchLane(next);
+    if (next) switchLane(next, eventTime);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      switchRelative(-1);
+      switchRelative(-1, event.timeStamp);
     }
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      switchRelative(1);
+      switchRelative(1, event.timeStamp);
     }
   };
 
   return (
     <section
       data-testid="dribble-controls"
+      data-lane-trace={JSON.stringify(trace)}
+      data-run-started-at-ms={startedAt ?? ""}
       aria-label="Dribble challenge"
       aria-describedby="dribble-instructions"
       className="absolute inset-x-0 top-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white sm:px-5"
@@ -219,9 +230,9 @@ export function DribbleControls({
             if (start === null) return;
             const distance = event.clientX - start;
             if (Math.abs(distance) >= SWIPE_THRESHOLD_PX) {
-              switchRelative(distance > 0 ? 1 : -1);
+              switchRelative(distance > 0 ? 1 : -1, event.timeStamp);
             } else if (tappedLane) {
-              switchLane(tappedLane);
+              switchLane(tappedLane, event.timeStamp);
             }
           }}
           onPointerCancel={() => {
@@ -258,7 +269,7 @@ export function DribbleControls({
                     ? "border-lime-200/80 bg-lime-300/14 text-lime-100"
                     : "border-cyan-200/22 bg-cyan-400/5 text-cyan-100"
                 }`}
-                onClick={() => switchLane(lane)}
+                onClick={(event) => switchLane(lane, event.timeStamp)}
               >
                 <span className="block text-[9px] text-cyan-200/70">Lane</span>
                 {laneLabel(lane)}

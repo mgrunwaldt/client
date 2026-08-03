@@ -1,6 +1,10 @@
 import { expect, type Page, test } from "@playwright/test";
 
 import waitingOpenPlayResponse from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
+import {
+  authenticateForContinuation,
+  authenticateToHome,
+} from "./support/auth";
 
 const headlessGpuDiagnostic =
   /^warning: \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, GL_CLOSE_PATH_NV, High\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/;
@@ -94,6 +98,7 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
     }
   });
 
+  await authenticateToHome(page);
   await expectLazyRouteFallback(
     page,
     "/game",
@@ -206,10 +211,7 @@ test("renders a complete backend player scene without a fatal error", async ({
   fieldState.ball_y = 55.2;
   response.field_state = structuredClone(fieldState);
 
-  await page.goto("/game");
-  await page.waitForFunction(
-    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-  );
+  await authenticateForContinuation(page);
   await page.evaluate(
     ({ matchResponse, myTeam, opponentTeam }) => {
       const setMatchResponse = (
