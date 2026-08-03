@@ -151,6 +151,11 @@ test("enters a production match once and reports truthful loading stages", async
   let startCalls = 0;
   let acceptedStart: ReturnType<typeof startedMatchResponse> | null = null;
   const startCommandKeys: string[] = [];
+  let sessionHydrationGate: {
+    promise: Promise<void>;
+    release: () => void;
+    markStarted: () => void;
+  } | null = null;
 
   await context.route("**/api/**", async (route) => {
     const request = route.request();
@@ -175,6 +180,10 @@ test("enters a production match once and reports truthful loading stages", async
       });
     }
     if (request.method() === "GET" && pathname === "/api/auth/v1/session") {
+      if (sessionHydrationGate) {
+        sessionHydrationGate.markStarted();
+        await sessionHydrationGate.promise;
+      }
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -266,7 +275,30 @@ test("enters a production match once and reports truthful loading stages", async
   await expect(page.getByTestId("legend-stamina")).toHaveText("63");
   await expect(page.getByTestId("legend-energy")).toHaveText("41");
 
+  let releaseSessionHydration!: () => void;
+  let markSessionHydrationStarted!: () => void;
+  const sessionHydrationStarted = new Promise<void>((resolve) => {
+    markSessionHydrationStarted = resolve;
+  });
+  const sessionHydrationPromise = new Promise<void>((resolve) => {
+    releaseSessionHydration = resolve;
+  });
+  sessionHydrationGate = {
+    promise: sessionHydrationPromise,
+    release: releaseSessionHydration,
+    markStarted: markSessionHydrationStarted,
+  };
   await page.reload();
+  await sessionHydrationStarted;
+  try {
+    await expect(
+      page.getByRole("status", { name: "Authenticating player" }),
+    ).toBeVisible();
+    await expect(page.getByTestId("game-field")).toHaveCount(0);
+  } finally {
+    sessionHydrationGate?.release();
+    sessionHydrationGate = null;
+  }
   await expect(page).toHaveURL(/\/pre-match\/match-entry-e2e$/u);
   await expect(
     page.getByRole("heading", { name: "API Eclipse XI" }),

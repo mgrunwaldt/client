@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 // Import layout components
 import { AuthenticatedLayout } from "../components/layout/AuthenticatedLayout";
 import MatchTransitionLoader from "../match/MatchTransitionLoader";
+import { useMatchSessionStore } from "../match/session-store";
 // Import all routes
 import {
   calendar,
@@ -87,10 +88,13 @@ function RouteLoadingSurface() {
 function PersistentGameSceneHost() {
   const location = useLocation();
   const pathname = location.pathname;
+  const hasRenderableField = useMatchSessionStore((state) =>
+    Boolean(state.pendingAction?.field_state ?? state.fieldState),
+  );
   const shouldMount =
     pathname === "/game" ||
-    pathname.startsWith("/match/") ||
-    pathname.startsWith("/pre-match/");
+    (hasRenderableField &&
+      (pathname.startsWith("/match/") || pathname.startsWith("/pre-match/")));
 
   if (!shouldMount) {
     return null;

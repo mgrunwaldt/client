@@ -4,7 +4,7 @@ import dribbleScene from "../tests/fixtures/match-api-v1/scenes/dribble.json" wi
 import waitingOpenPlay from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
 
-const FIELD_READY_TIMEOUT_MS = 90_000;
+const FIELD_READY_TIMEOUT_MS = 45_000;
 const DRIBBLE_OUTCOMES = [
   {
     outcomeType: "DRIBBLE_SURVIVAL",
@@ -299,7 +299,7 @@ async function advanceDribble(page: Page, second: number) {
 test("renders every authoritative outcome and returns to the Timeline", async ({
   context,
   page,
-}, testInfo) => {
+}) => {
   // One matrix case deliberately exercises eight complete authoritative
   // result/continuation flows while preserving the fixed 49-test gate.
   test.slow();
@@ -369,32 +369,35 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
         /seed|quality|outcome/u,
       );
 
-      if (testInfo.project.name === "mobile-chromium") {
-        await result.tap({ force: true });
-      } else {
-        await result.click({ force: true });
-      }
+      const nextAction = result.getByRole("button", { name: "Next Action" });
+      await expect(nextAction).toBeVisible();
+      await expect(nextAction).toBeEnabled();
+      await nextAction.click();
       await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
     });
   }
 });
 
-test("accepts tap and real pointer swipe before canonical eight-second submission", async ({
+test("accepts tap and real pointer swipe and submits once on the real eight-second timer", async ({
   context,
   page,
 }, testInfo) => {
+  test.slow();
   const requests: unknown[] = [];
+  const requestTimes: number[] = [];
   await context.route("**/api/processMatchAction", async (route) => {
     requests.push(route.request().postDataJSON());
+    requestTimes.push(Date.now());
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
       body: JSON.stringify(
-        resolvedDribble(DRIBBLE_OUTCOMES[0], "action-dribble-1"),
+        resolvedDribble(DRIBBLE_OUTCOMES[0], "action-dribble-real-timer"),
       ),
     });
   });
+  await authenticateForContinuation(page);
   await hydrateDribble(page);
   await advanceDribble(page, 1);
   const centerLane = page.getByTestId("dribble-lane-center");
@@ -408,6 +411,10 @@ test("accepts tap and real pointer swipe before canonical eight-second submissio
   await advanceDribble(page, 2);
   const beforeSwipeGeometry = await dribblePlayerHudGeometry(page);
   expectDribblePlayersClearOfHud(beforeSwipeGeometry);
+  await expect(page).toHaveScreenshot("dribble-active-before-swipe.png", {
+    animations: "disabled",
+    maxDiffPixelRatio: 0.0005,
+  });
   await swipeDribbleControls(page, testInfo.project.name === "mobile-chromium");
   await expect(page.getByTestId("dribble-lane-right")).toHaveAttribute(
     "aria-checked",
@@ -458,7 +465,21 @@ test("accepts tap and real pointer swipe before canonical eight-second submissio
     animations: "disabled",
     maxDiffPixelRatio: 0.0005,
   });
-  await advanceDribble(page, 8);
+
+  await page.bringToFront();
+  const realTimerStartedAt = Date.now();
+  await hydrateDribble(page, dribbleResponse("action-dribble-real-timer"));
+  const countdown = page.getByTestId("dribble-controls").locator("output");
+  await expect(countdown).toHaveAttribute(
+    "aria-label",
+    /7\.[0-9] seconds remaining/u,
+    { timeout: 2_000 },
+  );
+  await expect.poll(() => requests.length, { timeout: 10_000 }).toBe(1);
+  const realTimerElapsed = requestTimes[0] - realTimerStartedAt;
+  expect(realTimerElapsed).toBeGreaterThanOrEqual(7_500);
+  expect(realTimerElapsed).toBeLessThanOrEqual(10_000);
+  await page.waitForTimeout(300);
 
   const result = page.getByTestId("kick-result");
   await expect(result).toBeVisible();
@@ -467,11 +488,7 @@ test("accepts tap and real pointer swipe before canonical eight-second submissio
   expect(requests[0]).toMatchObject({
     match_decision: {
       choice: "DRIBBLE_RUN",
-      lane_trace: [
-        { at_second: 0, lane: "RIGHT" },
-        { at_second: 1, lane: "CENTER" },
-        { at_second: 2, lane: "RIGHT" },
-      ],
+      lane_trace: [{ at_second: 0, lane: "RIGHT" }],
     },
   });
   await expect(page).toHaveScreenshot(
@@ -481,6 +498,10 @@ test("accepts tap and real pointer swipe before canonical eight-second submissio
       maxDiffPixelRatio: 0.0005,
     },
   );
+  const nextAction = result.getByRole("button", { name: "Next Action" });
+  await expect(nextAction).toBeVisible();
+  await nextAction.click();
+  await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
 });
 
 test("fails visibly without interaction for a malformed future dribble pattern", async ({

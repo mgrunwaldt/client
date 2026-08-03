@@ -17,11 +17,7 @@ import openPlayScene from "../tests/fixtures/tactical-kick-scenes/open-play.json
 import penaltyScene from "../tests/fixtures/tactical-kick-scenes/penalty.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
 
-// The production scene mounts real stadium and player assets before asserting
-// an interactive field. Keep that evidence bounded but allow cold Chromium
-// contexts to finish instead of timing out mid-contract.
-const FIELD_READY_TIMEOUT_MS = 90_000;
-test.describe.configure({ timeout: 240_000 });
+const FIELD_READY_TIMEOUT_MS = 45_000;
 const tacticalScenes = {
   OPEN_PLAY: openPlayScene,
   FREE_KICK: freeKickScene,
@@ -179,6 +175,46 @@ async function reverseDragFromBall(
   await page.mouse.up();
 }
 
+async function controlledResultRenderState(field: Locator) {
+  return field.evaluate((element) => {
+    const result = document.querySelector<HTMLElement>(
+      '[data-testid="kick-result"]',
+    );
+    const resultCopy = result?.innerText ?? "";
+    return {
+      resultMinute: element.getAttribute("data-result-minute"),
+      continuationMinute: element.getAttribute("data-continuation-minute"),
+      receiverId: element.getAttribute("data-result-receiver-id"),
+      receiverX: element.getAttribute("data-result-receiver-x"),
+      receiverY: element.getAttribute("data-result-receiver-y"),
+      controlCarrierId: element.getAttribute("data-result-control-carrier-id"),
+      carrierId: element.getAttribute("data-carrier-player-id"),
+      carrierX: element.getAttribute("data-carrier-player-x"),
+      carrierY: element.getAttribute("data-carrier-player-y"),
+      carrierHasBall: element.getAttribute("data-carrier-has-ball"),
+      resultFacingX: element.getAttribute("data-result-facing-target-x"),
+      resultFacingY: element.getAttribute("data-result-facing-target-y"),
+      resultFacingPlayerId: element.getAttribute(
+        "data-result-facing-target-player-id",
+      ),
+      carrierFacingX: element.getAttribute("data-carrier-facing-target-x"),
+      carrierFacingY: element.getAttribute("data-carrier-facing-target-y"),
+      carrierFacingPlayerId: element.getAttribute(
+        "data-carrier-facing-target-player-id",
+      ),
+      resultCarryOffset: element.getAttribute("data-result-carry-offset-m"),
+      carrierCarryOffset: element.getAttribute("data-carrier-carry-offset-m"),
+      ballX: element.getAttribute("data-ball-x"),
+      ballY: element.getAttribute("data-ball-y"),
+      legendPlayerId: document
+        .querySelector('[data-testid="legend-player-label"]')
+        ?.getAttribute("data-player-id"),
+      resultCopy,
+      bodyCopy: document.body.textContent ?? "",
+    };
+  });
+}
+
 async function previewAimArrow(
   page: Page,
   target: Locator,
@@ -218,6 +254,7 @@ async function previewAimArrow(
     page,
     testInfo,
     `kick-arrow-${name}`,
+    false,
   );
   if (name === "maximum") {
     expect(fullViewport).toMatchSnapshot(
@@ -229,22 +266,29 @@ async function previewAimArrow(
   if (!viewport) throw new Error("The tactical viewport is not measurable.");
   const clipWidth = Math.min(360, viewport.width);
   const clipHeight = Math.min(320, viewport.height);
-  const screenshot = await page.screenshot({
-    animations: "disabled",
-    caret: "hide",
-    clip: {
-      x: Math.max(
-        0,
-        Math.min(start.x - clipWidth / 2, viewport.width - clipWidth),
-      ),
-      y: Math.max(
-        0,
-        Math.min(start.y - clipHeight / 2, viewport.height - clipHeight),
-      ),
-      width: clipWidth,
-      height: clipHeight,
-    },
-  });
+  const clipX = Math.max(
+    0,
+    Math.min(start.x - clipWidth / 2, viewport.width - clipWidth),
+  );
+  const clipY = Math.max(
+    0,
+    Math.min(start.y - clipHeight / 2, viewport.height - clipHeight),
+  );
+  const metadata = await sharp(fullViewport).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error("The tactical screenshot has no measurable dimensions.");
+  }
+  const scaleX = metadata.width / viewport.width;
+  const scaleY = metadata.height / viewport.height;
+  const screenshot = await sharp(fullViewport)
+    .extract({
+      left: Math.round(clipX * scaleX),
+      top: Math.round(clipY * scaleY),
+      width: Math.round(clipWidth * scaleX),
+      height: Math.round(clipHeight * scaleY),
+    })
+    .png()
+    .toBuffer();
   expect(screenshot).toMatchSnapshot(`kick-arrow-${name}.png`, {
     maxDiffPixelRatio: 0.002,
   });
@@ -265,31 +309,9 @@ async function captureTacticalEvidence(
   page: Page,
   testInfo: TestInfo,
   name: string,
+  verifyCanvas = true,
 ) {
-  await expect(page.getByTestId("game-field")).toHaveAttribute(
-    "data-render-ready",
-    "true",
-  );
-  const canvas = page.getByTestId("game-field").locator("canvas");
-  await expect
-    .poll(() =>
-      canvas.evaluate((element) => {
-        const bounds = element.getBoundingClientRect();
-        const webglCanvas = element as HTMLCanvasElement;
-        return {
-          fullHeight: Math.abs(bounds.height - window.innerHeight) <= 1,
-          fullWidth: Math.abs(bounds.width - window.innerWidth) <= 1,
-          hasDrawingBuffer:
-            webglCanvas.width >= Math.floor(bounds.width) &&
-            webglCanvas.height >= Math.floor(bounds.height),
-        };
-      }),
-    )
-    .toEqual({
-      fullHeight: true,
-      fullWidth: true,
-      hasDrawingBuffer: true,
-    });
+  if (verifyCanvas) await expectTacticalCanvasFillsViewport(page);
   const path = testInfo.outputPath(`${name}.png`);
   const screenshot = await page.screenshot({
     path,
@@ -328,6 +350,33 @@ async function captureTacticalEvidence(
   ).toBeLessThan(0.1);
   await testInfo.attach(name, { path, contentType: "image/png" });
   return screenshot;
+}
+
+async function expectTacticalCanvasFillsViewport(page: Page) {
+  await expect(page.getByTestId("game-field")).toHaveAttribute(
+    "data-render-ready",
+    "true",
+  );
+  const canvas = page.getByTestId("game-field").locator("canvas");
+  await expect
+    .poll(() =>
+      canvas.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const webglCanvas = element as HTMLCanvasElement;
+        return {
+          fullHeight: Math.abs(bounds.height - window.innerHeight) <= 1,
+          fullWidth: Math.abs(bounds.width - window.innerWidth) <= 1,
+          hasDrawingBuffer:
+            webglCanvas.width >= Math.floor(bounds.width) &&
+            webglCanvas.height >= Math.floor(bounds.height),
+        };
+      }),
+    )
+    .toEqual({
+      fullHeight: true,
+      fullWidth: true,
+      hasDrawingBuffer: true,
+    });
 }
 
 async function waitForRenderableTacticalScene(
@@ -414,38 +463,42 @@ function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
 }
 
 test("renders each canonical tactical scene with preloaded field assets", async ({
-  context,
+  page,
 }, testInfo) => {
   test.slow();
-  // Each isolated page must preload the actual stadium and 22-player assets.
-  // This matrix deliberately mounts all four scenes in one test.
-  test.setTimeout(240_000);
   const sceneTypes = ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"] as const;
-  for (const sceneType of sceneTypes) {
-    const scenePage = await context.newPage();
-    try {
-      await scenePage.goto("/game");
-      await scenePage.waitForFunction(
-        () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
-      );
-      await hydrateScene(scenePage, canonicalScene(sceneType));
+  await page.goto("/game");
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  const canvas = page.getByTestId("game-field").locator("canvas");
+
+  for (const [index, sceneType] of sceneTypes.entries()) {
+    await test.step(sceneType, async () => {
+      await hydrateScene(page, canonicalScene(sceneType));
       await expect(
-        scenePage.getByText(sceneExpectations[sceneType].title, {
+        page.getByText(sceneExpectations[sceneType].title, {
           exact: true,
         }),
       ).toBeVisible();
-      await expect(
-        scenePage.getByTestId("game-field").locator("canvas"),
-      ).toBeVisible();
-      await waitForRenderableTacticalScene(scenePage, sceneType);
+      await expect(canvas).toBeVisible();
+      if (index === 0) {
+        await canvas.evaluate((element) => {
+          element.setAttribute("data-canonical-matrix-canvas", "mounted");
+        });
+      } else {
+        await expect(canvas).toHaveAttribute(
+          "data-canonical-matrix-canvas",
+          "mounted",
+        );
+      }
+      await waitForRenderableTacticalScene(page, sceneType);
       await captureTacticalEvidence(
-        scenePage,
+        page,
         testInfo,
         `tactical-${sceneType.toLowerCase()}`,
       );
-    } finally {
-      await scenePage.close();
-    }
+    });
   }
 });
 
@@ -493,6 +546,7 @@ test("requires fresh complete frames after resize and orientation change", async
 test("fails safely before interaction for an unsupported kick envelope", async ({
   page,
 }) => {
+  test.slow();
   await page.goto("/game");
   await page.waitForFunction(
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
@@ -646,11 +700,6 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
   expect(JSON.stringify(submittedRequests[0])).not.toMatch(
     /seed|selection_quality|intent_hint|target|curve|lift/u,
   );
-  if (testInfo.project.name === "mobile-chromium") {
-    await page.getByTestId("kick-result").tap({ force: true });
-  } else {
-    await page.getByTestId("kick-result").click({ force: true });
-  }
   await expect(page).toHaveURL(/\/match\/match-open_play$/u);
 });
 
@@ -682,46 +731,27 @@ test("plays authoritative teammate control and its later continuation field stat
     target,
     testInfo.project.name === "mobile-chromium",
   );
+  await page.evaluate(() => {
+    document.body.dataset.kickResultResolvedSeen = "false";
+    const observer = new MutationObserver(() => {
+      const result = document.querySelector('[data-testid="kick-result"]');
+      if (result?.textContent?.includes("Resolved")) {
+        document.body.dataset.kickResultResolvedSeen = "true";
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  });
   await page.getByTestId("kick-submit").click();
 
   const result = page.getByTestId("kick-result");
   const field = page.getByTestId("game-field");
   await expect(result).toBeVisible();
-  await expect(
-    page.getByText(`${expectation.actionMinute}' · OPEN_PLAY`, { exact: true }),
-  ).toBeVisible();
-  await expect(result.getByText("Resolved", { exact: true })).toBeVisible();
-  const renderedState = await field.evaluate((element) => ({
-    resultMinute: element.getAttribute("data-result-minute"),
-    continuationMinute: element.getAttribute("data-continuation-minute"),
-    receiverId: element.getAttribute("data-result-receiver-id"),
-    receiverX: element.getAttribute("data-result-receiver-x"),
-    receiverY: element.getAttribute("data-result-receiver-y"),
-    controlCarrierId: element.getAttribute("data-result-control-carrier-id"),
-    carrierId: element.getAttribute("data-carrier-player-id"),
-    carrierX: element.getAttribute("data-carrier-player-x"),
-    carrierY: element.getAttribute("data-carrier-player-y"),
-    carrierHasBall: element.getAttribute("data-carrier-has-ball"),
-    resultFacingX: element.getAttribute("data-result-facing-target-x"),
-    resultFacingY: element.getAttribute("data-result-facing-target-y"),
-    resultFacingPlayerId: element.getAttribute(
-      "data-result-facing-target-player-id",
-    ),
-    carrierFacingX: element.getAttribute("data-carrier-facing-target-x"),
-    carrierFacingY: element.getAttribute("data-carrier-facing-target-y"),
-    carrierFacingPlayerId: element.getAttribute(
-      "data-carrier-facing-target-player-id",
-    ),
-    resultCarryOffset: element.getAttribute("data-result-carry-offset-m"),
-    carrierCarryOffset: element.getAttribute("data-carrier-carry-offset-m"),
-    ballX: element.getAttribute("data-ball-x"),
-    ballY: element.getAttribute("data-ball-y"),
-    legendPlayerId: document
-      .querySelector('[data-testid="legend-player-label"]')
-      ?.getAttribute("data-player-id"),
-    bodyCopy: document.body.innerText,
-  }));
-  expect(renderedState).toMatchObject({
+  const expectedRenderedState = {
     resultMinute: String(expectation.actionMinute),
     continuationMinute: String(expectation.continuationMinute),
     receiverId: expectation.receiverId,
@@ -743,7 +773,17 @@ test("plays authoritative teammate control and its later continuation field stat
     ballX: String(expectation.ballPosition.x),
     ballY: String(expectation.ballPosition.y),
     legendPlayerId: canonicalScene("OPEN_PLAY").field_state.legend_player_id,
-  });
+    resultCopy: expect.stringContaining(
+      `${expectation.actionMinute}' · OPEN_PLAY`,
+    ),
+  };
+  const renderedState = await controlledResultRenderState(field);
+  expect(renderedState).toMatchObject(expectedRenderedState);
+  await expect
+    .poll(() =>
+      page.locator("body").getAttribute("data-kick-result-resolved-seen"),
+    )
+    .toBe("true");
   expect(expectation.continuationMinute).toBeGreaterThan(
     expectation.actionMinute,
   );
@@ -752,11 +792,6 @@ test("plays authoritative teammate control and its later continuation field stat
   expect(renderedState.bodyCopy).not.toContain("Waiting for field state.");
   expect(renderedState.bodyCopy).not.toContain("No backend field state");
 
-  if (testInfo.project.name === "mobile-chromium") {
-    await result.tap({ force: true });
-  } else {
-    await result.click({ force: true });
-  }
   await expect(page).toHaveURL(/\/match\/match-open_play$/u);
 });
 
@@ -817,6 +852,7 @@ test("captures continuous tactical arrow visuals at short, maximum, diagonal, an
   );
   await hydrateScene(page, canonicalScene("FREE_KICK"));
   await waitForRenderableTacticalScene(page, "FREE_KICK");
+  await expectTacticalCanvasFillsViewport(page);
   const target = page.getByTestId("ball-aim-target");
   await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
 
@@ -857,6 +893,7 @@ test("captures the rendered authoritative tactical result", async ({
   await hydrateScene(page, canonicalScene("PENALTY"));
   const target = page.getByTestId("ball-aim-target");
   await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await expectTacticalCanvasFillsViewport(page);
   await reverseDragFromBall(
     page,
     target,
@@ -865,7 +902,7 @@ test("captures the rendered authoritative tactical result", async ({
   await page.getByTestId("kick-submit").click();
   await expect(page.getByTestId("kick-result")).toBeVisible();
   await expect(page.getByText("39' · PENALTY", { exact: true })).toBeVisible();
-  await captureTacticalEvidence(page, testInfo, "kick-result-playback");
+  await captureTacticalEvidence(page, testInfo, "kick-result-playback", false);
 });
 
 test("automatically continues an authoritative tactical result after its hold", async ({
@@ -893,13 +930,50 @@ test("automatically continues an authoritative tactical result after its hold", 
     target,
     test.info().project.name === "mobile-chromium",
   );
+  await page.evaluate(() => {
+    document.body.dataset.resultResolvedAt = "";
+    document.body.dataset.resultRemovedAt = "";
+    const recordResultLifecycle = () => {
+      const result = document.querySelector('[data-testid="kick-result"]');
+      if (
+        result?.textContent?.includes("Resolved") &&
+        !document.body.dataset.resultResolvedAt
+      ) {
+        document.body.dataset.resultResolvedAt = String(performance.now());
+      }
+      if (
+        document.body.dataset.resultResolvedAt &&
+        !result &&
+        !document.body.dataset.resultRemovedAt
+      ) {
+        document.body.dataset.resultRemovedAt = String(performance.now());
+        observer.disconnect();
+      }
+    };
+    const observer = new MutationObserver(recordResultLifecycle);
+    observer.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+  });
   await page.getByTestId("kick-submit").click();
   await expect(page.getByTestId("kick-result")).toBeVisible();
-  await page.waitForTimeout(2_000);
-  await expect(page.getByTestId("kick-result")).toBeVisible();
   await expect(page).toHaveURL(/\/match\/match-penalty$/u, {
-    timeout: 1_500,
+    timeout: 8_000,
   });
+  const resultLifecycle = await page.locator("body").evaluate((body) => ({
+    removedAt: Number(body.dataset.resultRemovedAt),
+    resolvedAt: Number(body.dataset.resultResolvedAt),
+  }));
+  expect(resultLifecycle.resolvedAt).toBeGreaterThan(0);
+  expect(resultLifecycle.removedAt).toBeGreaterThan(resultLifecycle.resolvedAt);
+  expect(
+    resultLifecycle.removedAt - resultLifecycle.resolvedAt,
+  ).toBeGreaterThanOrEqual(2_400);
+  expect(resultLifecycle.removedAt - resultLifecycle.resolvedAt).toBeLessThan(
+    5_000,
+  );
 });
 
 // WEBGL_lose_context can degrade SwiftShader for the rest of a browser worker,

@@ -19,7 +19,7 @@ function authChallengeResponse() {
     action: "CREATE_SESSION",
     account_address: wallet.address,
     chain_id: walletChainId,
-    expires_at: "2026-07-19T12:05:00.000Z",
+    expires_at: "2030-07-19T12:05:00.000Z",
     typed_data: {
       types: {
         StarknetDomain: [
@@ -45,9 +45,9 @@ function authChallengeResponse() {
 function authSessionResponse() {
   return {
     session: {
-      issued_at: "2026-07-19T12:00:00.000Z",
-      idle_expires_at: "2026-07-19T12:15:00.000Z",
-      absolute_expires_at: "2026-07-20T12:00:00.000Z",
+      issued_at: "2030-07-19T12:00:00.000Z",
+      idle_expires_at: "2030-07-19T12:15:00.000Z",
+      absolute_expires_at: "2030-07-20T12:00:00.000Z",
       subject: {
         provider: "starknet",
         chain_id: walletChainId,
@@ -60,14 +60,15 @@ function authSessionResponse() {
 }
 
 export async function authenticateForContinuation(page: Page) {
-  await page.route("**/api/auth/v1/challenges", (route) =>
+  const context = page.context();
+  await context.route("**/api/auth/v1/challenges", (route) =>
     route.fulfill({
       status: 201,
       contentType: "application/json",
       body: JSON.stringify(authChallengeResponse()),
     }),
   );
-  await page.route("**/api/auth/v1/sessions", (route) =>
+  await context.route("**/api/auth/v1/sessions", (route) =>
     route.fulfill({
       status: 201,
       contentType: "application/json",
@@ -78,7 +79,7 @@ export async function authenticateForContinuation(page: Page) {
       body: JSON.stringify(authSessionResponse()),
     }),
   );
-  await page.route("**/api/auth/v1/session", (route) =>
+  await context.route("**/api/auth/v1/session", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -97,5 +98,14 @@ export async function authenticateForContinuation(page: Page) {
       );
     })
     .toBe(true);
-  await page.goto("/game");
+  await page.getByRole("link", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/$/u);
+
+  // Preserve the authenticated Zustand state and memory-only CSRF token. A full
+  // document navigation here would make the continuation test race rehydration.
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/game");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page).toHaveURL(/\/game$/u);
 }

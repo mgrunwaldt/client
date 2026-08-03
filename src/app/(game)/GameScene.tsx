@@ -80,7 +80,7 @@ const DEFAULT_CAMERA_WINDOW = {
   maxFieldX: 75,
 };
 const DYNAMIC_PLAYER_SCREEN_NDC_Y = -0.6;
-const DRIBBLE_PLAYER_SCREEN_NDC_Y = DYNAMIC_PLAYER_SCREEN_NDC_Y;
+const DRIBBLE_PLAYER_SCREEN_NDC_Y = -0.1;
 const DRIBBLE_VISUAL_FIELD_Y_OFFSET = -14;
 
 function fieldToWorld(x: number, y: number): [number, number, number] {
@@ -237,7 +237,7 @@ function findDynamicCameraZ(
 
     const lowDelta =
       projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], low) -
-      DYNAMIC_PLAYER_SCREEN_NDC_Y;
+      targetNdcY;
     if (lowDelta * delta <= 0) {
       high = mid;
     } else {
@@ -857,7 +857,10 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const ballZ = logicalBallZ + PLAYER_RENDER_Z_OFFSET;
   const legendWorldPosition = legendPlayer
     ? (() => {
-        const [x, y, z] = fieldToWorld(legendPlayer.x, legendPlayer.y);
+        const [x, y, z] = fieldToWorld(
+          legendPlayer.x + dribbleVisualFieldXOffset,
+          legendPlayer.y + dribbleVisualFieldYOffset,
+        );
         return [x, y, z + PLAYER_RENDER_Z_OFFSET] as [number, number, number];
       })()
     : null;
@@ -1152,7 +1155,11 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const autoContinueResult = useEffectEvent(handleNextAction);
 
   useEffect(() => {
-    if (!stagedKickResult || isResultAnimating) {
+    if (
+      !stagedKickResult ||
+      isResultAnimating ||
+      stagedKickResult.sceneType === "DRIBBLE"
+    ) {
       return;
     }
     resultTimerRef.current = window.setTimeout(
@@ -1439,9 +1446,6 @@ export default function GameScene({ active = true }: { active?: boolean }) {
             stagedKickResult.response.decision_result?.outcome_type ?? ""
           }
           className="absolute inset-x-0 bottom-0 z-30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-white"
-          onPointerUp={() => {
-            if (!isResultAnimating) handleNextAction();
-          }}
         >
           <div className="mx-auto w-full max-w-md rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
@@ -1462,19 +1466,15 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               {resultDescription}
             </p>
 
-            {import.meta.env.DEV && (
-              <button
-                type="button"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  handleNextAction();
-                }}
-                disabled={isResultAnimating}
-                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase disabled:cursor-not-allowed disabled:opacity-45"
-              >
-                Next Action (Debug)
-              </button>
-            )}
+            <button
+              type="button"
+              data-testid="next-action"
+              onClick={handleNextAction}
+              disabled={isResultAnimating}
+              className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              Next Action
+            </button>
           </div>
         </div>
       )}
