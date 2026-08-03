@@ -7,10 +7,18 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   REAL_CLIENT_PORT,
+  REAL_SMOKE_FIXTURE_ACK_FILE,
+  REAL_SMOKE_FIXTURE_COMMAND_FILE,
+  REAL_SMOKE_FIXTURE_VERSION,
   REAL_SERVER_PORT,
   assertPortsAvailable,
+  createRealSmokeUnknownSceneCommand,
+  parseRealSmokeFixtureAcknowledgement,
+  parseRealSmokeFixtureCommand,
   parseServerStarted,
+  publishRealSmokeFixtureCommand,
   validateRealServerRuntime,
+  waitForRealSmokeFixtureAcknowledgement,
 } from "../scripts/real-server-smoke-support.mjs";
 
 const temporaryDirectories = [];
@@ -121,5 +129,62 @@ describe("real Match API smoke support", () => {
         serverNode: process.execPath,
       }),
     ).rejects.toThrow(/missing required marker/u);
+  });
+
+  it("uses a strict private filesystem protocol for an unknown-scene fixture", async () => {
+    const stateDirectory = await mkdtemp(
+      join(tmpdir(), "overgoal-real-smoke-fixture-test-"),
+    );
+    temporaryDirectories.push(stateDirectory);
+    const command = createRealSmokeUnknownSceneCommand({
+      commandId: "fixture_command_0001",
+      expectedRevision: 7,
+      matchId: "match_fixture_0001",
+    });
+
+    expect(parseRealSmokeFixtureCommand(command)).toMatchObject({
+      commandId: command.command_id,
+      expectedRevision: 7,
+      matchId: "match_fixture_0001",
+    });
+    expect(() =>
+      parseRealSmokeFixtureCommand({ ...command, unexpected: true }),
+    ).toThrow(/unsupported fields/u);
+
+    await publishRealSmokeFixtureCommand(stateDirectory, command);
+    const persisted = JSON.parse(
+      await (
+        await import("node:fs/promises")
+      ).readFile(join(stateDirectory, REAL_SMOKE_FIXTURE_COMMAND_FILE), "utf8"),
+    );
+    expect(persisted).toEqual(command);
+
+    const acknowledgement = {
+      action_id: "action_fixture_0001",
+      command_id: command.command_id,
+      match_id: command.match_id,
+      revision: command.expected_revision,
+      scene_type: command.scene_type,
+      status: "APPLIED",
+      version: REAL_SMOKE_FIXTURE_VERSION,
+    };
+    await writeFile(
+      join(stateDirectory, REAL_SMOKE_FIXTURE_ACK_FILE),
+      `${JSON.stringify(acknowledgement)}\n`,
+      { mode: 0o600 },
+    );
+    await expect(
+      waitForRealSmokeFixtureAcknowledgement(
+        stateDirectory,
+        command.command_id,
+      ),
+    ).resolves.toMatchObject({
+      actionId: acknowledgement.action_id,
+      commandId: command.command_id,
+      revision: command.expected_revision,
+    });
+    expect(parseRealSmokeFixtureAcknowledgement(acknowledgement)).toMatchObject(
+      { sceneType: command.scene_type },
+    );
   });
 });

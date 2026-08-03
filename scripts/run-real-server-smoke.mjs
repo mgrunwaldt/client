@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash, X509Certificate } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -266,6 +267,16 @@ async function main() {
   const distDirectory = join(temporaryDirectory, "dist");
   await mkdir(stateDirectory, { mode: 0o700 });
   const certificate = await createCertificate(stateDirectory);
+  const certificateSpki = createHash("sha256")
+    .update(
+      new X509Certificate(
+        await readFile(certificate.certificatePath),
+      ).publicKey.export({
+        format: "der",
+        type: "spki",
+      }),
+    )
+    .digest("base64");
 
   const server = spawnOwned(
     "real-match-api",
@@ -282,6 +293,7 @@ async function main() {
       env: {
         ...process.env,
         LOCAL_DEMO_STATE_DIR: stateDirectory,
+        OVERGOAL_REAL_SMOKE_FIXTURE_CHANNEL: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -365,6 +377,8 @@ async function main() {
         ...process.env,
         OVERGOAL_MATCH_API_BASE_URL: REAL_SERVER_ORIGIN,
         OVERGOAL_REAL_SERVER_SMOKE: "1",
+        OVERGOAL_REAL_SMOKE_STATE_DIRECTORY: stateDirectory,
+        OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
         PLAYWRIGHT_BASE_URL: previewUrl,
       },
       stdio: "inherit",

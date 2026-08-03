@@ -117,6 +117,53 @@ describe("backend match client", () => {
     ).toBe(false);
   });
 
+  it("enforces the OpenAPI progress minute bounds while preserving kickoff snapshot time", async () => {
+    const response = await readFixture<Record<string, unknown>>(
+      "server/waiting-open-play-response.json",
+    );
+    const createdMatch = await readFixture<{
+      match: Record<string, unknown>;
+      my_team: Record<string, unknown>;
+      opponent_team: Record<string, unknown>;
+    }>("server/create-match-response.json");
+    const beforeKickoff = structuredClone(response) as Record<
+      string,
+      unknown
+    > & {
+      match: Record<string, unknown>;
+    };
+    const afterFulltime = structuredClone(response) as Record<
+      string,
+      unknown
+    > & {
+      match: Record<string, unknown>;
+    };
+
+    beforeKickoff.minute = 0;
+    beforeKickoff.match.current_time = 0;
+    afterFulltime.minute = 91;
+    afterFulltime.match.current_time = 91;
+
+    expect(BackendMatchResponseSchema.safeParse(beforeKickoff).success).toBe(
+      false,
+    );
+    expect(BackendMatchResponseSchema.safeParse(afterFulltime).success).toBe(
+      false,
+    );
+    expect(
+      BackendMatchSnapshotSchema.safeParse({
+        match: createdMatch.match,
+        my_team: createdMatch.my_team,
+        opponent_team: createdMatch.opponent_team,
+        timeline: [],
+        pending_action: null,
+        field_state: null,
+        pending_settlement_events: [],
+        unsupported_scene: null,
+      }).success,
+    ).toBe(true);
+  });
+
   it("accepts the authoritative hidden-action recovery shape", async () => {
     const response = await readFixture<Record<string, unknown>>(
       "server/waiting-open-play-response.json",
@@ -172,8 +219,10 @@ describe("backend match client", () => {
     const withoutSettlements = structuredClone(snapshot);
     const withoutRecovery = structuredClone(snapshot);
     const malformedRecovery = structuredClone(snapshot);
+    const unknownRoot = structuredClone(snapshot) as Record<string, unknown>;
     delete withoutSettlements.pending_settlement_events;
     delete withoutRecovery.unsupported_scene;
+    unknownRoot.uncontracted_root_field = "must not reach the client";
     malformedRecovery.unsupported_scene = {
       version: 1,
       status: "RECOVERY_REQUIRED",
@@ -190,6 +239,9 @@ describe("backend match client", () => {
     expect(
       BackendMatchSnapshotSchema.safeParse(malformedRecovery).success,
     ).toBe(false);
+    expect(BackendMatchSnapshotSchema.safeParse(unknownRoot).success).toBe(
+      false,
+    );
   });
 
   it("serializes canonical commands with CSRF, revision, action, and stable idempotency metadata", async () => {

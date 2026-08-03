@@ -637,7 +637,7 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
 
 export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
   .object({
-    minute: z.number().int().min(0).max(90),
+    minute: z.number().int().min(1).max(90),
     status: z.string().trim().min(1),
     prev_time: z.number().int().min(0).max(90),
     pending_action: BackendPendingActionSchema.nullable(),
@@ -828,7 +828,7 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
     pending_settlement_events: z.array(BackendPendingSettlementEventSchema),
     unsupported_scene: BackendUnsupportedSceneRecoverySchema.nullable(),
   })
-  .passthrough()
+  .strict()
   .superRefine((response, context) => {
     requireMatchTeamIdentity(response, context);
     requirePrematchLegendData(response.match, context, ["match"]);

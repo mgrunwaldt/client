@@ -79,7 +79,8 @@ function resolvedRandomEvent(
   choice: string,
 ) {
   const response = randomEventResponse(scene, actionId);
-  const minute = response.minute + 1;
+  const actionMinute = response.minute;
+  const continuationMinute = actionMinute + 1;
   const settlement = {
     version: 1,
     id: `settlement-${actionId}`,
@@ -96,15 +97,15 @@ function resolvedRandomEvent(
     },
     payload: { crowd_reputation: -2 },
     created_revision: response.match.revision + 1,
-    created_time: { match_minute: minute, decision_sequence: 4 },
+    created_time: { match_minute: actionMinute, decision_sequence: 4 },
     status: "PENDING",
   } as const;
   const description = `Authoritative ${scene.scene_type} ${choice} result.`;
 
   return {
     ...response,
-    minute,
-    prev_time: response.minute,
+    minute: continuationMinute,
+    prev_time: actionMinute,
     status: "IN_PROGRESS",
     pending_action: null,
     field_state: null,
@@ -114,15 +115,15 @@ function resolvedRandomEvent(
       {
         ...response.events[0],
         event_id: response.events[0].event_id + 1,
-        minute,
+        minute: actionMinute,
         description,
       },
     ],
     pending_settlement_events: [settlement],
     match: {
       ...response.match,
-      current_time: minute,
-      prev_time: response.minute,
+      current_time: continuationMinute,
+      prev_time: actionMinute,
       revision: response.match.revision + 1,
       match_status: "IN_PROGRESS",
       event_counter: response.events[0].event_id + 1,
@@ -318,6 +319,22 @@ test("renders all five random scenes and submits each authoritative choice exact
       await expect(resultPanel).toContainText(
         `Authoritative ${scene.scene_type} ${choice.id} result.`,
       );
+      await expect(resultPanel).toContainText(
+        `${scene.minute}' · ${scene.scene_type}`,
+      );
+      await expect(page.getByTestId("game-field")).toHaveAttribute(
+        "data-result-minute",
+        String(scene.minute),
+      );
+      await expect(page.getByTestId("game-field")).toHaveAttribute(
+        "data-continuation-minute",
+        String(scene.minute + 1),
+      );
+      expect(result.prev_time).toBe(scene.minute);
+      expect(
+        result.pending_settlement_events[0]?.created_time.match_minute,
+      ).toBe(scene.minute);
+      expect(result.minute).toBeGreaterThan(result.prev_time);
       await expect(
         resultPanel.getByTestId("random-event-result-details"),
       ).toContainText("Energy");

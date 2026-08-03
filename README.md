@@ -210,6 +210,16 @@ preflight, opaque bearer, absence of cookies, command headers, and Match API v1
 responses. Cleanup terminates only runner-owned process groups and deletes all
 ephemeral credentials and build output, including on signals or child failure.
 
+The same smoke also proves unknown-scene recovery against the real backend. Its
+launcher-only fixture channel accepts strictly validated sequential JSON commands in
+that private temporary state directory and mutates the already-created SQLite
+match through the launcher's repository instance. It is not an HTTP route,
+never ships in the production bundle, and is enabled only by the smoke runner.
+The browser then uses the normal authenticated Match API endpoints to verify an
+unauthenticated recovery rejection, recovery with revision and idempotency
+headers, exact-retry idempotency, and a reloaded snapshot without an unsupported
+scene or fabricated result.
+
 The build keeps every JavaScript chunk below Vite's 500 kB warning boundary
 and verifies that the login static graph excludes the game route. The Chromium
 smoke also rejects browser warnings and any login-time game model request. These

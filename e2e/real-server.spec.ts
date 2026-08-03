@@ -1,4 +1,10 @@
-import { expect, type Response, test } from "@playwright/test";
+import { expect, type Page, type Response, test } from "@playwright/test";
+
+import {
+  createRealSmokeUnknownSceneCommand,
+  publishRealSmokeFixtureCommand,
+  waitForRealSmokeFixtureAcknowledgement,
+} from "../scripts/real-server-smoke-support.mjs";
 
 interface SessionPayload {
   legend: { legend_id: string };
@@ -19,6 +25,12 @@ interface StartedMatchPayload {
   events: Array<{ event_id: number; minute: number }>;
   match: { id: string; current_time: number; revision: number };
   status: string;
+}
+
+interface BrowserApiResponse {
+  body: Record<string, unknown> | null;
+  headers: Record<string, string>;
+  status: number;
 }
 
 interface ApiRequestRecord {
@@ -52,6 +64,7 @@ const matchApiOrigin = matchApiBaseUrl
   : "https://real-api-not-configured.invalid";
 const matchApiOperationPattern =
   /^\/(?:auth\/v1\/(?:challenges|sessions|session)|teams|createMatch|startMatch|match\/)/u;
+const fixtureStateDirectory = process.env.OVERGOAL_REAL_SMOKE_STATE_DIRECTORY;
 
 function header(
   headers: Record<string, string | number>,
@@ -61,6 +74,40 @@ function header(
     ([key]) => key.toLowerCase() === name.toLowerCase(),
   );
   return entry ? String(entry[1]) : undefined;
+}
+
+async function browserApiRequest(
+  page: Page,
+  path: string,
+  {
+    body,
+    headers = {},
+    method = "GET",
+  }: {
+    body?: Record<string, unknown>;
+    headers?: Record<string, string>;
+    method?: "GET" | "POST";
+  } = {},
+): Promise<BrowserApiResponse> {
+  return page.evaluate(
+    async ({ body, headers, method, url }) => {
+      const response = await fetch(url, {
+        body: body ? JSON.stringify(body) : undefined,
+        credentials: "omit",
+        headers: body
+          ? { "Content-Type": "application/json", ...headers }
+          : headers,
+        method,
+      });
+      const text = await response.text();
+      return {
+        body: text ? (JSON.parse(text) as Record<string, unknown>) : null,
+        headers: Object.fromEntries(response.headers.entries()),
+        status: response.status,
+      };
+    },
+    { body, headers, method, url: `${matchApiOrigin}${path}` },
+  );
 }
 
 test("creates and starts through the actual separate-origin Match API", async ({
@@ -254,4 +301,226 @@ test("creates and starts through the actual separate-origin Match API", async ({
       });
   }, clientOrigin);
   expect(sameOriginApiRequests).toEqual([]);
+});
+
+test("recovers an injected persisted unknown scene through the real HTTPS API", async ({
+  page,
+}) => {
+  test.skip(!realSmoke, "Real Match API proof runs via its dedicated command.");
+  test.setTimeout(180_000);
+
+  if (!fixtureStateDirectory) {
+    throw new Error(
+      "Real-server smoke did not provide its fixture state directory.",
+    );
+  }
+
+  const recoveryRequests: Array<Promise<ApiRequestRecord>> = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (
+      url.origin !== matchApiOrigin ||
+      url.pathname !== "/processMatchAction"
+    ) {
+      return;
+    }
+    recoveryRequests.push(
+      request.allHeaders().then((headers) => ({
+        headers,
+        method: request.method(),
+        pathname: url.pathname,
+      })),
+    );
+  });
+
+  await page.goto("/login");
+  const sessionResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/auth/v1/sessions",
+  );
+  await page.getByRole("button", { name: "Connect Controller" }).click();
+  const sessionResponse = await sessionResponsePromise;
+  expect(sessionResponse.status()).toBe(201);
+  const sessionPayload = (await sessionResponse.json()) as SessionPayload;
+
+  await page.getByRole("button", { name: "Continue" }).click();
+  const createResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/createMatch",
+  );
+  await page.getByRole("button", { name: "Play" }).click();
+  const created = (await (
+    await createResponsePromise
+  ).json()) as CreatedMatchPayload;
+
+  const startResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/startMatch",
+  );
+  await page.getByRole("button", { name: "Play" }).click();
+  const started = (await (
+    await startResponsePromise
+  ).json()) as StartedMatchPayload;
+  expect(started.match.id).toBe(created.id);
+  expect(started.match.revision).toBeGreaterThan(0);
+
+  const sourceSnapshot = await browserApiRequest(page, `/match/${created.id}`, {
+    headers: { Authorization: `Bearer ${sessionPayload.session_credential}` },
+  });
+  expect(sourceSnapshot.status).toBe(200);
+  const sourceMatch = sourceSnapshot.body?.match as
+    | { pending_action?: { id?: string } | null; revision?: number }
+    | undefined;
+  expect(sourceMatch?.pending_action?.id).toBeTruthy();
+  expect(sourceMatch?.revision).toBe(started.match.revision);
+  const sourceRevision = sourceMatch?.revision;
+  if (
+    typeof sourceRevision !== "number" ||
+    !Number.isSafeInteger(sourceRevision)
+  ) {
+    throw new Error("Real Match API snapshot omitted its revision.");
+  }
+
+  const command = createRealSmokeUnknownSceneCommand({
+    expectedRevision: sourceRevision,
+    matchId: created.id,
+  });
+  await publishRealSmokeFixtureCommand(fixtureStateDirectory, command);
+  const injected = await waitForRealSmokeFixtureAcknowledgement(
+    fixtureStateDirectory,
+    command.command_id,
+  );
+  expect(injected.matchId).toBe(created.id);
+  expect(injected.revision).toBe(started.match.revision);
+
+  const recoveryBody = {
+    action_id: injected.actionId,
+    match_decision: { choice: "CONTINUE_WITHOUT_EVENT" },
+    match_id: created.id,
+  };
+  const unauthenticated = await browserApiRequest(page, "/processMatchAction", {
+    body: recoveryBody,
+    headers: {
+      "Idempotency-Key": "real-smoke-unauthenticated-recovery-0001",
+      "If-Match-Revision": String(injected.revision),
+    },
+    method: "POST",
+  });
+  expect(unauthenticated.status).toBe(401);
+
+  const hydratedUnknown = await browserApiRequest(
+    page,
+    `/match/${created.id}`,
+    {
+      headers: { Authorization: `Bearer ${sessionPayload.session_credential}` },
+    },
+  );
+  expect(hydratedUnknown.status).toBe(200);
+  expect(hydratedUnknown.body).toMatchObject({
+    field_state: null,
+    match: { revision: injected.revision },
+    pending_action: null,
+    unsupported_scene: {
+      action_id: injected.actionId,
+      recovery: { choice: "CONTINUE_WITHOUT_EVENT" },
+      scene_type: "FUTURE_RANDOM_EVENT_V99",
+    },
+  });
+
+  const idempotencyKey = "real-smoke-unknown-recovery-0001";
+  const authenticatedHeaders = {
+    Authorization: `Bearer ${sessionPayload.session_credential}`,
+    "Idempotency-Key": idempotencyKey,
+    "If-Match-Revision": String(injected.revision),
+  };
+  const recovered = await browserApiRequest(page, "/processMatchAction", {
+    body: recoveryBody,
+    headers: authenticatedHeaders,
+    method: "POST",
+  });
+  expect(recovered.status).toBe(200);
+  expect(recovered.headers["match-api-version"]).toBe("1");
+  expect(recovered.body).toMatchObject({
+    pending_settlement_events: [],
+    unsupported_scene: null,
+    unsupported_scene_recovery: {
+      action_id: injected.actionId,
+      outcome: "SKIPPED_NO_EFFECT",
+      scene_type: "FUTURE_RANDOM_EVENT_V99",
+    },
+  });
+  expect(recovered.body?.decision_result).toBeUndefined();
+
+  const firstRecoveryRequests = await Promise.all(recoveryRequests);
+  const authenticatedRecoveryRequests = firstRecoveryRequests.filter(
+    (request) =>
+      request.headers.authorization === authenticatedHeaders.Authorization,
+  );
+  expect(authenticatedRecoveryRequests).toHaveLength(1);
+  expect(authenticatedRecoveryRequests[0]).toMatchObject({
+    headers: expect.objectContaining({
+      "idempotency-key": idempotencyKey,
+      "if-match-revision": String(injected.revision),
+      origin: "https://127.0.0.1:4176",
+    }),
+    method: "POST",
+    pathname: "/processMatchAction",
+  });
+
+  const retry = await browserApiRequest(page, "/processMatchAction", {
+    body: recoveryBody,
+    headers: authenticatedHeaders,
+    method: "POST",
+  });
+  expect(retry.status).toBe(200);
+  expect(retry.body).toEqual(recovered.body);
+
+  await page.evaluate((pathname) => {
+    window.history.pushState({}, "", pathname);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/match/${created.id}`);
+  await expect(page.getByTestId("timeline-screen")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`/match/${created.id}$`, "u"));
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/post-login-screen$/u, { timeout: 30_000 });
+  await page.getByRole("link", { name: "Continue" }).click();
+  await expect(page).toHaveURL(/\/$/u);
+
+  const reloadSnapshotPromise = page.waitForResponse(
+    (response) => {
+      const url = new URL(response.url());
+      return (
+        response.request().method() === "GET" &&
+        url.origin === matchApiOrigin &&
+        url.pathname === `/match/${created.id}`
+      );
+    },
+  );
+  await page.evaluate((pathname) => {
+    window.history.pushState({}, "", pathname);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, `/match/${created.id}`);
+  const reloadSnapshot = await reloadSnapshotPromise;
+  expect(reloadSnapshot.status()).toBe(200);
+  const reloaded = (await reloadSnapshot.json()) as Record<string, unknown>;
+  expect(reloaded).toMatchObject({
+    pending_settlement_events: [],
+    unsupported_scene: null,
+  });
+  expect(reloaded.decision_result).toBeUndefined();
+  const timeline = reloaded.timeline as
+    | Array<{ meta?: { outcome_type?: string } | null }>
+    | undefined;
+  expect(
+    timeline?.filter(
+      (event) => event.meta?.outcome_type === "UNSUPPORTED_SCENE_SKIPPED",
+    ),
+  ).toHaveLength(1);
+  await expect(page.getByTestId("timeline-screen")).toBeVisible();
+  await expect(page.getByTestId("unsupported-event-recovery")).toHaveCount(0);
+  await expect(page.getByTestId("kick-result")).toHaveCount(0);
 });
