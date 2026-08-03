@@ -1,5 +1,5 @@
 {
   "match_id": "match-fixture-1",
   "action_id": "action-argument-opponent-1",
-  "match_decision": { "choice": "WALK_AWAY", "selection_quality": 65, "seed": 424246 }
+  "match_decision": { "choice": "WALK_AWAY" }
 }

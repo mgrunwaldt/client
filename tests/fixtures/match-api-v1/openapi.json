@@ -264,7 +264,7 @@
         "operationId": "processMatchAction",
         "tags": ["Matches"],
         "summary": "Resolve the current pending scene and run to the next stop",
-        "description": "The action_id binds the intent to the scene shown to the client. The command is revision-checked and durably idempotent.",
+        "description": "The action_id binds the intent to the scene shown to the client. The command is revision-checked and durably idempotent. A projected unsupported scene accepts only the advertised CONTINUE_WITHOUT_EVENT recovery intent.",
         "parameters": [
           { "$ref": "#/components/parameters/ProcessActionIdempotencyKey" },
           { "$ref": "#/components/parameters/ProcessActionMatchRevision" }
@@ -651,7 +651,7 @@
       "Coordinate": { "type": "number", "minimum": 0, "maximum": 100 },
       "MatchStatus": {
         "type": "string",
-        "enum": ["NOT_STARTED", "IN_PROGRESS", "WAITING_FOR_DECISION", "HALFTIME", "FINISHED"]
+        "enum": ["NOT_STARTED", "IN_PROGRESS", "WAITING_FOR_DECISION", "WAITING_FOR_RECOVERY", "HALFTIME", "FINISHED"]
       },
       "ActionTeam": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM", "NEUTRAL"] },
       "PlayerParticipation": { "type": "string", "enum": ["NOT_PARTICIPATING", "PARTICIPATING", "OBSERVING"] },
@@ -720,6 +720,7 @@
           "intelligence": { "$ref": "#/components/schemas/Rating" },
           "yellow_cards": { "type": "integer", "minimum": 0, "maximum": 2 },
           "red_card": { "type": "boolean" },
+          "injured": { "type": "boolean" },
           "simulation_attempts": { "type": "integer", "minimum": 0 },
           "substitutions": { "type": "integer", "minimum": 0 }
         },
@@ -789,8 +790,8 @@
           "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
           "engine_version": {
             "type": "string",
-            "enum": ["match-engine/1", "match-engine/2", "match-engine/3"],
-            "description": "match-engine/3 supports live mutation. Persisted match-engine/1 and match-engine/2 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
+            "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4"],
+            "description": "match-engine/4 supports live mutation. Persisted match-engine/1, match-engine/2, and match-engine/3 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
             "x-overgoal-m1-required": true
           },
           "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
@@ -1050,7 +1051,7 @@
           "available_choices": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/AvailableChoice" } },
           "context": { "$ref": "#/components/schemas/MatchContext" },
           "origin": { "oneOf": [{ "$ref": "#/components/schemas/PendingActionOrigin" }, { "type": "null" }] },
-          "contract_version": { "type": "integer", "const": 2 },
+          "contract_version": { "type": "integer", "enum": [2, 3] },
           "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" },
           "field_state": { "$ref": "#/components/schemas/FieldState" }
         },
@@ -1085,19 +1086,19 @@
         "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "required": ["control_envelope"], "properties": { "scene_type": { "const": "PENALTY" }, "control_envelope": { "$ref": "#/components/schemas/KickControlEnvelope" } }, "x-overgoal-choice-ids": ["KICK"] }]
       },
       "JumperPendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "JUMPER" } }, "x-overgoal-choice-ids": ["ACCEPT_HUG", "DODGE", "SECURITY_TACKLE"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "JUMPER" }, "contract_version": { "const": 3 } }, "x-overgoal-choice-ids": ["ACCEPT_HUG", "DODGE", "SECURITY_TACKLE"] }]
       },
       "BrawlPendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "BRAWL" } }, "x-overgoal-choice-ids": ["JOIN_IN", "PULL_AWAY", "STAY_OUT"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "BRAWL" }, "contract_version": { "const": 3 } }, "x-overgoal-choice-ids": ["JOIN_IN", "PULL_AWAY", "STAY_OUT"] }]
       },
       "ArgumentOpponentPendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "ARGUMENT_OPPONENT" } }, "x-overgoal-choice-ids": ["TRASH_TALK", "WALK_AWAY", "HEADBUTT"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "ARGUMENT_OPPONENT" }, "contract_version": { "const": 3 } }, "x-overgoal-choice-ids": ["TRASH_TALK", "WALK_AWAY", "HEADBUTT"] }]
       },
       "ArgumentTeammatePendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "ARGUMENT_TEAMMATE" } }, "x-overgoal-choice-ids": ["SHOUT_BACK", "CALM_DOWN", "IGNORE"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "ARGUMENT_TEAMMATE" }, "contract_version": { "const": 3 } }, "x-overgoal-choice-ids": ["SHOUT_BACK", "CALM_DOWN", "IGNORE"] }]
       },
       "BathroomPendingAction": {
-        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "BATHROOM" } }, "x-overgoal-choice-ids": ["ASK_FOR_SUB", "HOLD_IT", "BEHIND_BOARDS"] }]
+        "allOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "object", "properties": { "scene_type": { "const": "BATHROOM" }, "contract_version": { "const": 3 } }, "x-overgoal-choice-ids": ["ASK_FOR_SUB", "HOLD_IT", "BEHIND_BOARDS"] }]
       },
       "PendingAction": {
         "oneOf": [
@@ -1146,6 +1147,55 @@
         },
         "additionalProperties": false
       },
+      "PendingSettlementEvent": {
+        "type": "object",
+        "required": ["version", "id", "match_id", "category", "type", "source", "payload", "created_revision", "created_time", "status"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "category": { "type": "string", "enum": ["SOCIAL", "CAREER", "SEASON", "ECONOMY"] },
+          "type": { "type": "string", "minLength": 1 },
+          "source": {
+            "type": "object",
+            "required": ["match_id", "action_id", "action_sequence", "settlement_sequence", "scene_type", "choice"],
+            "properties": {
+              "match_id": { "$ref": "#/components/schemas/Identifier" },
+              "action_id": { "$ref": "#/components/schemas/Identifier" },
+              "action_sequence": { "type": "integer", "minimum": 1 },
+              "settlement_sequence": { "type": "integer", "minimum": 1 },
+              "scene_type": { "type": "string", "enum": ["JUMPER", "BRAWL", "ARGUMENT_OPPONENT", "ARGUMENT_TEAMMATE", "BATHROOM"] },
+              "choice": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          },
+          "payload": { "type": "object", "additionalProperties": true },
+          "created_revision": { "type": "integer", "minimum": 1 },
+          "created_time": {
+            "type": "object",
+            "required": ["match_minute", "decision_sequence"],
+            "properties": {
+              "match_minute": { "type": "integer", "minimum": 1, "maximum": 89 },
+              "decision_sequence": { "type": "integer", "minimum": 1 }
+            },
+            "additionalProperties": false
+          },
+          "status": { "type": "string", "const": "PENDING" }
+        },
+        "additionalProperties": false
+      },
+      "FullTimeHandoff": {
+        "type": "object",
+        "required": ["version", "match_id", "status", "season_points_delta", "pending_settlement_events"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "status": { "type": "string", "enum": ["FULL_TIME", "ABANDONED"] },
+          "season_points_delta": { "type": "integer", "enum": [-1, 1, 3] },
+          "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } }
+        },
+        "additionalProperties": false
+      },
       "DecisionResult": {
         "type": "object",
         "required": ["description", "success", "outcome_type"],
@@ -1157,6 +1207,9 @@
           "opponent_team_scored": { "type": "boolean" },
           "yellow_card": { "type": "boolean" },
           "red_card": { "type": "boolean" },
+          "injured": { "type": "boolean" },
+          "substituted": { "type": "boolean" },
+          "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } },
           "loose_possession": { "type": "boolean" },
           "energy_modifier": { "type": "number", "minimum": 0 },
           "follow_up_scene": { "$ref": "#/components/schemas/PlayableSceneType" },
@@ -1310,20 +1363,68 @@
           "match_id": { "$ref": "#/components/schemas/Identifier" },
           "sequence": { "type": "integer", "minimum": 1 },
           "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
-          "action": { "$ref": "#/components/schemas/PlayableSceneType" },
+          "action": { "$ref": "#/components/schemas/MatchAction" },
           "action_team": { "$ref": "#/components/schemas/ActionTeam" },
           "action_id": { "$ref": "#/components/schemas/Identifier" },
           "action_version": { "type": "integer", "minimum": 1 },
-          "decision_version": { "type": "integer", "minimum": 1, "maximum": 3 },
+          "decision_version": { "type": "integer", "minimum": 1, "maximum": 5 },
           "decision_data": { "type": "object", "additionalProperties": true },
           "field_state_id": { "$ref": "#/components/schemas/Identifier" },
           "timestamp": { "type": "number", "minimum": 0 }
         },
         "additionalProperties": true
       },
+      "UnsupportedSceneRecoveryState": {
+        "type": "object",
+        "required": ["version", "status", "code", "scene_type", "action_id", "action_sequence", "minute", "recovery"],
+        "properties": {
+          "version": { "const": 1 },
+          "status": { "const": "RECOVERY_REQUIRED" },
+          "code": { "const": "UNSUPPORTED_SCENE_TYPE" },
+          "scene_type": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+          "action_id": { "$ref": "#/components/schemas/Identifier" },
+          "action_sequence": { "type": "integer", "minimum": 1 },
+          "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
+          "recovery": {
+            "type": "object",
+            "required": ["choice", "label", "description", "input_schema"],
+            "properties": {
+              "choice": { "const": "CONTINUE_WITHOUT_EVENT" },
+              "label": { "type": "string", "minLength": 1, "maxLength": 120 },
+              "description": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "input_schema": {
+                "type": "object",
+                "required": ["type", "required", "allowed", "additional_properties"],
+                "properties": {
+                  "type": { "const": "object" },
+                  "required": { "type": "array", "prefixItems": [{ "const": "choice" }], "items": false },
+                  "allowed": { "type": "array", "prefixItems": [{ "const": "choice" }], "items": false },
+                  "additional_properties": { "const": false }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "UnsupportedSceneRecoveryResult": {
+        "type": "object",
+        "required": ["version", "status", "outcome", "scene_type", "action_id", "recovered_revision"],
+        "properties": {
+          "version": { "const": 1 },
+          "status": { "const": "RECOVERED" },
+          "outcome": { "const": "SKIPPED_NO_EFFECT" },
+          "scene_type": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]{0,63}$" },
+          "action_id": { "$ref": "#/components/schemas/Identifier" },
+          "recovered_revision": { "type": "integer", "minimum": 1 }
+        },
+        "additionalProperties": false
+      },
       "MatchProgressResponse": {
         "type": "object",
-        "required": ["minute", "status", "prev_time", "pending_action", "field_state", "action", "action_team", "events", "match"],
+        "required": ["minute", "status", "prev_time", "pending_action", "field_state", "action", "action_team", "events", "pending_settlement_events", "unsupported_scene", "match"],
         "properties": {
           "minute": { "type": "integer", "minimum": 1, "maximum": 90 },
           "status": { "$ref": "#/components/schemas/MatchStatus" },
@@ -1333,6 +1434,10 @@
           "action": { "oneOf": [{ "$ref": "#/components/schemas/PlayableSceneType" }, { "type": "null" }] },
           "action_team": { "oneOf": [{ "$ref": "#/components/schemas/ActionTeam" }, { "type": "null" }] },
           "events": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } },
+          "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } },
+          "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] },
+          "unsupported_scene_recovery": { "$ref": "#/components/schemas/UnsupportedSceneRecoveryResult" },
+          "full_time_handoff": { "$ref": "#/components/schemas/FullTimeHandoff" },
           "match": { "$ref": "#/components/schemas/Match" },
           "decision_result": { "$ref": "#/components/schemas/DecisionResult" },
           "last_decision": { "$ref": "#/components/schemas/LastDecision" }
@@ -1598,7 +1703,7 @@
       },
       "NarrativeDecision": {
         "type": "object",
-        "required": ["choice", "selection_quality", "seed"],
+        "required": ["choice"],
         "properties": {
           "choice": {
             "type": "string",
@@ -1607,10 +1712,14 @@
               "TRASH_TALK", "WALK_AWAY", "HEADBUTT", "SHOUT_BACK", "CALM_DOWN", "IGNORE",
               "ASK_FOR_SUB", "HOLD_IT", "BEHIND_BOARDS"
             ]
-          },
-          "selection_quality": { "$ref": "#/components/schemas/Rating" },
-          "seed": { "$ref": "#/components/schemas/DecisionSeedHint" }
+          }
         },
+        "additionalProperties": false
+      },
+      "UnsupportedSceneRecoveryDecision": {
+        "type": "object",
+        "required": ["choice"],
+        "properties": { "choice": { "const": "CONTINUE_WITHOUT_EVENT" } },
         "additionalProperties": false
       },
       "MatchDecision": {
@@ -1618,7 +1727,8 @@
           { "$ref": "#/components/schemas/KickDecision" },
           { "$ref": "#/components/schemas/DribbleRunDecision" },
           { "$ref": "#/components/schemas/SimulateFoulDecision" },
-          { "$ref": "#/components/schemas/NarrativeDecision" }
+          { "$ref": "#/components/schemas/NarrativeDecision" },
+          { "$ref": "#/components/schemas/UnsupportedSceneRecoveryDecision" }
         ],
         "discriminator": { "propertyName": "choice" }
       },
@@ -1634,14 +1744,16 @@
       },
       "MatchSnapshotResponse": {
         "type": "object",
-        "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state"],
+        "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state", "pending_settlement_events", "unsupported_scene"],
         "properties": {
           "match": { "$ref": "#/components/schemas/Match" },
           "my_team": { "$ref": "#/components/schemas/Team" },
           "opponent_team": { "$ref": "#/components/schemas/Team" },
           "timeline": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } },
           "pending_action": { "oneOf": [{ "$ref": "#/components/schemas/PendingAction" }, { "type": "null" }] },
-          "field_state": { "oneOf": [{ "$ref": "#/components/schemas/FieldState" }, { "type": "null" }] }
+          "field_state": { "oneOf": [{ "$ref": "#/components/schemas/FieldState" }, { "type": "null" }] },
+          "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } },
+          "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] }
         },
         "additionalProperties": false
       },
@@ -1768,7 +1880,7 @@
           "error": { "type": "string", "minLength": 1, "maxLength": 256 },
           "code": {
             "type": "string",
-            "enum": ["MALFORMED_JSON", "VALIDATION_ERROR", "INVALID_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "RESOURCE_NOT_FOUND", "INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE", "VALIDATION_FAILED", "RATE_LIMITED", "NOT_READY", "INTERNAL_ERROR"],
+            "enum": ["MALFORMED_JSON", "VALIDATION_ERROR", "INVALID_REQUEST", "UNAUTHORIZED", "FORBIDDEN", "RESOURCE_NOT_FOUND", "INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "UNSUPPORTED_SCENE_RECOVERY_REQUIRED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE", "VALIDATION_FAILED", "RATE_LIMITED", "NOT_READY", "INTERNAL_ERROR"],
             "x-overgoal-m1-required": true,
             "x-overgoal-public-safe": true
           },
@@ -1789,7 +1901,9 @@
             "x-overgoal-public-safe": true
           },
           "request_id": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "retryable": { "type": "boolean" }
+          "retryable": { "type": "boolean" },
+          "recoverable": { "type": "boolean" },
+          "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] }
         },
         "additionalProperties": false,
         "unevaluatedProperties": false
@@ -1825,7 +1939,7 @@
       "ConflictErrorResponse": {
         "allOf": [
           { "$ref": "#/components/schemas/ErrorResponse" },
-          { "properties": { "code": { "enum": ["INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE"] }, "status": { "const": 409 } } }
+          { "properties": { "code": { "enum": ["INVALID_MATCH_TRANSITION", "STALE_ACTION", "MATCH_REVISION_CONFLICT", "IDEMPOTENCY_KEY_REUSED", "UNSUPPORTED_SCENE_RECOVERY_REQUIRED", "LEGEND_MAPPING_REQUIRED", "AUTH_TRANSITION_CONFLICT", "RECOVERY_INCOMPLETE"] }, "status": { "const": 409 } } }
         ],
         "unevaluatedProperties": false
       },

@@ -1,13 +1,13 @@
 {
   "id": "action-brawl-1", "minute": 61, "action_type": "BRAWL", "scene_type": "BRAWL", "action_team": "NEUTRAL", "source": "SIMULATION",
-  "title": "Brawl", "description": "A random match event interrupts play.", "field_state_id": "field-brawl-1",
+  "title": "Brawl", "description": "Chaos breaks loose on the field.", "field_state_id": "field-brawl-1",
   "available_choices": [
-    { "id": "JOIN_IN", "label": "Join In", "description": "Escalate the situation.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } },
-    { "id": "PULL_AWAY", "label": "Pull Away", "description": "Protect teammates.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } },
-    { "id": "STAY_OUT", "label": "Stay Out", "description": "Do not get involved.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } }
+    { "id": "JOIN_IN", "label": "Join In", "description": "Enter the confrontation and risk severe consequences.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } },
+    { "id": "PULL_AWAY", "label": "Pull Teammates Away", "description": "Try to separate teammates from the confrontation.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } },
+    { "id": "STAY_OUT", "label": "Stay Out", "description": "Keep clear and let officials handle the brawl.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } }
   ],
   "context": { "seed": 61001, "distance_to_goal": 55, "side_of_pitch": "CENTER", "pressure": 50, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "SAFE", "previous_outcome": null, "carrier_player_id": "team_1_ST_10" },
-  "origin": null, "contract_version": 2,
+  "origin": null, "contract_version": 3,
   "field_state": {
     "id": "field-brawl-1", "match_id": "match-fixture-1", "minute": 61, "action_type": "BRAWL", "scene_family": "RANDOM_EVENT",
     "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 49, "y": 50, "is_legend": true, "has_ball": true }],

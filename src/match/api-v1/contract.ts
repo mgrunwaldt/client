@@ -11,6 +11,7 @@ export const KNOWN_MATCH_STATUSES = [
   "NOT_STARTED",
   "IN_PROGRESS",
   "WAITING_FOR_DECISION",
+  "WAITING_FOR_RECOVERY",
   "HALFTIME",
   "FINISHED",
 ] as const;
@@ -128,6 +129,7 @@ export interface BackendPendingAction {
     id: string;
     label: string;
     description: string;
+    input_schema?: unknown;
     [key: string]: unknown;
   }>;
   control_envelope?: KickControlEnvelope;
@@ -172,6 +174,14 @@ export interface BackendDecisionResult {
   description: string;
   success: boolean;
   outcome_type: string;
+  immediate_effects?: BackendImmediateEffects;
+  pending_settlement_events?: BackendPendingSettlementEvent[];
+  yellow_card?: boolean;
+  red_card?: boolean;
+  injured?: boolean;
+  substituted?: boolean;
+  my_team_scored?: boolean;
+  opponent_team_scored?: boolean;
   flight_path?: BackendFlightPoint[];
   flight_outcome?: string;
   final_point?: BackendFlightPoint;
@@ -179,6 +189,62 @@ export interface BackendDecisionResult {
   interceptor?: BackendFieldPlayer;
   receiver_control?: BackendReceiverControl;
   [key: string]: unknown;
+}
+
+export interface BackendImmediateEffects {
+  energy_delta?: number;
+  yellow_cards?: number;
+  red_card?: boolean;
+  injured?: boolean;
+  substituted?: boolean;
+  my_team_score_delta?: number;
+  opponent_score_delta?: number;
+  my_team_momentum_delta?: number;
+  opponent_momentum_delta?: number;
+  opponent_yellow_cards?: number;
+  opponent_red_cards?: number;
+  follow_up_scene?: string;
+  abandoned_by?: string;
+  [key: string]: unknown;
+}
+
+export interface BackendPendingSettlementEvent {
+  version: 1;
+  id: string;
+  match_id: string;
+  category: "SOCIAL" | "CAREER" | "SEASON" | "ECONOMY";
+  type: string;
+  source: {
+    match_id: string;
+    action_id: string;
+    action_sequence: number;
+    settlement_sequence: number;
+    scene_type: string;
+    choice: string;
+  };
+  payload: Record<string, unknown>;
+  created_revision: number;
+  created_time: {
+    match_minute: number;
+    decision_sequence: number;
+  };
+  status: "PENDING";
+}
+
+export interface BackendUnsupportedSceneRecovery {
+  version: 1;
+  status: "RECOVERY_REQUIRED";
+  code: "UNSUPPORTED_SCENE_TYPE";
+  scene_type: string;
+  action_id: string;
+  action_sequence: number;
+  minute: number;
+  recovery: {
+    choice: "CONTINUE_WITHOUT_EVENT";
+    label: string;
+    description: string;
+    input_schema: unknown;
+  };
 }
 
 export interface BackendMatchResponse {
@@ -192,6 +258,8 @@ export interface BackendMatchResponse {
   events: BackendTimelineEvent[];
   match: BackendMatch;
   decision_result?: BackendDecisionResult;
+  pending_settlement_events?: BackendPendingSettlementEvent[];
+  unsupported_scene?: BackendUnsupportedSceneRecovery | null;
   [key: string]: unknown;
 }
 
@@ -202,6 +270,7 @@ export interface BackendMatchSnapshot {
   timeline: BackendTimelineEvent[];
   pending_action: BackendPendingAction | null;
   field_state: BackendFieldState | null;
+  unsupported_scene?: BackendUnsupportedSceneRecovery | null;
   [key: string]: unknown;
 }
 
@@ -330,9 +399,26 @@ export const BackendPendingActionSchema: z.ZodType<BackendPendingAction> = z
       })
       .passthrough()
       .nullable(),
-    contract_version: z.literal(2),
+    contract_version: z.union([z.literal(2), z.literal(3)]),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((action, context) => {
+    const usesRandomEventContract = [
+      "JUMPER",
+      "ARGUMENT_OPPONENT",
+      "ARGUMENT_TEAMMATE",
+      "BRAWL",
+      "BATHROOM",
+    ].includes(action.scene_type);
+    const expectedVersion = usesRandomEventContract ? 3 : 2;
+    if (action.contract_version !== expectedVersion) {
+      context.addIssue({
+        code: "custom",
+        message: `${action.scene_type} requires pending-action contract version ${expectedVersion}.`,
+        path: ["contract_version"],
+      });
+    }
+  });
 
 export const BackendMatchSchema: z.ZodType<BackendMatch> = z
   .object({
@@ -427,6 +513,57 @@ export const BackendTimelineEventSchema: z.ZodType<BackendTimelineEvent> = z
   })
   .passthrough();
 
+const BackendPendingSettlementEventSchema: z.ZodType<BackendPendingSettlementEvent> =
+  z
+    .object({
+      version: z.literal(1),
+      id: identifier,
+      match_id: identifier,
+      category: z.enum(["SOCIAL", "CAREER", "SEASON", "ECONOMY"]),
+      type: z.string().trim().min(1),
+      source: z
+        .object({
+          match_id: identifier,
+          action_id: identifier,
+          action_sequence: z.number().int().min(1),
+          settlement_sequence: z.number().int().min(1),
+          scene_type: z.string().trim().min(1),
+          choice: z.string().trim().min(1),
+        })
+        .strict(),
+      payload: z.record(z.string(), z.unknown()),
+      created_revision: z.number().int().min(1),
+      created_time: z
+        .object({
+          match_minute: z.number().int().min(1).max(89),
+          decision_sequence: z.number().int().min(1),
+        })
+        .strict(),
+      status: z.literal("PENDING"),
+    })
+    .strict();
+
+const BackendUnsupportedSceneRecoverySchema: z.ZodType<BackendUnsupportedSceneRecovery> =
+  z
+    .object({
+      version: z.literal(1),
+      status: z.literal("RECOVERY_REQUIRED"),
+      code: z.literal("UNSUPPORTED_SCENE_TYPE"),
+      scene_type: z.string().trim().min(1).max(64),
+      action_id: identifier,
+      action_sequence: z.number().int().min(1),
+      minute: z.number().int().min(1).max(89),
+      recovery: z
+        .object({
+          choice: z.literal("CONTINUE_WITHOUT_EVENT"),
+          label: z.string().trim().min(1).max(120),
+          description: z.string().trim().min(1).max(256),
+          input_schema: z.unknown(),
+        })
+        .strict(),
+    })
+    .strict();
+
 export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
   .object({
     description: z.string(),
@@ -438,6 +575,18 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
     receiver: BackendFieldPlayerSchema.optional(),
     interceptor: BackendFieldPlayerSchema.optional(),
     receiver_control: BackendReceiverControlSchema.optional(),
+    immediate_effects: z.record(z.string(), z.unknown()).optional(),
+    pending_settlement_events: z
+      .array(BackendPendingSettlementEventSchema)
+      .optional(),
+    unsupported_scene:
+      BackendUnsupportedSceneRecoverySchema.nullable().optional(),
+    yellow_card: z.boolean().optional(),
+    red_card: z.boolean().optional(),
+    injured: z.boolean().optional(),
+    substituted: z.boolean().optional(),
+    my_team_scored: z.boolean().optional(),
+    opponent_team_scored: z.boolean().optional(),
   })
   .passthrough()
   .superRefine((result, context) => {
@@ -483,6 +632,9 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
     events: z.array(BackendTimelineEventSchema),
     match: BackendMatchSchema,
     decision_result: BackendDecisionResultSchema.optional(),
+    pending_settlement_events: z
+      .array(BackendPendingSettlementEventSchema)
+      .optional(),
   })
   .passthrough()
   .superRefine((response, context) => {
@@ -638,6 +790,8 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
     timeline: z.array(BackendTimelineEventSchema),
     pending_action: BackendPendingActionSchema.nullable(),
     field_state: BackendFieldStateSchema.nullable(),
+    unsupported_scene:
+      BackendUnsupportedSceneRecoverySchema.nullable().optional(),
   })
   .passthrough()
   .superRefine((response, context) => {

@@ -7,6 +7,8 @@
   "action": null,
   "action_team": null,
   "events": [{ "match_id": "match-fixture-1", "event_id": 8, "action": "HALFTIME", "minute": 45, "team": "NEUTRAL", "description": "Half-time.", "my_team_score": 1, "opponent_team_score": 0, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": true, "match_end": false, "meta": null }],
+  "pending_settlement_events": [],
+  "unsupported_scene": null,
   "match": {
     "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 1, "opponent_team_score": 0,
     "current_time": 45, "prev_time": 0, "match_status": "HALFTIME", "event_counter": 8, "revision": 1, "pending_action": null,

@@ -7,6 +7,7 @@ import {
   isKnownPlayableScene,
 } from "./api-v1/contract";
 import { parseDribblePattern } from "./dribble-input";
+import { isRandomEventAction, parseRandomEventAction } from "./random-event";
 import type {
   HydratedMatchSession,
   MatchPlaybackStatus,
@@ -46,6 +47,7 @@ const initialData: MatchSessionData = {
   playstyle: "balanced",
   pendingCommand: null,
   decisionResult: null,
+  unsupportedScene: null,
   diagnostic: null,
   error: null,
 };
@@ -75,6 +77,7 @@ function routeForPhase(phase: MatchSessionPhase): MatchSessionRoute {
     case "scene_ready":
     case "submitting":
     case "result_playback":
+    case "unsupported_recovery":
       return "field";
     case "timeline_playback":
     case "resuming":
@@ -96,6 +99,7 @@ function playbackStatusForPhase(phase: MatchSessionPhase): MatchPlaybackStatus {
     case "scene_ready":
     case "submitting":
     case "result_playback":
+    case "unsupported_recovery":
       return "field_ready";
     default:
       return "idle";
@@ -168,6 +172,25 @@ function unsupportedScene(state: MatchSessionData, scene: string) {
       retryable: true,
     },
     "unsupported_contract",
+  );
+}
+
+function unsupportedSceneRecovery(
+  state: MatchSessionData,
+  recovery: NonNullable<HydratedMatchSession["unsupportedScene"]>,
+) {
+  return withPhase(
+    {
+      ...state,
+      unsupportedScene: recovery,
+      diagnostic: {
+        kind: "unsupported_scene",
+        message: `The match service returned unsupported scene ${recovery.scene_type}.`,
+        retryable: true,
+      },
+      error: null,
+    },
+    "unsupported_recovery",
   );
 }
 
@@ -251,6 +274,12 @@ function pendingActionContractError(
     const parsed = parseDribblePattern(fieldState.dribble_pattern);
     if (!parsed.pattern) {
       return parsed.error;
+    }
+  }
+  if (isRandomEventAction(pendingAction)) {
+    const parsed = parseRandomEventAction(pendingAction);
+    if (!parsed.event) {
+      return parsed.error ?? "The random event contract is unsupported.";
     }
   }
   return null;
@@ -342,6 +371,8 @@ function phaseForMatch(
         : ("timeline_playback" as const);
     case "WAITING_FOR_DECISION":
       return pendingAction ? ("timeline_playback" as const) : null;
+    case "WAITING_FOR_RECOVERY":
+      return null;
     case "HALFTIME":
       return "halftime" as const;
     case "FINISHED":
@@ -373,18 +404,46 @@ function applyAuthoritativeSnapshot(
       ? (payload.match.pending_action ?? null)
       : payload.pendingAction;
   const match = payload.match;
+  const unsupportedRecovery = payload.unsupportedScene ?? null;
+  const hydratedState = {
+    ...state,
+    match,
+    myTeam: payload.myTeam,
+    opponentTeam: payload.opponentTeam,
+    pendingAction,
+    fieldState: pendingAction?.field_state ?? null,
+    timelineEvents: mergeTimelineEvents(
+      state.match?.id === match.id ? state.timelineEvents : [],
+      payload.timelineEvents,
+    ),
+    unsupportedScene: unsupportedRecovery,
+  };
+  if (unsupportedRecovery) {
+    if (
+      match.match_status !== "WAITING_FOR_RECOVERY" ||
+      pendingAction?.id !== unsupportedRecovery.action_id
+    ) {
+      return diagnosticState(hydratedState, {
+        kind: "contract",
+        message:
+          "Unsupported-scene recovery does not match the authoritative action.",
+        retryable: true,
+      });
+    }
+    return unsupportedSceneRecovery(hydratedState, unsupportedRecovery);
+  }
   const phase = phaseForMatch(match, pendingAction);
   if (!phase) {
     return pendingAction
-      ? unsupportedStatus(state, match.match_status)
-      : diagnosticState(state, {
+      ? unsupportedStatus(hydratedState, match.match_status)
+      : diagnosticState(hydratedState, {
           kind: "contract",
           message: "WAITING_FOR_DECISION requires a pending action.",
           retryable: true,
         });
   }
   if (pendingAction && !isKnownPlayableScene(pendingAction.scene_type)) {
-    return unsupportedScene(state, pendingAction.scene_type);
+    return unsupportedScene(hydratedState, pendingAction.scene_type);
   }
   if (pendingAction) {
     const contractError = pendingActionContractError(
@@ -392,7 +451,7 @@ function applyAuthoritativeSnapshot(
       pendingAction,
     );
     if (contractError) {
-      return diagnosticState(state, {
+      return diagnosticState(hydratedState, {
         kind: "contract",
         message: contractError,
         retryable: true,
@@ -434,6 +493,7 @@ function applyAuthoritativeSnapshot(
             : payload.match.current_time)),
       pendingCommand,
       decisionResult: options.resultPlayback ? state.decisionResult : null,
+      unsupportedScene: null,
       diagnostic: null,
       error: null,
     },
@@ -458,6 +518,7 @@ function responsePayload(
     opponentTeam: state.opponentTeam,
     timelineEvents: response.events,
     pendingAction,
+    unsupportedScene: response.unsupported_scene,
   };
 }
 
@@ -550,6 +611,7 @@ export function matchSessionReducer(
           pendingCommand: null,
           recoveryPhase: null,
           decisionResult: null,
+          unsupportedScene: null,
           diagnostic: null,
           error: null,
         },
@@ -601,7 +663,8 @@ export function matchSessionReducer(
       return withPhase({ ...state, pendingCommand: event.command }, "resuming");
     case "ACTION_REQUESTED":
       if (
-        state.phase !== "scene_ready" ||
+        (state.phase !== "scene_ready" &&
+          state.phase !== "unsupported_recovery") ||
         event.command.operation !== "action" ||
         !commandMatchesMatch(state, event.command)
       ) {

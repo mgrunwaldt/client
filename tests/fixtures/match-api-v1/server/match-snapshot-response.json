@@ -2,7 +2,7 @@
   "match": {
     "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
     "current_time": 90, "prev_time": 0, "match_status": "FINISHED", "event_counter": 17, "revision": 1, "pending_action": null,
-    "seed": "fixture-seed-1", "engine_version": "match-engine/3", "ruleset_version": "nss-match-v2/1",
+    "seed": "fixture-seed-1", "engine_version": "match-engine/4", "ruleset_version": "nss-match-v2/1",
     "initial_state": { "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" }, "opponent_team": { "id": "team_2", "name": "Cartridge City", "offense": 85, "defense": 68, "intensity": 72, "set_pieces": 77, "chemistry": 70, "formation": "4-2-3-1" }, "legend_profile": { "stamina": 78, "energy": 78, "shoot": 74, "dribble": 76, "speed": 77, "passing": 73, "heading": 69, "defense": 58, "intelligence": 72, "yellow_cards": 0, "red_card": false, "simulation_attempts": 0, "substitutions": 0 }, "ruleset": { "rebound_play_enabled": true } }
   },
   "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" },
@@ -12,5 +12,12 @@
     { "match_id": "match-fixture-1", "event_id": 17, "action": "MATCH_END", "minute": 90, "team": "NEUTRAL", "description": "Match finished.", "my_team_score": 2, "opponent_team_score": 1, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": true, "meta": null }
   ],
   "pending_action": null,
-  "field_state": null
+  "field_state": null,
+  "pending_settlement_events": [{
+    "version": 1, "id": "settlement-fan-1", "match_id": "match-fixture-1", "category": "SOCIAL", "type": "FAN_RELATIONSHIP_DELTA",
+    "source": { "match_id": "match-fixture-1", "action_id": "action-jumper-1", "action_sequence": 4, "settlement_sequence": 1, "scene_type": "JUMPER", "choice": "ACCEPT_HUG" },
+    "payload": { "delta": 1, "reason": "ACCEPTED_PITCH_INVADER" }, "created_revision": 1,
+    "created_time": { "match_minute": 53, "decision_sequence": 4 }, "status": "PENDING"
+  }],
+  "unsupported_scene": null
 }

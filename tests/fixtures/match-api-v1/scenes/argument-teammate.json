@@ -1,13 +1,13 @@
 {
   "id": "action-argument-teammate-1", "minute": 73, "action_type": "ARGUMENT_TEAMMATE", "scene_type": "ARGUMENT_TEAMMATE", "action_team": "NEUTRAL", "source": "SIMULATION",
-  "title": "Teammate Tension", "description": "A random match event interrupts play.", "field_state_id": "field-argument-teammate-1",
+  "title": "Heated Argument with Teammate", "description": "Frustration between teammates erupts.", "field_state_id": "field-argument-teammate-1",
   "available_choices": [
-    { "id": "SHOUT_BACK", "label": "Shout Back", "description": "Let the frustration out.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } },
-    { "id": "CALM_DOWN", "label": "Calm Down", "description": "Stabilize the team.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } },
-    { "id": "IGNORE", "label": "Ignore", "description": "Refocus on play.", "input_schema": { "required": ["choice", "selection_quality", "seed"] } }
+    { "id": "SHOUT_BACK", "label": "Shout Back", "description": "Answer the criticism and risk damaging the group.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } },
+    { "id": "CALM_DOWN", "label": "Try to Calm Them", "description": "De-escalate and refocus the teammate.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } },
+    { "id": "IGNORE", "label": "Ignore", "description": "Leave the teammate unanswered and play on.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } }
   ],
   "context": { "seed": 73001, "distance_to_goal": 55, "side_of_pitch": "CENTER", "pressure": 50, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "SAFE", "previous_outcome": null, "carrier_player_id": "team_1_ST_10" },
-  "origin": null, "contract_version": 2,
+  "origin": null, "contract_version": 3,
   "field_state": {
     "id": "field-argument-teammate-1", "match_id": "match-fixture-1", "minute": 73, "action_type": "ARGUMENT_TEAMMATE", "scene_family": "RANDOM_EVENT",
     "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 48, "y": 51, "is_legend": true, "has_ball": true }, { "id": "team_1_CM_6", "role": "CM", "x": 51, "y": 50 }],

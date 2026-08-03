@@ -46,6 +46,13 @@ import {
   parseKickControlEnvelope,
 } from "../../match/kick-input";
 import {
+  createRandomEventDecision,
+  createRandomEventSubmissionGate,
+  isRandomEventAction,
+  isRandomEventSceneType,
+  parseRandomEventAction,
+} from "../../match/random-event";
+import {
   authoritativeContinuationFieldState,
   authoritativeFacingTarget,
 } from "../../match/receiver-control";
@@ -53,6 +60,11 @@ import { useMatchSessionStore } from "../../match/session-store";
 import { BallAimSurface } from "./BallAimSurface";
 import { DribbleControls } from "./DribbleControls";
 import { KickContactDialog } from "./KickContactDialog";
+import {
+  RandomEventResultDetails,
+  RandomEventScene,
+  UnsupportedEventRecovery,
+} from "./RandomEventScene";
 import {
   createRenderReadinessState,
   invalidateRenderReadiness,
@@ -71,6 +83,8 @@ const PLAYER_TRAJECTORY_TRACK_DISTANCE = 10;
 const PLAYER_TRACK_TURN_SPEED = 9;
 const DEFAULT_STRIKE_CONTACT = { x: 0.45, y: -0.15 };
 const RESULT_HOLD_MS = 2_500;
+const DEBUG_RESULT_CONTINUATION =
+  import.meta.env.VITE_MATCH_DEBUG_CONTINUATION === "true";
 const DEFAULT_CAMERA_POSITION: [number, number, number] = [0, 358, 234];
 const DEFAULT_CAMERA_ROTATION: [number, number, number] = [-0.7, 0, 0];
 const DEFAULT_CAMERA_ZOOM = 8;
@@ -500,7 +514,7 @@ function PlayerLabel({
       center
       zIndexRange={[20, 20]}
       style={{ display: visible ? "block" : "none" }}
-      className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold tracking-[0.18em] uppercase ${
+      className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
         isTeammate ? "bg-black/65 text-[#d8ff6f]" : "bg-black/65 text-[#9fd1ff]"
       }`}
     >
@@ -555,22 +569,22 @@ function FieldLoadingOverlay({
   return (
     <div
       data-testid="field-loading-overlay"
-      className="absolute inset-0 z-30 overflow-hidden bg-linear-to-b from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]"
+      className="bg-linear-to-b absolute inset-0 z-30 overflow-hidden from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]"
     >
-      <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-35" />
+      <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%]" />
       <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
       <div className="absolute inset-x-[30%] top-[34%] h-px bg-cyan-200/25" />
-      <div className="absolute inset-x-[12%] top-[66%] h-[18%] rounded-t-[7rem] border border-cyan-200/18" />
-      <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-slate-950/92 via-slate-950/70 to-transparent px-6 py-8 text-white">
-        <div className="rounded-full bg-black/45 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
+      <div className="border-cyan-200/18 absolute inset-x-[12%] top-[66%] h-[18%] rounded-t-[7rem] border" />
+      <div className="bg-linear-to-t from-slate-950/92 absolute inset-x-0 bottom-0 z-10 via-slate-950/70 to-transparent px-6 py-8 text-white">
+        <div className="rounded-full bg-black/45 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
           Loading Field
         </div>
         <div className="mt-3 rounded-2xl bg-black/45 px-4 py-4 backdrop-blur-sm">
           <p className="text-lg font-bold">Preparing match scene</p>
           <div className="mt-3 h-2 rounded-full bg-white/10">
             <div
-              className="h-full rounded-full bg-linear-to-r from-cyan-300 via-sky-400 to-emerald-300 transition-[width] duration-300"
+              className="bg-linear-to-r h-full rounded-full from-cyan-300 via-sky-400 to-emerald-300 transition-[width] duration-300"
               style={{ width: `${Math.max(10, Math.min(100, progress))}%` }}
             />
           </div>
@@ -582,12 +596,12 @@ function FieldLoadingOverlay({
 
 function FieldBackdrop() {
   return (
-    <div className="absolute inset-0 overflow-hidden bg-linear-to-b from-[#0c5871] via-[#11816f] to-[#0b4a3c]">
-      <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-30" />
+    <div className="bg-linear-to-b absolute inset-0 overflow-hidden from-[#0c5871] via-[#11816f] to-[#0b4a3c]">
+      <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%]" />
       <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
       <div className="absolute inset-x-[18%] top-[28%] h-px bg-cyan-200/20" />
-      <div className="absolute inset-x-[10%] top-[60%] h-[26%] rounded-t-[10rem] border border-cyan-200/16" />
+      <div className="border-cyan-200/16 absolute inset-x-[10%] top-[60%] h-[26%] rounded-t-[10rem] border" />
     </div>
   );
 }
@@ -718,6 +732,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const match = useMatchSessionStore((state) => state.match);
   const phase = useMatchSessionStore((state) => state.phase);
   const diagnostic = useMatchSessionStore((state) => state.diagnostic);
+  const unsupportedScene = useMatchSessionStore(
+    (state) => state.unsupportedScene,
+  );
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
@@ -763,6 +780,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
   const resultTimerRef = useRef<number | null>(null);
   const kickSubmissionGateRef = useRef(createKickSubmissionGate());
   const dribbleSubmissionGateRef = useRef(createDribbleSubmissionGate());
+  const randomEventSubmissionGateRef = useRef(
+    createRandomEventSubmissionGate(),
+  );
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
   const handleRenderReadiness = useCallback(
     (sceneKey: string, ready: boolean) => {
@@ -808,9 +828,15 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         opponentPlayers.filter((player) => player.role === "GK").length
       : null;
   const isDribbleScene = pendingAction?.scene_type === "DRIBBLE";
+  const isRandomEventScene = isRandomEventAction(pendingAction);
+  const isStagedRandomEvent = Boolean(
+    stagedKickResult && isRandomEventSceneType(stagedKickResult.sceneType),
+  );
+  const parsedRandomEvent = parseRandomEventAction(pendingAction);
   // Drei Html labels share the DOM overlay with the active-scene HUD. Hide the
   // legend label whenever either dribble or a result takes over that region.
-  const showLegendPlayerLabel = !isDribbleScene && !stagedKickResult;
+  const showLegendPlayerLabel =
+    !isDribbleScene && !isRandomEventScene && !stagedKickResult;
   const dribbleDefenderId =
     isDribbleScene && legendPlayer
       ? (opponentPlayers.reduce<BackendFieldPlayer | null>(
@@ -898,6 +924,16 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     pendingAction.available_choices.some(
       (choice) => choice.id === "SIMULATE_FOUL",
     );
+  const canResolveRandomEvent =
+    isCanvasReady &&
+    !stagedKickResult &&
+    phase === "scene_ready" &&
+    Boolean(parsedRandomEvent.event);
+  const canRecoverUnsupportedScene =
+    phase === "unsupported_recovery" &&
+    Boolean(unsupportedScene) &&
+    Boolean(match?.id) &&
+    pendingAction?.id === unsupportedScene?.action_id;
   const displayedKickDecision =
     releasedAimDraft && kickControlEnvelope
       ? buildCanonicalKickDecision(
@@ -1142,6 +1178,123 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     }
   };
 
+  const handleRandomEventDecision = async (choiceId: string) => {
+    if (!match?.id || !pendingAction || !parsedRandomEvent.event) {
+      return;
+    }
+    if (!randomEventSubmissionGateRef.current.begin(pendingAction.id)) {
+      return;
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = createRandomEventDecision(parsedRandomEvent.event, choiceId);
+    } catch (error) {
+      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      setSubmitError(
+        error instanceof Error ? error.message : "The event choice is invalid.",
+      );
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setLoading(true);
+      setError(null);
+      const command =
+        pendingCommand?.operation === "action" &&
+        pendingCommand.matchId === match.id &&
+        pendingCommand.actionId === pendingAction.id
+          ? pendingCommand
+          : createMatchCommand(
+              "action",
+              {
+                match_id: match.id,
+                action_id: pendingAction.id,
+                match_decision: payload,
+              },
+              {
+                matchId: match.id,
+                revision: match.revision ?? null,
+                actionId: pendingAction.id,
+              },
+            );
+      if (!beginActionCommand(command)) {
+        randomEventSubmissionGateRef.current.reset(pendingAction.id);
+        return;
+      }
+      const submittedFieldState = fieldState;
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        payload,
+        command,
+      );
+      setActionResponse(response);
+      setResolvedSceneFieldState(submittedFieldState);
+      setStagedKickResult({ response, sceneType: pendingAction.scene_type });
+      setLoading(false);
+      startBallPlayback(response);
+    } catch (error) {
+      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to submit match event.";
+      setSubmitError(message);
+      setError(error);
+      setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUnsupportedSceneRecovery = async () => {
+    if (!match?.id || !pendingAction || !unsupportedScene) return;
+    const choiceId = unsupportedScene.recovery.choice;
+    if (!randomEventSubmissionGateRef.current.begin(pendingAction.id)) return;
+
+    try {
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setLoading(true);
+      setError(null);
+      const payload = { choice: choiceId };
+      const command = createMatchCommand(
+        "action",
+        {
+          match_id: match.id,
+          action_id: pendingAction.id,
+          match_decision: payload,
+        },
+        {
+          matchId: match.id,
+          revision: match.revision ?? null,
+          actionId: pendingAction.id,
+        },
+      );
+      if (!beginActionCommand(command)) {
+        randomEventSubmissionGateRef.current.reset(pendingAction.id);
+        return;
+      }
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        payload,
+        command,
+      );
+      setActionResponse(response);
+      setLoading(false);
+    } catch (error) {
+      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      setError(error);
+      setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleNextAction = () => {
     if (!match?.id || !stagedKickResult) {
       return;
@@ -1236,9 +1389,9 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       aria-hidden={!active}
     >
       <FieldBackdrop />
-      {!stagedKickResult && !isDribbleScene && (
-        <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
-          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
+      {!stagedKickResult && !isDribbleScene && !isRandomEventScene && (
+        <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col gap-2 p-4 text-white">
+          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
             {pendingAction?.title || "Field"}
           </div>
           <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
@@ -1399,7 +1552,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         !kickControlEnvelope && (
           <div
             role="alert"
-            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+            className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
           >
             This action uses unsupported kick controls. Refresh the match before
             interacting.
@@ -1411,7 +1564,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         !stagedKickResult && (
           <div
             role="alert"
-            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+            className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
           >
             {parsedDribblePattern.error}
           </div>
@@ -1427,6 +1580,56 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           onSubmit={handleDribbleDecision}
         />
       )}
+      {canResolveRandomEvent && pendingAction && parsedRandomEvent.event && (
+        <RandomEventScene
+          action={pendingAction}
+          event={parsedRandomEvent.event}
+          disabled={isSubmitting}
+          onChoose={handleRandomEventDecision}
+        />
+      )}
+      {canRecoverUnsupportedScene && unsupportedScene && (
+        <UnsupportedEventRecovery
+          recovery={unsupportedScene}
+          disabled={isSubmitting}
+          onContinue={handleUnsupportedSceneRecovery}
+        />
+      )}
+      {(phase === "recoverable_error" || phase === "unsupported_contract") &&
+        !stagedKickResult &&
+        !releasedAimDraft && (
+          <div
+            data-testid="scene-contract-error"
+            role="alert"
+            className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
+          >
+            <p className="font-orbitron text-[10px] font-black uppercase tracking-[0.28em] text-pink-200">
+              Recoverable Match Error
+            </p>
+            <p className="mt-3 text-base leading-6 text-cyan-50">
+              {diagnostic?.message ||
+                "The live match scene could not be rendered safely."}
+            </p>
+            <div className="mt-5 flex gap-3">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-cyan-100"
+              >
+                Refresh
+              </button>
+              {match?.id && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/match/${match.id}`)}
+                  className="border-white/18 text-white/82 rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-[0.12em]"
+                >
+                  Timeline
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       {releasedAimDraft && kickControlEnvelope && (
         <KickContactDialog
           envelope={kickControlEnvelope}
@@ -1447,34 +1650,49 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           }
           className="absolute inset-x-0 bottom-0 z-30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-white"
         >
-          <div className="mx-auto w-full max-w-md rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
+          <div className="bg-slate-950/88 mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.8rem] border border-cyan-300/30 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-bold tracking-[0.28em] text-cyan-200/75 uppercase">
+                <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-200/75">
                   Scene Result
                 </p>
-                <p className="mt-1 text-sm font-semibold text-white/92">
+                <p className="text-white/92 mt-1 text-sm font-semibold">
                   {resultMinute}' · {stagedKickResult.sceneType}
                 </p>
               </div>
-              <div className="rounded-full bg-cyan-400/12 px-3 py-1 text-[10px] font-bold tracking-[0.24em] text-cyan-200 uppercase">
+              <div className="bg-cyan-400/12 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-200">
                 {isResultAnimating ? "In Motion" : "Resolved"}
               </div>
             </div>
 
-            <p className="mt-3 text-base leading-tight font-semibold text-white">
+            <p className="mt-3 text-base font-semibold leading-tight text-white">
               {resultDescription}
             </p>
 
-            <button
-              type="button"
-              data-testid="next-action"
-              onClick={handleNextAction}
-              disabled={isResultAnimating}
-              className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Next Action
-            </button>
+            {isStagedRandomEvent && (
+              <RandomEventResultDetails result={stagedDecisionResult} />
+            )}
+
+            {DEBUG_RESULT_CONTINUATION ? (
+              <button
+                type="button"
+                data-testid="next-action"
+                onClick={handleNextAction}
+                disabled={isResultAnimating}
+                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black uppercase tracking-[0.2em] text-cyan-100 transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Next Action
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleNextAction}
+                disabled={isResultAnimating}
+                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black uppercase tracking-[0.2em] text-cyan-100 transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Tap to continue
+              </button>
+            )}
           </div>
         </div>
       )}

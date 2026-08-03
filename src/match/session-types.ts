@@ -7,6 +7,7 @@ import type {
   BackendPendingAction,
   BackendTeam,
   BackendTimelineEvent,
+  BackendUnsupportedSceneRecovery,
   KnownPlayableScene,
 } from "./api-v1/contract";
 import type { MatchApiResponseMetadata } from "./api-v1/errors";
@@ -28,7 +29,8 @@ export type MatchSessionPhase =
   | "finished"
   | "legend_unavailable_simulation"
   | "recoverable_error"
-  | "unsupported_contract";
+  | "unsupported_contract"
+  | "unsupported_recovery";
 
 export type MatchSessionRoute = "main" | "prematch" | "timeline" | "field";
 
@@ -79,6 +81,7 @@ export interface MatchSessionData {
   playstyle: Playstyle;
   pendingCommand: MatchCommand | null;
   decisionResult: BackendDecisionResult | null;
+  unsupportedScene: BackendUnsupportedSceneRecovery | null;
   diagnostic: MatchSessionDiagnostic | null;
   error: string | null;
 }
@@ -89,6 +92,7 @@ export interface HydratedMatchSession {
   opponentTeam: BackendTeam;
   timelineEvents: BackendTimelineEvent[];
   pendingAction?: BackendPendingAction | null;
+  unsupportedScene?: BackendUnsupportedSceneRecovery | null;
 }
 
 export type MatchSessionEvent =

@@ -23,10 +23,10 @@ import { createMatchApiV1SchemaValidator } from "../scripts/match-api-v1-schema-
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "97ff980d0ef4bd3a69cd3b56dae5efe7d09949ad";
+const CONTRACT_SOURCE_REVISION = "e0a03ff69d9a5e3dd4cd9dc1a2f67943b970a888";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "b59022ab760cd6f6b5239e95f79b9a3af15ab80a6873c393c4cb4a0a37556c15";
+  "04c42c6bb646b38eff26b330df5bf6158bd27a2432bf4e0d90c90b08af2275ac";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(
@@ -160,7 +160,7 @@ describe("Match API v1 test fixture mirror", () => {
       revision: CONTRACT_SOURCE_REVISION,
       contract_path: "contracts/match-api/v1",
       description:
-        "Test-only mirror of the M2 dribble Match API v1 contract. Runtime modules must not import this directory.",
+        "Test-only mirror of the M2 random-event Match API v1 contract. Runtime modules must not import this directory.",
     });
     expect(sha256(manifestContents.toString())).toBe(FIXTURE_MANIFEST_SHA256);
 
@@ -168,7 +168,7 @@ describe("Match API v1 test fixture mirror", () => {
       .filter((file) => file !== "fixture-manifest.json")
       .sort();
     expect(Object.keys(manifest.sha256).sort()).toEqual(actualFiles);
-    expect(actualFiles).toHaveLength(48);
+    expect(actualFiles).toHaveLength(50);
   });
 
   it("seals and validates the complete Auth Boundary v1 fixture set", async () => {

@@ -7,6 +7,7 @@ import type {
   BackendPendingAction,
   BackendTeam,
   BackendTimelineEvent,
+  BackendUnsupportedSceneRecovery,
 } from "../src/match/api-v1/contract";
 import {
   createInitialMatchSession,
@@ -67,6 +68,68 @@ async function teams() {
 }
 
 describe("match session reducer", () => {
+  it("preserves the server-advertised recovery intent for an unknown future scene", async () => {
+    const teamFixture = await teams();
+    const knownAction =
+      await readFixture<BackendPendingAction>("scenes/jumper.json");
+    const action = structuredClone(knownAction);
+    action.scene_type = "FUTURE_RANDOM_EVENT_V99";
+    action.action_type = "FUTURE_RANDOM_EVENT_V99";
+    action.available_choices = [
+      {
+        id: "CONTINUE_WITHOUT_EVENT",
+        label: "Continue Without Event",
+        description: "Skip unsupported event content without applying effects.",
+        input_schema: {
+          required: ["choice"],
+          allowed: ["choice"],
+          additional_properties: false,
+        },
+      },
+    ];
+    const recovery: BackendUnsupportedSceneRecovery = {
+      version: 1,
+      status: "RECOVERY_REQUIRED",
+      code: "UNSUPPORTED_SCENE_TYPE",
+      scene_type: action.scene_type,
+      action_id: action.id,
+      action_sequence: 4,
+      minute: action.minute,
+      recovery: {
+        choice: "CONTINUE_WITHOUT_EVENT",
+        label: "Continue Without Event",
+        description: "Skip unsupported event content without applying effects.",
+        input_schema: {
+          required: ["choice"],
+          allowed: ["choice"],
+          additional_properties: false,
+        },
+      },
+    };
+    const state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: {
+          ...matchForScene(action),
+          match_status: "WAITING_FOR_RECOVERY",
+          pending_action: action,
+        },
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [eventFor(action)],
+        pendingAction: action,
+        unsupportedScene: recovery,
+      },
+    });
+
+    expect(state).toMatchObject({
+      phase: "unsupported_recovery",
+      route: "field",
+      pendingAction: { id: action.id },
+      unsupportedScene: recovery,
+    });
+  });
+
   it("models match creation as an idempotent command transition", () => {
     const command = createMatchCommand(
       "create",
