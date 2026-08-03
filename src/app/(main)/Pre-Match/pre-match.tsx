@@ -246,12 +246,12 @@ export default function PreMatchScreen() {
           role="alert"
           className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/85 px-7 py-8 text-center"
         >
-          <p className="font-orbitron text-xs font-bold uppercase tracking-[0.32em] text-pink-300">
+          <p className="font-orbitron text-xs font-bold tracking-[0.32em] text-pink-300 uppercase">
             Match unavailable
           </p>
-          <p className="text-white/72 mt-5 text-sm leading-relaxed">{error}</p>
+          <p className="mt-5 text-sm leading-relaxed text-white/72">{error}</p>
           <Button
-            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 uppercase text-cyan-100"
+            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
             onClick={() => {
               setError(null);
               setReloadKey((value) => value + 1);
@@ -261,7 +261,7 @@ export default function PreMatchScreen() {
           </Button>
           <Button
             variant="ghost"
-            className="font-orbitron mt-3 min-h-11 w-full uppercase text-cyan-100"
+            className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"
             onClick={() => navigate("/")}
           >
             Back to home
@@ -290,7 +290,7 @@ export default function PreMatchScreen() {
         alt="pre-match-background"
         className="absolute inset-0 z-0 h-screen min-h-dvh w-full object-cover"
       />
-      <div className="z-100! relative flex w-full flex-col items-center justify-between">
+      <div className="relative z-100! flex w-full flex-col items-center justify-between">
         <BackButton className="mr-auto h-12 w-12" to="/" />
 
         <div className="z-100! flex h-full w-full flex-col items-center justify-center gap-4 py-8">
@@ -304,7 +304,7 @@ export default function PreMatchScreen() {
               isMyTeam={true}
             />
 
-            <span className="font-orbitron text-2xl font-bold uppercase text-white">
+            <span className="font-orbitron text-2xl font-bold text-white uppercase">
               vs
             </span>
 
@@ -337,7 +337,7 @@ export default function PreMatchScreen() {
                 disabled={loading}
                 aria-describedby={error ? "start-match-error" : undefined}
               >
-                <p className="airstrike-normal !text-5xl uppercase text-white">
+                <p className="airstrike-normal !text-5xl text-white uppercase">
                   {loading ? "..." : error ? "Retry" : "Play"}
                 </p>
               </Button>

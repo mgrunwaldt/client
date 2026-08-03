@@ -57,7 +57,7 @@ export default function RivalMarquee() {
       <div className="flex h-4 w-4 items-center justify-center rounded-full">
         <img src="/homepage/dev.webp" alt="dev-connect" />
       </div>
-      <span className="font-orbitron whitespace-nowrap text-base font-medium text-white md:text-xl">
+      <span className="font-orbitron text-base font-medium whitespace-nowrap text-white md:text-xl">
         Season 00 Starts in:{" "}
         <span className="text-overgoal-blue">{daysUntilSeasonStart} days</span>
       </span>

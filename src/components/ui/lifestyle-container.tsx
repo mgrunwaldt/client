@@ -68,7 +68,7 @@ export function HomeMenuItem({
               />
               <p
                 className={cn(
-                  "orbitron-medium rotate-2 text-[7px] uppercase text-white",
+                  "orbitron-medium rotate-2 text-[7px] text-white uppercase",
                   position === "left" ? "rotate-2" : "-rotate-2",
                 )}
               >

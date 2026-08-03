@@ -202,7 +202,7 @@ export default function ProfileScreen() {
                 {Object.entries(player.skills).map(([skill, value]) => (
                   <div key={skill} className="space-y-2">
                     <div className="flex justify-between">
-                      <span className="capitalize text-slate-300">{skill}</span>
+                      <span className="text-slate-300 capitalize">{skill}</span>
                       <span className="font-bold text-white">{value}</span>
                     </div>
                     <Progress value={value} className="h-2" />

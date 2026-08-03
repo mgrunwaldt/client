@@ -516,7 +516,7 @@ function PlayerLabel({
       center
       zIndexRange={[20, 20]}
       style={{ display: visible ? "block" : "none" }}
-      className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${
+      className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold tracking-[0.18em] uppercase ${
         isTeammate ? "bg-black/65 text-[#d8ff6f]" : "bg-black/65 text-[#9fd1ff]"
       }`}
     >
@@ -571,22 +571,22 @@ function FieldLoadingOverlay({
   return (
     <div
       data-testid="field-loading-overlay"
-      className="bg-linear-to-b absolute inset-0 z-30 overflow-hidden from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]"
+      className="absolute inset-0 z-30 overflow-hidden bg-linear-to-b from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]"
     >
-      <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%]" />
+      <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-35" />
       <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
       <div className="absolute inset-x-[30%] top-[34%] h-px bg-cyan-200/25" />
-      <div className="border-cyan-200/18 absolute inset-x-[12%] top-[66%] h-[18%] rounded-t-[7rem] border" />
-      <div className="bg-linear-to-t from-slate-950/92 absolute inset-x-0 bottom-0 z-10 via-slate-950/70 to-transparent px-6 py-8 text-white">
-        <div className="rounded-full bg-black/45 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
+      <div className="absolute inset-x-[12%] top-[66%] h-[18%] rounded-t-[7rem] border border-cyan-200/18" />
+      <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-slate-950/92 via-slate-950/70 to-transparent px-6 py-8 text-white">
+        <div className="rounded-full bg-black/45 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
           Loading Field
         </div>
         <div className="mt-3 rounded-2xl bg-black/45 px-4 py-4 backdrop-blur-sm">
           <p className="text-lg font-bold">Preparing match scene</p>
           <div className="mt-3 h-2 rounded-full bg-white/10">
             <div
-              className="bg-linear-to-r h-full rounded-full from-cyan-300 via-sky-400 to-emerald-300 transition-[width] duration-300"
+              className="h-full rounded-full bg-linear-to-r from-cyan-300 via-sky-400 to-emerald-300 transition-[width] duration-300"
               style={{ width: `${Math.max(10, Math.min(100, progress))}%` }}
             />
           </div>
@@ -598,12 +598,12 @@ function FieldLoadingOverlay({
 
 function FieldBackdrop() {
   return (
-    <div className="bg-linear-to-b absolute inset-0 overflow-hidden from-[#0c5871] via-[#11816f] to-[#0b4a3c]">
-      <div className="absolute inset-0 opacity-30 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%]" />
+    <div className="absolute inset-0 overflow-hidden bg-linear-to-b from-[#0c5871] via-[#11816f] to-[#0b4a3c]">
+      <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-30" />
       <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
       <div className="absolute inset-x-[18%] top-[28%] h-px bg-cyan-200/20" />
-      <div className="border-cyan-200/16 absolute inset-x-[10%] top-[60%] h-[26%] rounded-t-[10rem] border" />
+      <div className="absolute inset-x-[10%] top-[60%] h-[26%] rounded-t-[10rem] border border-cyan-200/16" />
     </div>
   );
 }
@@ -1390,8 +1390,8 @@ export default function GameScene({ active = true }: { active?: boolean }) {
     >
       <FieldBackdrop />
       {!stagedKickResult && !isDribbleScene && !isRandomEventScene && (
-        <div className="absolute bottom-0 left-0 right-0 z-20 flex flex-col gap-2 p-4 text-white">
-          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
+        <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
+          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
             {pendingAction?.title || "Field"}
           </div>
           <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
@@ -1552,7 +1552,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         !kickControlEnvelope && (
           <div
             role="alert"
-            className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
           >
             This action uses unsupported kick controls. Refresh the match before
             interacting.
@@ -1564,7 +1564,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
         !stagedKickResult && (
           <div
             role="alert"
-            className="absolute left-1/2 top-[calc(env(safe-area-inset-top)+1rem)] z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
           >
             {parsedDribblePattern.error}
           </div>
@@ -1603,7 +1603,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
             role="alert"
             className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
           >
-            <p className="font-orbitron text-[10px] font-black uppercase tracking-[0.28em] text-pink-200">
+            <p className="font-orbitron text-[10px] font-black tracking-[0.28em] text-pink-200 uppercase">
               Recoverable Match Error
             </p>
             <p className="mt-3 text-base leading-6 text-cyan-50">
@@ -1614,7 +1614,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-cyan-100"
+                className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
               >
                 Refresh
               </button>
@@ -1622,7 +1622,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 <button
                   type="button"
                   onClick={() => navigate(`/match/${match.id}`)}
-                  className="border-white/18 text-white/82 rounded-xl border px-4 py-2 text-xs font-bold uppercase tracking-[0.12em]"
+                  className="rounded-xl border border-white/18 px-4 py-2 text-xs font-bold tracking-[0.12em] text-white/82 uppercase"
                 >
                   Timeline
                 </button>
@@ -1650,22 +1650,22 @@ export default function GameScene({ active = true }: { active?: boolean }) {
           }
           className="absolute inset-x-0 bottom-0 z-30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-white"
         >
-          <div className="bg-slate-950/88 mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.8rem] border border-cyan-300/30 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
+          <div className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-cyan-200/75">
+                <p className="text-[10px] font-bold tracking-[0.28em] text-cyan-200/75 uppercase">
                   Scene Result
                 </p>
-                <p className="text-white/92 mt-1 text-sm font-semibold">
+                <p className="mt-1 text-sm font-semibold text-white/92">
                   {resultMinute}' · {stagedKickResult.sceneType}
                 </p>
               </div>
-              <div className="bg-cyan-400/12 rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-200">
+              <div className="rounded-full bg-cyan-400/12 px-3 py-1 text-[10px] font-bold tracking-[0.24em] text-cyan-200 uppercase">
                 {isResultAnimating ? "In Motion" : "Resolved"}
               </div>
             </div>
 
-            <p className="mt-3 text-base font-semibold leading-tight text-white">
+            <p className="mt-3 text-base leading-tight font-semibold text-white">
               {resultDescription}
             </p>
 
@@ -1679,7 +1679,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 data-testid="next-action"
                 onClick={handleNextAction}
                 disabled={isResultAnimating}
-                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black uppercase tracking-[0.2em] text-cyan-100 transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 Next Action
               </button>
@@ -1688,7 +1688,7 @@ export default function GameScene({ active = true }: { active?: boolean }) {
                 type="button"
                 onClick={handleNextAction}
                 disabled={isResultAnimating}
-                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black uppercase tracking-[0.2em] text-cyan-100 transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 Tap to continue
               </button>

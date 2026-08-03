@@ -99,7 +99,7 @@ export default function MenuFooter() {
     <div className="home-footer relative h-full max-h-[175px] w-full bg-black">
       <div
         className={cn(
-          "z-100 absolute -top-3 left-1/2 h-full max-h-[73px] w-full max-w-[236px] -translate-x-1/2",
+          "absolute -top-3 left-1/2 z-100 h-full max-h-[73px] w-full max-w-[236px] -translate-x-1/2",
           "flex items-center justify-center",
           "bg-[url('/homepage/play_button.svg')] bg-contain bg-center",
           "disabled:opacity-90",
@@ -111,7 +111,7 @@ export default function MenuFooter() {
           disabled={loading}
           aria-describedby={error ? "create-match-error" : undefined}
         >
-          <p className="airstrike-normal !text-5xl uppercase text-white">
+          <p className="airstrike-normal !text-5xl text-white uppercase">
             {loading ? "..." : error ? "Retry" : "Play"}
           </p>
         </Button>
@@ -120,7 +120,7 @@ export default function MenuFooter() {
         <p
           id="create-match-error"
           role="alert"
-          className="bg-slate-950/92 absolute -top-14 left-1/2 z-[110] w-[88%] -translate-x-1/2 rounded-xl border border-pink-400/50 px-3 py-2 text-center text-xs font-medium text-pink-100 shadow-[0_0_20px_rgba(234,36,112,0.16)]"
+          className="absolute -top-14 left-1/2 z-[110] w-[88%] -translate-x-1/2 rounded-xl border border-pink-400/50 bg-slate-950/92 px-3 py-2 text-center text-xs font-medium text-pink-100 shadow-[0_0_20px_rgba(234,36,112,0.16)]"
         >
           {error}
         </p>

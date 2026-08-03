@@ -25,11 +25,11 @@ function EventFrame({
   return (
     <>
       <div className="absolute inset-x-5 top-5 h-px bg-cyan-200/50" />
-      <div className="absolute bottom-5 right-5 top-5 w-px bg-cyan-200/35" />
+      <div className="absolute top-5 right-5 bottom-5 w-px bg-cyan-200/35" />
       <div className="absolute bottom-5 left-5 h-px w-14 bg-fuchsia-300/65" />
       <div
         aria-hidden="true"
-        className={`bg-linear-to-r absolute left-[12%] right-[12%] top-0 h-1 ${EVENT_ACCENTS[sceneType]} opacity-90 shadow-[0_0_22px_rgba(34,211,238,0.65)]`}
+        className={`absolute top-0 right-[12%] left-[12%] h-1 bg-linear-to-r ${EVENT_ACCENTS[sceneType]} opacity-90 shadow-[0_0_22px_rgba(34,211,238,0.65)]`}
       />
     </>
   );
@@ -51,18 +51,18 @@ export function RandomEventScene({
       data-testid="random-event-scene"
       data-scene-type={event.sceneType}
       aria-labelledby="random-event-title"
-      className="absolute inset-0 z-30 flex min-h-dvh items-end overflow-hidden px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-[max(env(safe-area-inset-top),1rem)] sm:items-center sm:justify-center"
+      className="absolute inset-0 z-30 flex min-h-dvh items-end overflow-hidden px-4 pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)] sm:items-center sm:justify-center"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_24%,rgba(34,211,238,0.2),transparent_32%),radial-gradient(circle_at_76%_62%,rgba(217,70,239,0.2),transparent_29%),linear-gradient(180deg,rgba(2,8,22,0.2),rgba(2,8,22,0.9))]" />
-      <div className="bg-slate-950/94 relative w-full max-w-md overflow-hidden rounded-[2rem] border border-cyan-200/35 px-5 py-6 shadow-[0_0_48px_rgba(34,211,238,0.2)] backdrop-blur-xl sm:px-7 sm:py-8">
+      <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-cyan-200/35 bg-slate-950/94 px-5 py-6 shadow-[0_0_48px_rgba(34,211,238,0.2)] backdrop-blur-xl sm:px-7 sm:py-8">
         <EventFrame sceneType={event.sceneType} />
         <div className="relative">
-          <p className="font-orbitron text-[10px] font-black uppercase tracking-[0.3em] text-cyan-200">
+          <p className="font-orbitron text-[10px] font-black tracking-[0.3em] text-cyan-200 uppercase">
             Match Event · {action.minute}'
           </p>
           <h1
             id="random-event-title"
-            className="font-orbitron mt-3 text-2xl font-black uppercase tracking-[0.025em] text-white sm:text-3xl"
+            className="font-orbitron mt-3 text-2xl font-black tracking-[0.025em] text-white uppercase sm:text-3xl"
           >
             {action.title}
           </h1>
@@ -82,14 +82,14 @@ export function RandomEventScene({
                 data-testid={`random-event-choice-${choice.id}`}
                 disabled={disabled}
                 onClick={() => onChoose(choice.id)}
-                className="hover:bg-cyan-300/12 group relative min-h-20 overflow-hidden rounded-2xl border border-cyan-300/30 bg-cyan-300/5 px-4 py-3 text-left transition duration-200 hover:border-cyan-200/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-100 disabled:cursor-wait disabled:opacity-55"
+                className="group relative min-h-20 overflow-hidden rounded-2xl border border-cyan-300/30 bg-cyan-300/5 px-4 py-3 text-left transition duration-200 hover:border-cyan-200/80 hover:bg-cyan-300/12 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-100 disabled:cursor-wait disabled:opacity-55"
               >
-                <span className="bg-linear-to-b absolute inset-y-0 left-0 w-1 from-cyan-200 via-sky-400 to-fuchsia-400 opacity-70 transition group-hover:w-1.5" />
-                <span className="font-orbitron flex items-start gap-3 text-sm font-black uppercase tracking-[0.08em] text-cyan-50">
+                <span className="absolute inset-y-0 left-0 w-1 bg-linear-to-b from-cyan-200 via-sky-400 to-fuchsia-400 opacity-70 transition group-hover:w-1.5" />
+                <span className="font-orbitron flex items-start gap-3 text-sm font-black tracking-[0.08em] text-cyan-50 uppercase">
                   <span className="text-cyan-300/80">0{index + 1}</span>
                   <span>{choice.label}</span>
                 </span>
-                <span className="text-cyan-50/62 mt-1 block pl-7 text-xs leading-5">
+                <span className="mt-1 block pl-7 text-xs leading-5 text-cyan-50/62">
                   {choice.description}
                 </span>
               </button>
@@ -132,16 +132,16 @@ export function RandomEventResultDetails({
     >
       {effects.length > 0 && (
         <div>
-          <p className="font-orbitron text-[10px] font-black uppercase tracking-[0.24em] text-cyan-200/75">
+          <p className="font-orbitron text-[10px] font-black tracking-[0.24em] text-cyan-200/75 uppercase">
             Immediate Match Effects
           </p>
           <dl className="mt-2 grid grid-cols-2 gap-2">
             {effects.map((item, index) => (
               <div
                 key={`${item.label}-${item.value}-${index}`}
-                className="border-white/8 bg-white/4 rounded-xl border px-3 py-2"
+                className="rounded-xl border border-white/8 bg-white/4 px-3 py-2"
               >
-                <dt className="text-white/48 text-[10px] font-bold uppercase tracking-[0.16em]">
+                <dt className="text-[10px] font-bold tracking-[0.16em] text-white/48 uppercase">
                   {item.label}
                 </dt>
                 <dd
@@ -162,14 +162,14 @@ export function RandomEventResultDetails({
       )}
       {settlements.length > 0 && (
         <div>
-          <p className="font-orbitron text-[10px] font-black uppercase tracking-[0.24em] text-fuchsia-200/85">
+          <p className="font-orbitron text-[10px] font-black tracking-[0.24em] text-fuchsia-200/85 uppercase">
             Pending Beyond This Match
           </p>
           <ul className="mt-2 space-y-2">
             {settlements.map((settlement) => (
               <li
                 key={settlement.id}
-                className="border-fuchsia-300/16 rounded-xl border bg-fuchsia-300/5 px-3 py-2"
+                className="rounded-xl border border-fuchsia-300/16 bg-fuchsia-300/5 px-3 py-2"
               >
                 <p className="text-xs font-bold text-fuchsia-100">
                   {settlement.label}
@@ -207,21 +207,21 @@ export function UnsupportedEventRecovery({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(217,70,239,0.22),transparent_34%),linear-gradient(180deg,rgba(2,8,22,0.52),rgba(2,8,22,0.94))]" />
       <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-fuchsia-300/40 bg-slate-950/95 px-5 py-7 shadow-[0_0_52px_rgba(217,70,239,0.22)] sm:px-7">
         <EventFrame sceneType="BRAWL" />
-        <p className="font-orbitron text-[10px] font-black uppercase tracking-[0.3em] text-fuchsia-200">
+        <p className="font-orbitron text-[10px] font-black tracking-[0.3em] text-fuchsia-200 uppercase">
           Match Service Recovery
         </p>
         <h1
           id="unsupported-event-title"
-          className="font-orbitron mt-3 text-2xl font-black uppercase tracking-[0.02em] text-white"
+          className="font-orbitron mt-3 text-2xl font-black tracking-[0.02em] text-white uppercase"
         >
           Unsupported Event
         </h1>
-        <p className="text-cyan-50/82 mt-3 text-sm leading-6">
+        <p className="mt-3 text-sm leading-6 text-cyan-50/82">
           The live match contains {recovery.scene_type}. This client cannot
           render that event safely.
         </p>
-        <div className="bg-cyan-300/6 mt-5 rounded-2xl border border-cyan-200/20 px-4 py-3">
-          <p className="font-orbitron text-xs font-black uppercase tracking-[0.08em] text-cyan-100">
+        <div className="mt-5 rounded-2xl border border-cyan-200/20 bg-cyan-300/6 px-4 py-3">
+          <p className="font-orbitron text-xs font-black tracking-[0.08em] text-cyan-100 uppercase">
             {recovery.recovery.label}
           </p>
           <p className="mt-1 text-xs leading-5 text-cyan-50/65">
@@ -233,7 +233,7 @@ export function UnsupportedEventRecovery({
           data-testid="unsupported-event-continue"
           disabled={disabled}
           onClick={onContinue}
-          className="font-orbitron bg-cyan-300/12 hover:bg-cyan-300/22 mt-6 min-h-14 w-full rounded-2xl border border-cyan-200/70 px-4 text-sm font-black uppercase tracking-[0.15em] text-cyan-50 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-100 disabled:cursor-wait disabled:opacity-55"
+          className="font-orbitron mt-6 min-h-14 w-full rounded-2xl border border-cyan-200/70 bg-cyan-300/12 px-4 text-sm font-black tracking-[0.15em] text-cyan-50 uppercase transition hover:bg-cyan-300/22 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-100 disabled:cursor-wait disabled:opacity-55"
         >
           {disabled ? "Contacting Match Service" : recovery.recovery.label}
         </button>

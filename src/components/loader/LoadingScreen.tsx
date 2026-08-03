@@ -34,12 +34,12 @@ export default function LoadingScreen({
         src={background}
         alt=""
         aria-hidden="true"
-        className="saturate-75 absolute inset-0 z-0 h-full w-full object-cover opacity-25"
+        className="absolute inset-0 z-0 h-full w-full object-cover opacity-25 saturate-75"
         width={1000}
         height={1000}
       />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(0,228,232,0.18),transparent_34%),linear-gradient(180deg,rgba(1,22,39,0.72),rgba(2,8,22,0.96))]" />
-      <div className="bg-slate-950/76 relative z-10 w-full max-w-sm rounded-[2rem] border border-cyan-300/30 px-7 py-8 text-center shadow-[0_0_48px_rgba(0,228,232,0.13)] backdrop-blur-md">
+      <div className="relative z-10 w-full max-w-sm rounded-[2rem] border border-cyan-300/30 bg-slate-950/76 px-7 py-8 text-center shadow-[0_0_48px_rgba(0,228,232,0.13)] backdrop-blur-md">
         <Loader2 className="mx-auto h-12 w-12 animate-spin text-cyan-300" />
         <GlitchText className="mt-5 text-3xl text-white" text={title} />
         <p className="mt-3 text-sm font-medium text-cyan-50/70">{detail}</p>
@@ -53,7 +53,7 @@ export default function LoadingScreen({
               className="h-2.5 w-full overflow-hidden rounded-full border border-cyan-300/15 bg-white/10"
             >
               <div
-                className="bg-linear-to-r h-full rounded-full from-cyan-400 via-teal-300 to-emerald-300 shadow-[0_0_12px_rgba(0,228,232,0.4)] transition-all duration-300"
+                className="h-full rounded-full bg-linear-to-r from-cyan-400 via-teal-300 to-emerald-300 shadow-[0_0_12px_rgba(0,228,232,0.4)] transition-all duration-300"
                 style={{ width: `${Math.max(4, Math.min(100, progress))}%` }}
               />
             </div>

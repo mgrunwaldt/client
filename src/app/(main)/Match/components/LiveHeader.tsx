@@ -28,18 +28,18 @@ export const LiveHeader: React.FC<LiveHeaderProps> = ({
       {/* Scoreboard Container */}
       <div className="relative flex w-full max-w-2xl items-center justify-center rounded-xl p-8">
         {/* Neon Border Effect */}
-        <div className="bg-linear-to-r absolute inset-0 -z-10 rounded-xl via-transparent opacity-50" />
+        <div className="absolute inset-0 -z-10 rounded-xl bg-linear-to-r via-transparent opacity-50" />
 
         {/* Score & Timer */}
         <div className="grid w-full grid-cols-[1fr_auto_1fr] items-center gap-4">
           <div className="flex flex-row items-center justify-end gap-4">
             <div className="flex flex-col items-center justify-center gap-1">
               <img src="/teams/dojoUnited.webp" alt="" className="h-14 w-14" />
-              <span className="font-orbitron text-overgoal-lime-green whitespace-normal text-center text-sm uppercase leading-none">
+              <span className="font-orbitron text-overgoal-lime-green text-center text-sm leading-none whitespace-normal uppercase">
                 {homeTeamName}
               </span>
             </div>
-            <span className="font-orbitron mt-auto text-2xl font-bold tabular-nums text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+            <span className="font-orbitron mt-auto text-2xl font-bold text-white tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
               {homeScore}
             </span>
           </div>
@@ -47,14 +47,14 @@ export const LiveHeader: React.FC<LiveHeaderProps> = ({
           {/* Timer Box */}
           <div className="flex h-16 w-24 flex-none items-center justify-center bg-[url('/assets/ui/timer-bg.svg')] bg-contain bg-center bg-no-repeat">
             <div className="flex w-20 justify-center rounded-lg border-2 border-cyan-500/50 bg-black/60 py-2 shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-              <span className="font-orbitron text-2xl font-bold tabular-nums text-white">
+              <span className="font-orbitron text-2xl font-bold text-white tabular-nums">
                 {time.toString().padStart(2, "0")}'
               </span>
             </div>
           </div>
 
           <div className="flex flex-row items-center justify-start gap-4">
-            <span className="font-orbitron mt-auto text-2xl font-bold tabular-nums text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
+            <span className="font-orbitron mt-auto text-2xl font-bold text-white tabular-nums drop-shadow-[0_0_10px_rgba(255,255,255,0.5)]">
               {awayScore}
             </span>
             <div className="flex flex-col items-center justify-center gap-1">
@@ -63,7 +63,7 @@ export const LiveHeader: React.FC<LiveHeaderProps> = ({
                 alt=""
                 className="h-14 w-14"
               />
-              <span className="font-orbitron text-overgoal-error whitespace-normal text-center text-sm uppercase leading-none">
+              <span className="font-orbitron text-overgoal-error text-center text-sm leading-none whitespace-normal uppercase">
                 {awayTeamName}
               </span>
             </div>

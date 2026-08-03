@@ -30,12 +30,12 @@ export function HalftimePanel({
       aria-labelledby="halftime-title"
       className="w-full rounded-2xl border border-cyan-300/45 bg-slate-950/90 p-5 shadow-[0_0_32px_rgba(34,211,238,0.16)]"
     >
-      <p className="font-orbitron text-xs font-bold uppercase tracking-[0.32em] text-cyan-300">
+      <p className="font-orbitron text-xs font-bold tracking-[0.32em] text-cyan-300 uppercase">
         Authoritative interval
       </p>
       <h2
         id="halftime-title"
-        className="font-orbitron mt-2 text-2xl font-black uppercase text-white"
+        className="font-orbitron mt-2 text-2xl font-black text-white uppercase"
       >
         Halftime 45&apos;
       </h2>
@@ -68,7 +68,7 @@ export function HalftimePanel({
         aria-label="Continue second half"
         disabled={pending || !summary.continue_required}
         onClick={onContinue}
-        className="font-orbitron mt-5 min-h-12 w-full border border-cyan-200 bg-cyan-300/15 uppercase tracking-[0.2em] text-cyan-100 hover:bg-cyan-200/25 disabled:opacity-50"
+        className="font-orbitron mt-5 min-h-12 w-full border border-cyan-200 bg-cyan-300/15 tracking-[0.2em] text-cyan-100 uppercase hover:bg-cyan-200/25 disabled:opacity-50"
       >
         {pending ? "Resuming..." : "Continue"}
       </Button>
@@ -96,7 +96,7 @@ export function LegendUnavailablePanel({
       aria-live="polite"
       className="w-full rounded-2xl border border-amber-300/45 bg-slate-950/90 p-5 text-center shadow-[0_0_28px_rgba(251,191,36,0.12)]"
     >
-      <p className="font-orbitron text-xs font-bold uppercase tracking-[0.28em] text-amber-200">
+      <p className="font-orbitron text-xs font-bold tracking-[0.28em] text-amber-200 uppercase">
         Legend{" "}
         {availability.status === "AVAILABLE"
           ? "unavailable"
@@ -105,7 +105,7 @@ export function LegendUnavailablePanel({
       <p className="mt-3 text-sm leading-relaxed text-slate-100">
         The remainder is being simulated from the authoritative timeline.
       </p>
-      <p className="font-orbitron mt-3 text-xs uppercase tracking-[0.18em] text-amber-100">
+      <p className="font-orbitron mt-3 text-xs tracking-[0.18em] text-amber-100 uppercase">
         Live minute {minute}&apos; · no replacement controls
       </p>
     </section>

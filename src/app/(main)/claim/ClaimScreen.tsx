@@ -147,7 +147,7 @@ export default function ClaimScreen() {
   };
 
   return (
-    <div className="bg-linear-to-b relative h-dvh w-full overflow-hidden from-black via-purple-900/20 to-black">
+    <div className="relative h-dvh w-full overflow-hidden bg-linear-to-b from-black via-purple-900/20 to-black">
       {/* 3D Player Scene */}
       <div className="absolute inset-0 z-0">
         {player_id && (

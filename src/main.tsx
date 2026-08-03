@@ -20,28 +20,28 @@ export function BootstrapSurface({ error, onRetry }: BootstrapSurfaceProps) {
   return (
     <main className="fixed inset-0 flex min-h-dvh items-center justify-center overflow-hidden bg-[#020816] px-6 text-white">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(0,228,232,0.17),transparent_34%),linear-gradient(180deg,#06152b_0%,#020816_100%)]" />
-      <div className="bg-linear-to-b via-cyan-300/28 absolute inset-y-[8%] left-[7%] w-px from-cyan-300/0 to-cyan-300/0" />
-      <div className="bg-linear-to-b via-cyan-300/28 absolute inset-y-[8%] right-[7%] w-px from-cyan-300/0 to-cyan-300/0" />
+      <div className="absolute inset-y-[8%] left-[7%] w-px bg-linear-to-b from-cyan-300/0 via-cyan-300/28 to-cyan-300/0" />
+      <div className="absolute inset-y-[8%] right-[7%] w-px bg-linear-to-b from-cyan-300/0 via-cyan-300/28 to-cyan-300/0" />
       <section
         role={error ? "alert" : "status"}
         aria-live="polite"
-        className="bg-slate-950/76 relative w-full max-w-sm rounded-[2rem] border border-cyan-300/30 px-7 py-9 text-center shadow-[0_0_52px_rgba(0,228,232,0.14)]"
+        className="relative w-full max-w-sm rounded-[2rem] border border-cyan-300/30 bg-slate-950/76 px-7 py-9 text-center shadow-[0_0_52px_rgba(0,228,232,0.14)]"
       >
-        <p className="font-orbitron text-xs font-bold uppercase tracking-[0.42em] text-cyan-300">
+        <p className="font-orbitron text-xs font-bold tracking-[0.42em] text-cyan-300 uppercase">
           Overgoal
         </p>
-        <h1 className="airstrike-normal mt-5 text-5xl uppercase leading-none text-white">
+        <h1 className="airstrike-normal mt-5 text-5xl leading-none text-white uppercase">
           {error ? "Connection paused" : "Entering the arena"}
         </h1>
         {error ? (
           <>
-            <p className="text-cyan-50/72 mt-5 text-sm leading-relaxed">
+            <p className="mt-5 text-sm leading-relaxed text-cyan-50/72">
               {error}
             </p>
             <button
               type="button"
               onClick={onRetry}
-              className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 px-5 py-3 text-sm font-bold uppercase tracking-[0.2em] text-cyan-100 shadow-[0_0_20px_rgba(0,228,232,0.12)]"
+              className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 px-5 py-3 text-sm font-bold tracking-[0.2em] text-cyan-100 uppercase shadow-[0_0_20px_rgba(0,228,232,0.12)]"
             >
               Retry connection
             </button>
@@ -49,7 +49,7 @@ export function BootstrapSurface({ error, onRetry }: BootstrapSurfaceProps) {
         ) : (
           <>
             <div className="mx-auto mt-7 h-11 w-11 animate-spin rounded-full border-2 border-cyan-300/20 border-t-cyan-300" />
-            <p className="text-cyan-50/66 mt-5 text-sm">
+            <p className="mt-5 text-sm text-cyan-50/66">
               Connecting your player profile
             </p>
           </>

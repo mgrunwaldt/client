@@ -39,7 +39,7 @@ export default function PostLoginScreen() {
             text="Claim Your Legend!"
             className="text-center text-2xl"
           />
-          <h3 className="font-orbitron max-w-2xl text-center text-xl font-bold uppercase leading-tight text-white">
+          <h3 className="font-orbitron max-w-2xl text-center text-xl leading-tight font-bold text-white uppercase">
             Join our <span className="text-overgoal-blue">Discord</span> or{" "}
             <span className="text-overgoal-blue">Twitter</span> to get your{" "}
             <span className="text-overgoal-blue underline underline-offset-2">
@@ -61,7 +61,7 @@ export default function PostLoginScreen() {
             variant="outline"
             className="bg-overgoal-dark-blue/90 text-white"
           >
-            <span className="font-orbitron text-base font-bold uppercase text-white">
+            <span className="font-orbitron text-base font-bold text-white uppercase">
               Continue
             </span>
           </Button>

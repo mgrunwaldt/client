@@ -59,7 +59,7 @@ export default function PreMatchTeam({
         <h1
           aria-label={teamName}
           className={cn(
-            "font-orbitron mx-auto max-w-[140px] text-center text-lg font-bold uppercase leading-6 text-white",
+            "font-orbitron mx-auto max-w-[140px] text-center text-lg leading-6 font-bold text-white uppercase",
             isMyTeam ? "text-overgoal-lime-green" : "text-overgoal-error",
           )}
         >

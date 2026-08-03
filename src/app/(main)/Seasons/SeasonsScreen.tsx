@@ -47,7 +47,7 @@ export default function SeasonsScreen() {
           </CyberContainer>
         </div>
         <div className="flex w-full flex-row items-center justify-center gap-2">
-          <div className="max-w-2/3 flex w-full flex-col items-center justify-center">
+          <div className="flex w-full max-w-2/3 flex-col items-center justify-center">
             <div className="font-orbitron text-sm font-medium text-white">
               Season starts:
             </div>
@@ -55,13 +55,13 @@ export default function SeasonsScreen() {
               <Countdown targetDate={SEASON_COUNTDOWN_TARGET_DATE} />
             </div>
           </div>
-          <div className="font-orbitron max-w-1/3 w-full text-sm font-medium text-white">
+          <div className="font-orbitron w-full max-w-1/3 text-sm font-medium text-white">
             Season 00
           </div>
         </div>
         <TeamsList />
       </div>
-      <div className="!z-100 fixed bottom-0 flex h-full max-h-[120px] w-full items-center justify-center bg-black">
+      <div className="fixed bottom-0 !z-100 flex h-full max-h-[120px] w-full items-center justify-center bg-black">
         <SeasonTeamItem color="purple" {...playerTeam} index={1} />
       </div>
     </>

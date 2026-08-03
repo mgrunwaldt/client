@@ -24,7 +24,7 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
       {/* EFFORT SECTION */}
       <div className="flex flex-col gap-3">
         <div className="rounded-t-lg border border-cyan-500/30 bg-cyan-950/30 px-4 py-1">
-          <span className="font-orbitron text-sm font-bold uppercase tracking-widest text-cyan-400">
+          <span className="font-orbitron text-sm font-bold tracking-widest text-cyan-400 uppercase">
             Effort
           </span>
         </div>
@@ -101,7 +101,7 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
       {/* PLAYSTYLE SECTION */}
       <div className="flex flex-col gap-3">
         <div className="rounded-t-lg border border-cyan-500/30 bg-cyan-950/30 px-4 py-1">
-          <span className="font-orbitron text-sm font-bold uppercase tracking-widest text-cyan-400">
+          <span className="font-orbitron text-sm font-bold tracking-widest text-cyan-400 uppercase">
             Playstyle
           </span>
         </div>

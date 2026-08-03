@@ -125,12 +125,12 @@ export function KickContactDialog({
       aria-labelledby="kick-contact-title"
       aria-describedby="kick-contact-instructions"
       onKeyDown={handleDialogKeyDown}
-      className="bg-black/18 absolute inset-0 z-30 flex items-end justify-center px-4 py-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] backdrop-blur-[1px]"
+      className="absolute inset-0 z-30 flex items-end justify-center bg-black/18 px-4 py-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] backdrop-blur-[1px]"
     >
-      <div className="bg-linear-to-b from-cyan-400/18 via-slate-950/88 to-[#14235c]/92 w-full max-w-sm rounded-[2rem] border border-cyan-300/45 p-4 shadow-[0_0_40px_rgba(34,211,238,0.18)]">
+      <div className="w-full max-w-sm rounded-[2rem] border border-cyan-300/45 bg-linear-to-b from-cyan-400/18 via-slate-950/88 to-[#14235c]/92 p-4 shadow-[0_0_40px_rgba(34,211,238,0.18)]">
         <div className="mb-3 flex items-center justify-between px-1">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.32em] text-cyan-200/80">
+            <p className="text-[10px] font-bold tracking-[0.32em] text-cyan-200/80 uppercase">
               Strike Point
             </p>
             <p
@@ -149,7 +149,7 @@ export function KickContactDialog({
           </button>
         </div>
 
-        <div className="bg-linear-to-b from-cyan-300/12 via-[#14235c]/78 rounded-[1.6rem] border border-cyan-200/40 to-[#0f1738] p-4">
+        <div className="rounded-[1.6rem] border border-cyan-200/40 bg-linear-to-b from-cyan-300/12 via-[#14235c]/78 to-[#0f1738] p-4">
           <p id="kick-contact-instructions" className="sr-only">
             Use the arrow keys to select one of nine ball contact points.
           </p>
@@ -158,13 +158,13 @@ export function KickContactDialog({
             ref={contactGridRef}
             role="grid"
             aria-label="Ball contact point"
-            className="bg-radial-[circle_at_35%_35%] via-sky-400/28 relative mx-auto grid aspect-square w-full max-w-[260px] cursor-crosshair grid-cols-3 grid-rows-3 overflow-hidden rounded-full border-2 border-cyan-300/70 from-cyan-100/95 to-[#091132] shadow-[0_0_30px_rgba(56,189,248,0.28)]"
+            className="relative mx-auto grid aspect-square w-full max-w-[260px] cursor-crosshair grid-cols-3 grid-rows-3 overflow-hidden rounded-full border-2 border-cyan-300/70 bg-radial-[circle_at_35%_35%] from-cyan-100/95 via-sky-400/28 to-[#091132] shadow-[0_0_30px_rgba(56,189,248,0.28)]"
             onPointerUp={handleContactPointer}
           >
-            <div className="border-cyan-200/18 pointer-events-none absolute inset-[10%] rounded-full border" />
-            <div className="border-cyan-200/12 pointer-events-none absolute inset-[23%] rounded-full border" />
-            <div className="bg-cyan-100/12 pointer-events-none absolute left-1/2 top-[10%] h-[80%] w-px -translate-x-1/2" />
-            <div className="bg-cyan-100/12 pointer-events-none absolute left-[10%] top-1/2 h-px w-[80%] -translate-y-1/2" />
+            <div className="pointer-events-none absolute inset-[10%] rounded-full border border-cyan-200/18" />
+            <div className="pointer-events-none absolute inset-[23%] rounded-full border border-cyan-200/12" />
+            <div className="pointer-events-none absolute top-[10%] left-1/2 h-[80%] w-px -translate-x-1/2 bg-cyan-100/12" />
+            <div className="pointer-events-none absolute top-1/2 left-[10%] h-px w-[80%] -translate-y-1/2 bg-cyan-100/12" />
             {CONTACT_GRID_LABELS.map((label, index) => (
               <button
                 key={label}
@@ -208,23 +208,23 @@ export function KickContactDialog({
                 top: `${contactPercent.y}%`,
               }}
             >
-              <div className="absolute left-1/2 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-200/90" />
-              <div className="absolute left-1/2 top-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
-              <div className="absolute left-1/2 top-1/2 h-px w-10 -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
+              <div className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-200/90" />
+              <div className="absolute top-1/2 left-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
+              <div className="absolute top-1/2 left-1/2 h-px w-10 -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
             </div>
           </div>
 
           <p className="sr-only" aria-live="polite">
             {announcement}
           </p>
-          <div className="text-white/72 mt-4 grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-black/22 rounded-2xl px-3 py-2">
+          <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/72">
+            <div className="rounded-2xl bg-black/22 px-3 py-2">
               Submitted power: {Math.round(submittedPower * 100)}%
             </div>
-            <div className="bg-black/22 rounded-2xl px-3 py-2">
+            <div className="rounded-2xl bg-black/22 px-3 py-2">
               Contact: {contact.x.toFixed(2)}, {contact.y.toFixed(2)}
             </div>
-            <div className="bg-black/22 col-span-2 rounded-2xl px-3 py-2">
+            <div className="col-span-2 rounded-2xl bg-black/22 px-3 py-2">
               Server power range: {Math.round(envelope.minimum_power * 100)}% -{" "}
               {Math.round(envelope.maximum_power * 100)}%; short pulls use the
               server floor.
@@ -244,7 +244,7 @@ export function KickContactDialog({
           type="button"
           data-testid="kick-submit"
           disabled={isSubmitting}
-          className="bg-linear-to-b mt-4 w-full rounded-2xl from-amber-300 via-orange-400 to-red-500 px-4 py-3 text-center text-2xl font-black uppercase tracking-[0.12em] text-white shadow-[0_10px_26px_rgba(249,115,22,0.42)]"
+          className="mt-4 w-full rounded-2xl bg-linear-to-b from-amber-300 via-orange-400 to-red-500 px-4 py-3 text-center text-2xl font-black tracking-[0.12em] text-white uppercase shadow-[0_10px_26px_rgba(249,115,22,0.42)]"
           onClick={onSubmit}
         >
           {isSubmitting ? "Kicking..." : "Kick"}

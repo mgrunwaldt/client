@@ -25,7 +25,7 @@ export default function PreMatchLegend({
   return (
     <section
       aria-label="Authoritative Legend profile"
-      className="border-overgoal-positive border-1 flex w-full flex-col gap-2 bg-[#002601] p-2 text-center text-white"
+      className="border-overgoal-positive flex w-full flex-col gap-2 border-1 bg-[#002601] p-2 text-center text-white"
     >
       <div className="flex w-full flex-row items-center justify-between gap-3">
         <img
@@ -34,19 +34,19 @@ export default function PreMatchLegend({
           className="h-14 w-14 shrink-0 object-cover"
         />
         <div className="min-w-0 shrink text-left">
-          <p className="font-orbitron text-overgoal-lime-green text-[10px] font-bold uppercase tracking-[0.22em]">
+          <p className="font-orbitron text-overgoal-lime-green text-[10px] font-bold tracking-[0.22em] uppercase">
             Legend profile
           </p>
           <p
             data-testid="legend-player-id"
-            className="font-orbitron truncate text-xs font-bold uppercase text-white"
+            className="font-orbitron truncate text-xs font-bold text-white uppercase"
           >
             {legendPlayerId}
           </p>
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-orbitron text-[9px] font-bold uppercase text-white/80">
+            <span className="font-orbitron text-[9px] font-bold text-white/80 uppercase">
               Stamina
             </span>
             <output
@@ -69,7 +69,7 @@ export default function PreMatchLegend({
           borderColor="var(--color-overgoal-positive)"
           className="flex h-12 w-12 shrink-0 flex-col items-center justify-center"
         >
-          <span className="font-orbitron text-[8px] font-bold uppercase text-white/70">
+          <span className="font-orbitron text-[8px] font-bold text-white/70 uppercase">
             Energy
           </span>
           <output
@@ -86,7 +86,7 @@ export default function PreMatchLegend({
             key={stat}
             className="border-overgoal-positive/40 border bg-black/15 px-1 py-1"
           >
-            <dt className="font-orbitron text-[8px] font-bold uppercase text-white/65">
+            <dt className="font-orbitron text-[8px] font-bold text-white/65 uppercase">
               {label}
             </dt>
             <dd className="font-orbitron text-[11px] font-bold text-white">

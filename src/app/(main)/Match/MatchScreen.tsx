@@ -347,12 +347,12 @@ export default function MatchScreen() {
           role="alert"
           className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/85 px-7 py-8 text-center"
         >
-          <p className="font-orbitron text-xs font-bold uppercase tracking-[0.32em] text-pink-300">
+          <p className="font-orbitron text-xs font-bold tracking-[0.32em] text-pink-300 uppercase">
             Live match unavailable
           </p>
-          <p className="text-white/72 mt-5 text-sm leading-relaxed">{error}</p>
+          <p className="mt-5 text-sm leading-relaxed text-white/72">{error}</p>
           <Button
-            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 uppercase text-cyan-100"
+            className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
             onClick={() => {
               setError(null);
               setReloadKey((value) => value + 1);
@@ -362,7 +362,7 @@ export default function MatchScreen() {
           </Button>
           <Button
             variant="ghost"
-            className="font-orbitron mt-3 min-h-11 w-full uppercase text-cyan-100"
+            className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"
             onClick={() => navigate("/")}
           >
             Back to home

@@ -12,14 +12,14 @@ export default function TournamentsScreen() {
 
   return (
     <div className="relative flex h-dvh w-full flex-col items-center justify-center gap-8 bg-[url('/backgrounds/glitch-bg.webp')] bg-cover bg-center px-12">
-      <BackButton to="/" className="z-100 absolute left-0 top-5" />
+      <BackButton to="/" className="absolute top-5 left-0 z-100" />
 
       <div className="absolute top-0 h-20 w-full object-cover object-center">
         <img src="/tournaments/banner-tournament.webp" alt="" />
       </div>
 
       <SemiSquareContainer
-        className="z-100 h-18 w-18 absolute right-[75%] top-[24%]"
+        className="absolute top-[24%] right-[75%] z-100 h-18 w-18"
         bgColor="#19001d"
         noShadow
         borderColor="#9400ff"
@@ -32,7 +32,7 @@ export default function TournamentsScreen() {
       </SemiSquareContainer>
 
       <SemiSquareContainer
-        className="z-100 h-18 w-18 absolute right-[75%] top-[37%] flex items-center justify-center"
+        className="absolute top-[37%] right-[75%] z-100 flex h-18 w-18 items-center justify-center"
         bgColor="#19001d"
         noShadow
         borderColor="#9400ff"
@@ -45,7 +45,7 @@ export default function TournamentsScreen() {
       </SemiSquareContainer>
 
       <SemiSquareContainer
-        className="z-100 h-18 w-18 absolute right-[75%] top-[50%]"
+        className="absolute top-[50%] right-[75%] z-100 h-18 w-18"
         bgColor="#19001d"
         noShadow
         borderColor="#9400ff"
@@ -93,7 +93,7 @@ export default function TournamentsScreen() {
       </SemiSquareContainer>
 
       <div className="mt-2 flex w-full flex-col items-center justify-center gap-2">
-        <h2 className="font-orbitron text-center text-xl font-bold uppercase text-white">
+        <h2 className="font-orbitron text-center text-xl font-bold text-white uppercase">
           Next Starts in:
         </h2>
 

@@ -94,12 +94,12 @@ export default function MatchResultScreen() {
           role="alert"
           className="w-full max-w-sm rounded-3xl border border-pink-300/45 bg-slate-950 p-7 text-center"
         >
-          <p className="font-orbitron text-xs uppercase tracking-[0.28em] text-pink-200">
+          <p className="font-orbitron text-xs tracking-[0.28em] text-pink-200 uppercase">
             Result unavailable
           </p>
           <p className="mt-4 text-sm text-slate-200">{error}</p>
           <Button
-            className="font-orbitron mt-6 w-full border border-cyan-300 bg-cyan-300/10 uppercase text-cyan-100"
+            className="font-orbitron mt-6 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
             onClick={() => {
               setError(null);
               setReloadKey((value) => value + 1);
@@ -124,7 +124,7 @@ export default function MatchResultScreen() {
           role="alert"
           className="w-full max-w-sm rounded-3xl border border-amber-300/45 bg-slate-950 p-7 text-center"
         >
-          <p className="font-orbitron text-xs uppercase tracking-[0.28em] text-amber-200">
+          <p className="font-orbitron text-xs tracking-[0.28em] text-amber-200 uppercase">
             Final handoff unsupported
           </p>
           <p className="mt-4 text-sm leading-relaxed text-slate-200">
@@ -132,7 +132,7 @@ export default function MatchResultScreen() {
             handoff required by this client.
           </p>
           <Button
-            className="font-orbitron mt-6 w-full border border-cyan-300 bg-cyan-300/10 uppercase text-cyan-100"
+            className="font-orbitron mt-6 w-full border border-cyan-300 bg-cyan-300/10 text-cyan-100 uppercase"
             onClick={() => setReloadKey((value) => value + 1)}
           >
             Retry result
@@ -161,10 +161,10 @@ export default function MatchResultScreen() {
       className="min-h-dvh bg-[url('/backgrounds/glitch-bg.webp')] bg-cover bg-center px-4 py-8 text-white"
     >
       <section className="mx-auto w-full max-w-lg rounded-[2rem] border border-cyan-300/45 bg-slate-950/90 p-6 shadow-[0_0_44px_rgba(34,211,238,0.15)]">
-        <p className="font-orbitron text-center text-xs font-bold uppercase tracking-[0.34em] text-cyan-300">
+        <p className="font-orbitron text-center text-xs font-bold tracking-[0.34em] text-cyan-300 uppercase">
           Full time
         </p>
-        <h1 className="font-orbitron mt-3 text-center text-3xl font-black uppercase text-white">
+        <h1 className="font-orbitron mt-3 text-center text-3xl font-black text-white uppercase">
           {handoff.result}
         </h1>
         <p className="font-orbitron mt-4 text-center text-4xl text-cyan-100">
@@ -173,12 +173,12 @@ export default function MatchResultScreen() {
         <p className="mt-3 text-center text-sm text-slate-300">
           {myTeam.name} vs {opponentTeam.name}
         </p>
-        <p className="font-orbitron mt-5 text-center text-xs uppercase tracking-[0.18em] text-lime-200">
+        <p className="font-orbitron mt-5 text-center text-xs tracking-[0.18em] text-lime-200 uppercase">
           {pointsLabel(handoff.season_points_delta)}
         </p>
 
         <div className="mt-7 border-t border-cyan-300/20 pt-5">
-          <h2 className="font-orbitron text-sm uppercase tracking-[0.2em] text-cyan-200">
+          <h2 className="font-orbitron text-sm tracking-[0.2em] text-cyan-200 uppercase">
             Legend contribution
           </h2>
           <p className="mt-3 text-sm text-slate-200">
@@ -192,7 +192,7 @@ export default function MatchResultScreen() {
         </div>
 
         <div className="mt-6 border-t border-cyan-300/20 pt-5">
-          <h2 className="font-orbitron text-sm uppercase tracking-[0.2em] text-cyan-200">
+          <h2 className="font-orbitron text-sm tracking-[0.2em] text-cyan-200 uppercase">
             Key events
           </h2>
           <ul className="mt-3 space-y-2 text-sm text-slate-200">
@@ -220,7 +220,7 @@ export default function MatchResultScreen() {
         )}
 
         <div className="mt-6 border-t border-cyan-300/20 pt-5 text-sm text-slate-200">
-          <p className="font-orbitron text-xs uppercase tracking-[0.18em] text-cyan-200">
+          <p className="font-orbitron text-xs tracking-[0.18em] text-cyan-200 uppercase">
             Settlement handoff
           </p>
           <p className="mt-2">
@@ -230,7 +230,7 @@ export default function MatchResultScreen() {
           </p>
         </div>
         <Button
-          className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 uppercase tracking-[0.2em] text-cyan-100"
+          className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 tracking-[0.2em] text-cyan-100 uppercase"
           onClick={() => navigate("/")}
         >
           Back to home
