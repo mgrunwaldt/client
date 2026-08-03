@@ -91,6 +91,8 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
 }) => {
   const browserDiagnostics: string[] = [];
 
+  await authenticateToHome(page);
+
   page.on("pageerror", (error) => browserDiagnostics.push(error.message));
   page.on("console", (message) => {
     if (["warning", "error"].includes(message.type())) {
@@ -98,7 +100,6 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
     }
   });
 
-  await authenticateToHome(page);
   await expectLazyRouteFallback(
     page,
     "/game",
