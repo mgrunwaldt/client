@@ -92,6 +92,16 @@ export function controlledKickResponse() {
     field_state: continuationField,
     pending_settlement_events: [],
     unsupported_scene: null,
+    legend_availability: {
+      version: 1 as const,
+      status: "AVAILABLE" as const,
+      availability: "AVAILABLE" as const,
+      participation: "PARTICIPATING" as const,
+      interactive_controls: true,
+      unavailable_since_minute: null,
+    },
+    halftime_summary: null,
+    full_time_handoff: null,
     action: "OPEN_PLAY",
     action_team: "MY_TEAM",
     events: [

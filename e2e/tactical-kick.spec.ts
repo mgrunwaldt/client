@@ -443,6 +443,16 @@ function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
     field_state: null,
     pending_settlement_events: [],
     unsupported_scene: null,
+    legend_availability: {
+      version: 1,
+      status: "AVAILABLE",
+      availability: "AVAILABLE",
+      participation: "PARTICIPATING",
+      interactive_controls: true,
+      unavailable_since_minute: null,
+    },
+    halftime_summary: null,
+    full_time_handoff: null,
     match: {
       ...response.match,
       current_time: continuationMinute,

@@ -1,12 +1,12 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import argumentOpponent from "../tests/fixtures/match-api-v1/scenes/argument-opponent.json" with { type: "json" };
-import argumentTeammate from "../tests/fixtures/match-api-v1/scenes/argument-teammate.json" with { type: "json" };
-import bathroom from "../tests/fixtures/match-api-v1/scenes/bathroom.json" with { type: "json" };
-import brawl from "../tests/fixtures/match-api-v1/scenes/brawl.json" with { type: "json" };
-import jumper from "../tests/fixtures/match-api-v1/scenes/jumper.json" with { type: "json" };
-import matchSnapshot from "../tests/fixtures/match-api-v1/server/match-snapshot-response.json" with { type: "json" };
-import waitingOpenPlay from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
+import argumentOpponent from "../tests/fixtures/match-api-v1/examples/scenes/argument-opponent.json" with { type: "json" };
+import argumentTeammate from "../tests/fixtures/match-api-v1/examples/scenes/argument-teammate.json" with { type: "json" };
+import bathroom from "../tests/fixtures/match-api-v1/examples/scenes/bathroom.json" with { type: "json" };
+import brawl from "../tests/fixtures/match-api-v1/examples/scenes/brawl.json" with { type: "json" };
+import jumper from "../tests/fixtures/match-api-v1/examples/scenes/jumper.json" with { type: "json" };
+import matchSnapshot from "../tests/fixtures/match-api-v1/fixtures/server/match-snapshot-response.json" with { type: "json" };
+import waitingOpenPlay from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
 import {
   authenticateForContinuation,
   authenticateToHome,

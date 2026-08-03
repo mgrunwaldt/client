@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { sepolia } from "@starknet-react/chains";
 
-import waitingOpenPlayFixture from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
+import waitingOpenPlayFixture from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
 
 test.describe.configure({ timeout: 90_000 });
 
@@ -255,6 +255,22 @@ test("enters a production match once and reports truthful loading stages", async
             : [],
           unsupported_scene: acceptedStart
             ? acceptedStart.unsupported_scene
+            : null,
+          legend_availability: acceptedStart
+            ? acceptedStart.legend_availability
+            : {
+                version: 1,
+                status: "AVAILABLE",
+                availability: "AVAILABLE",
+                participation: "NOT_PARTICIPATING",
+                interactive_controls: true,
+                unavailable_since_minute: null,
+              },
+          halftime_summary: acceptedStart
+            ? acceptedStart.halftime_summary
+            : null,
+          full_time_handoff: acceptedStart
+            ? acceptedStart.full_time_handoff
             : null,
         }),
       });

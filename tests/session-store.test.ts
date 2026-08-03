@@ -14,6 +14,19 @@ import { MatchApiContractError } from "../src/match/api-v1/errors";
 import { useMatchSessionStore } from "../src/match/session-store";
 import { readFixture } from "./match-api-v1-fixtures";
 
+const availableLifecycle = {
+  legend_availability: {
+    version: 1 as const,
+    status: "AVAILABLE" as const,
+    availability: "AVAILABLE" as const,
+    participation: "PARTICIPATING" as const,
+    interactive_controls: true,
+    unavailable_since_minute: null,
+  },
+  halftime_summary: null,
+  full_time_handoff: null,
+};
+
 interface SceneFixture extends BackendPendingAction {
   scene_type: string;
   field_state: BackendFieldState;
@@ -83,6 +96,7 @@ function responseForScene(
     events: [eventFor(scene, eventId)],
     pending_settlement_events: [],
     unsupported_scene: null,
+    ...availableLifecycle,
     match,
   };
 }

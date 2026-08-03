@@ -30,6 +30,7 @@
     { "consumer": "server", "file": "server/not-ready-response.json", "schema": "NotReadyErrorResponse", "operation": { "method": "GET", "path": "/ready", "status": 503, "body": "response" } },
     { "consumer": "player-client", "file": "player-client/create-match-request.json", "schema": "CreateMatchRequest", "operation": { "method": "POST", "path": "/createMatch", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/match-command-request.json", "schema": "MatchCommandRequest", "operation": { "method": "POST", "path": "/startMatch", "body": "request" } },
+    { "consumer": "player-client", "file": "player-client/abandon-match-request.json", "schema": "AbandonMatchRequest", "operation": { "method": "POST", "path": "/abandonMatch", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/kick-decision-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/dribble-run-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },
     { "consumer": "player-client", "file": "player-client/simulate-foul-request.json", "schema": "ProcessMatchActionRequest", "operation": { "method": "POST", "path": "/processMatchAction", "body": "request" } },

@@ -9,7 +9,7 @@ if (!keyPath || !certificatePath) {
 const waitingOpenPlay = JSON.parse(
   await readFile(
     new URL(
-      "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json",
+      "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json",
       import.meta.url,
     ),
     "utf8",

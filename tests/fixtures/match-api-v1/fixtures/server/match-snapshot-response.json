@@ -1,0 +1,46 @@
+{
+  "match": {
+    "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
+    "current_time": 90, "prev_time": 0, "match_status": "FINISHED", "event_counter": 17, "revision": 1, "pending_action": null,
+    "seed": "fixture-seed-1", "engine_version": "match-engine/5", "ruleset_version": "nss-match-v2/1",
+    "initial_state": { "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" }, "opponent_team": { "id": "team_2", "name": "Cartridge City", "offense": 85, "defense": 68, "intensity": 72, "set_pieces": 77, "chemistry": 70, "formation": "4-2-3-1" }, "legend_profile": { "stamina": 78, "energy": 78, "shoot": 74, "dribble": 76, "speed": 77, "passing": 73, "heading": 69, "defense": 58, "intelligence": 72, "yellow_cards": 0, "red_card": false, "simulation_attempts": 0, "substitutions": 0 }, "ruleset": { "rebound_play_enabled": true } }
+  },
+  "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" },
+  "opponent_team": { "id": "team_2", "name": "Cartridge City", "offense": 85, "defense": 68, "intensity": 72, "set_pieces": 77, "chemistry": 70, "formation": "4-2-3-1" },
+  "timeline": [
+    { "match_id": "match-fixture-1", "event_id": 16, "action": "OPEN_PLAY", "minute": 73, "team": "OPPONENT_TEAM", "description": "The opponent attack fizzles out.", "my_team_score": 2, "opponent_team_score": 1, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": false, "meta": null },
+    { "match_id": "match-fixture-1", "event_id": 17, "action": "MATCH_END", "minute": 90, "team": "NEUTRAL", "description": "Match finished.", "my_team_score": 2, "opponent_team_score": 1, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": true, "meta": null }
+  ],
+  "pending_action": null,
+  "field_state": null,
+  "pending_settlement_events": [{
+    "version": 1, "id": "settlement-fan-1", "match_id": "match-fixture-1", "category": "SOCIAL", "type": "FAN_RELATIONSHIP_DELTA",
+    "source": { "match_id": "match-fixture-1", "action_id": "action-jumper-1", "action_sequence": 4, "settlement_sequence": 1, "scene_type": "JUMPER", "choice": "ACCEPT_HUG" },
+    "payload": { "delta": 1, "reason": "ACCEPTED_PITCH_INVADER" }, "created_revision": 1,
+    "created_time": { "match_minute": 53, "decision_sequence": 4 }, "status": "PENDING"
+  }],
+  "unsupported_scene": null,
+  "legend_availability": { "version": 1, "status": "AVAILABLE", "availability": "AVAILABLE", "participation": "NOT_PARTICIPATING", "interactive_controls": true, "unavailable_since_minute": null },
+  "halftime_summary": {
+    "version": 1, "match_id": "match-fixture-1", "minute": 45, "score": { "my_team": 1, "opponent_team": 0 },
+    "team_statistics": { "my_team": { "score": 1, "attacks": 4, "goals_in_play": 1, "yellow_cards": 0, "red_cards": 0 }, "opponent_team": { "score": 0, "attacks": 3, "goals_in_play": 0, "yellow_cards": 0, "red_cards": 0 } },
+    "legend_contribution": { "version": 1, "legend_player_id": "team_1_ST_2", "status": "AVAILABLE", "availability": "AVAILABLE", "minutes_played": 45, "interventions": 4, "completed_actions": 4, "successful_actions": 3, "goals": 1, "assists": 0, "yellow_cards": 0, "red_card": false, "injured": false, "substituted": false, "energy_start": 78, "energy_current": 62, "stamina": 78 },
+    "recovery": { "version": 1, "config_version": "halftime-recovery/1", "eligibility": "ELIGIBLE", "legend_status": "AVAILABLE", "stamina": 78, "energy_before": 48, "energy_recovered": 14, "energy_after": 62, "minimum_energy": 4, "maximum_energy": 18 },
+    "continue_required": true, "tactics_editable": false
+  },
+  "full_time_handoff": {
+    "version": 2, "match_id": "match-fixture-1", "status": "FULL_TIME", "terminal_reason": "REGULATION",
+    "final_score": { "my_team": 2, "opponent_team": 1 }, "result": "WIN", "season_points_delta": 3,
+    "key_events": [{ "event_id": 17, "minute": 90, "action": "MATCH_END", "team": "NEUTRAL", "description": "Match finished.", "score": { "my_team": 2, "opponent_team": 1 }, "outcome_type": null }],
+    "team_statistics": { "my_team": { "score": 2, "attacks": 8, "goals_in_play": 2, "yellow_cards": 0, "red_cards": 0 }, "opponent_team": { "score": 1, "attacks": 7, "goals_in_play": 1, "yellow_cards": 0, "red_cards": 0 } },
+    "legend_contribution": { "version": 1, "legend_player_id": "team_1_ST_2", "status": "AVAILABLE", "availability": "AVAILABLE", "minutes_played": 90, "interventions": 8, "completed_actions": 8, "successful_actions": 6, "goals": 2, "assists": 0, "yellow_cards": 0, "red_card": false, "injured": false, "substituted": false, "energy_start": 78, "energy_current": 31, "stamina": 78 },
+    "pending_settlement_events": [{
+      "version": 1, "id": "settlement-fan-1", "match_id": "match-fixture-1", "category": "SOCIAL", "type": "FAN_RELATIONSHIP_DELTA",
+      "source": { "match_id": "match-fixture-1", "action_id": "action-jumper-1", "action_sequence": 4, "settlement_sequence": 1, "scene_type": "JUMPER", "choice": "ACCEPT_HUG" },
+      "payload": { "delta": 1, "reason": "ACCEPTED_PITCH_INVADER" }, "created_revision": 1,
+      "created_time": { "match_minute": 53, "decision_sequence": 4 }, "status": "PENDING"
+    }],
+    "administrative_result": null,
+    "settlement_status": "PENDING_HANDOFF"
+  }
+}

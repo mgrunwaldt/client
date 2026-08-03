@@ -9,6 +9,9 @@
   "events": [{ "match_id": "match-fixture-1", "event_id": 18, "action": "MATCH_END", "minute": 90, "team": "NEUTRAL", "description": "Match finished.", "my_team_score": 2, "opponent_team_score": 1, "my_team_scored": false, "opponent_team_scored": false, "player_participates": false, "halftime": false, "match_end": true, "meta": null }],
   "pending_settlement_events": [],
   "unsupported_scene": null,
+  "legend_availability": { "version": 1, "status": "AVAILABLE", "availability": "AVAILABLE", "participation": "NOT_PARTICIPATING", "interactive_controls": true, "unavailable_since_minute": null },
+  "halftime_summary": null,
+  "full_time_handoff": null,
   "match": {
     "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 2, "opponent_team_score": 1,
     "current_time": 90, "prev_time": 89, "match_status": "FINISHED", "event_counter": 18, "revision": 1, "pending_action": null,

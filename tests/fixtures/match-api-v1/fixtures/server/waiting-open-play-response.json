@@ -33,6 +33,9 @@
   "events": [{ "match_id": "match-fixture-1", "event_id": 1, "action": "OPEN_PLAY", "minute": 12, "team": "MY_TEAM", "description": "Your Legend receives the ball in open play.", "my_team_score": 0, "opponent_team_score": 0, "my_team_scored": false, "opponent_team_scored": false, "player_participates": true, "halftime": false, "match_end": false, "meta": null }],
   "pending_settlement_events": [],
   "unsupported_scene": null,
+  "legend_availability": { "version": 1, "status": "AVAILABLE", "availability": "AVAILABLE", "participation": "PARTICIPATING", "interactive_controls": true, "unavailable_since_minute": null },
+  "halftime_summary": null,
+  "full_time_handoff": null,
   "match": {
     "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 0, "opponent_team_score": 0,
     "current_time": 12, "prev_time": 0, "match_status": "WAITING_FOR_DECISION", "event_counter": 1, "revision": 0,

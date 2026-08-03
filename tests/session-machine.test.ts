@@ -16,6 +16,19 @@ import {
 } from "../src/match/session-machine";
 import { readFixture } from "./match-api-v1-fixtures";
 
+const availableLifecycle = {
+  legend_availability: {
+    version: 1 as const,
+    status: "AVAILABLE" as const,
+    availability: "AVAILABLE" as const,
+    participation: "PARTICIPATING" as const,
+    interactive_controls: true,
+    unavailable_since_minute: null,
+  },
+  halftime_summary: null,
+  full_time_handoff: null,
+};
+
 const sceneFiles = [
   "argument-opponent",
   "argument-teammate",
@@ -307,7 +320,7 @@ describe("match session reducer", () => {
       status: BackendMatch["match_status"];
       expected: string;
       pending: BackendPendingAction | null;
-      participation?: string;
+      participation?: BackendMatch["player_participation"];
     }> = [
       { status: "NOT_STARTED", expected: "created", pending: null },
       { status: "IN_PROGRESS", expected: "timeline_playback", pending: null },
@@ -532,6 +545,7 @@ describe("match session reducer", () => {
         events: [],
         pending_settlement_events: [],
         unsupported_scene: null,
+        ...availableLifecycle,
         match: { ...match, revision: (match.revision ?? 0) - 1 },
       },
     });
@@ -1009,6 +1023,7 @@ describe("match session reducer", () => {
         events: [],
         pending_settlement_events: [],
         unsupported_scene: null,
+        ...availableLifecycle,
         match: {
           ...match,
           revision: match.revision + 1,

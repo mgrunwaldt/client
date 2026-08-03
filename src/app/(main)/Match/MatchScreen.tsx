@@ -5,7 +5,11 @@ import { useNavigate, useParams } from "react-router";
 
 import LoadingScreen from "../../../components/loader/LoadingScreen";
 import { Button } from "../../../components/ui/button";
-import { fetchBackendMatch } from "../../../lib/backend-match";
+import {
+  createMatchCommand,
+  fetchBackendMatch,
+  resumeBackendMatch,
+} from "../../../lib/backend-match";
 import {
   hasAuthoritativeMatchIdentity,
   hasAuthoritativeTimelineState,
@@ -14,6 +18,10 @@ import { useMatchSessionStore } from "../../../match/session-store";
 import { EventFeed } from "./components/EventFeed";
 import { LiveHeader } from "./components/LiveHeader";
 import { MatchControls } from "./components/MatchControls";
+import {
+  HalftimePanel,
+  LegendUnavailablePanel,
+} from "./components/MatchLifecyclePanels";
 
 type MatchEvent = {
   id: string;
@@ -51,6 +59,13 @@ export default function MatchScreen() {
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
   const timelineEvents = useMatchSessionStore((state) => state.timelineEvents);
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
+  const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
+  const legendAvailability = useMatchSessionStore(
+    (state) => state.legendAvailability,
+  );
+  const halftimeSummary = useMatchSessionStore(
+    (state) => state.halftimeSummary,
+  );
   const playbackMinute = useMatchSessionStore((state) => state.playbackMinute);
   const playbackStatus = useMatchSessionStore((state) => state.playbackStatus);
   const effort = useMatchSessionStore((state) => state.effort);
@@ -67,6 +82,12 @@ export default function MatchScreen() {
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
+  const beginResumeCommand = useMatchSessionStore(
+    (state) => state.beginResumeCommand,
+  );
+  const setResumeResponse = useMatchSessionStore(
+    (state) => state.setResumeResponse,
+  );
   const loading = useMatchSessionStore((state) => state.loading);
   const error = useMatchSessionStore((state) => state.error);
   const updateTransitionLoader = useMatchSessionStore(
@@ -76,6 +97,7 @@ export default function MatchScreen() {
     (state) => state.hideTransitionLoader,
   );
   const fieldTransitionTimeout = useRef<number | null>(null);
+  const resumeLock = useRef(false);
   const routeState = {
     routeMatchId: params.matchId,
     match,
@@ -84,6 +106,13 @@ export default function MatchScreen() {
   };
   const authoritativeMatchIdentity = hasAuthoritativeMatchIdentity(routeState);
   const authoritativeTimelineReady = hasAuthoritativeTimelineState(routeState);
+  const presentingUnavailableSimulation = Boolean(
+    authoritativeMatchIdentity &&
+      match?.match_status === "FINISHED" &&
+      phase === "legend_unavailable_simulation",
+  );
+  const timelinePresentationReady =
+    authoritativeTimelineReady || presentingUnavailableSimulation;
 
   const targetMinute = pendingAction?.minute || match?.current_time || 0;
 
@@ -117,6 +146,9 @@ export default function MatchScreen() {
           timelineEvents: response.timeline,
           pendingAction,
           unsupportedScene: response.unsupported_scene,
+          legendAvailability: response.legend_availability,
+          halftimeSummary: response.halftime_summary,
+          fullTimeHandoff: response.full_time_handoff,
         });
       } catch (error) {
         if (cancelled) return;
@@ -147,13 +179,19 @@ export default function MatchScreen() {
       navigate(`/pre-match/${match.id}`, { replace: true });
       return;
     }
-    if (match.match_status === "FINISHED") {
+    if (
+      match.match_status === "FINISHED" &&
+      !(
+        phase === "legend_unavailable_simulation" &&
+        playbackMinute < match.current_time
+      )
+    ) {
       navigate(`/match-result/${match.id}`, { replace: true });
     }
-  }, [authoritativeMatchIdentity, match, navigate]);
+  }, [authoritativeMatchIdentity, match, navigate, phase, playbackMinute]);
 
   useEffect(() => {
-    if (!authoritativeTimelineReady || !match?.id || !params.matchId) {
+    if (!timelinePresentationReady || !match?.id || !params.matchId) {
       return;
     }
 
@@ -169,7 +207,7 @@ export default function MatchScreen() {
 
     return () => window.clearTimeout(timeout);
   }, [
-    authoritativeTimelineReady,
+    timelinePresentationReady,
     hideTransitionLoader,
     match?.id,
     params.matchId,
@@ -248,7 +286,49 @@ export default function MatchScreen() {
   const awayScore =
     lastScoreEvent?.opponent_team_score ?? match?.opponent_team_score ?? 0;
 
-  if (!authoritativeTimelineReady && !error) {
+  const resumePending =
+    phase === "resuming" || pendingCommand?.operation === "resume";
+
+  const continueSecondHalf = async () => {
+    if (
+      !match ||
+      !halftimeSummary?.continue_required ||
+      resumeLock.current ||
+      resumePending
+    ) {
+      return;
+    }
+
+    const retainedCommand =
+      pendingCommand?.operation === "resume" &&
+      pendingCommand.matchId === match.id &&
+      pendingCommand.revision === match.revision
+        ? pendingCommand
+        : null;
+    const command =
+      retainedCommand ||
+      createMatchCommand(
+        "resume",
+        { match_id: match.id },
+        { matchId: match.id, revision: match.revision },
+      );
+
+    resumeLock.current = true;
+    try {
+      if (!beginResumeCommand(command)) {
+        resumeLock.current = false;
+        return;
+      }
+      setError(null);
+      const response = await resumeBackendMatch(match, command);
+      setResumeResponse(response);
+    } catch (error) {
+      setError(error);
+      resumeLock.current = false;
+    }
+  };
+
+  if (!timelinePresentationReady && !error) {
     return (
       <LoadingScreen
         isLoading={true}
@@ -324,12 +404,27 @@ export default function MatchScreen() {
         </div>
 
         <div className="w-full shrink-0">
-          <MatchControls
-            effort={effort}
-            setEffort={setEffort}
-            playstyle={playstyle}
-            setPlaystyle={setPlaystyle}
-          />
+          {(phase === "halftime" || phase === "resuming") &&
+          halftimeSummary ? (
+            <HalftimePanel
+              summary={halftimeSummary}
+              pending={resumePending}
+              onContinue={continueSecondHalf}
+            />
+          ) : phase === "legend_unavailable_simulation" &&
+            legendAvailability ? (
+            <LegendUnavailablePanel
+              availability={legendAvailability}
+              minute={playbackMinute}
+            />
+          ) : (
+            <MatchControls
+              effort={effort}
+              setEffort={setEffort}
+              playstyle={playstyle}
+              setPlaystyle={setPlaystyle}
+            />
+          )}
         </div>
       </div>
     </div>

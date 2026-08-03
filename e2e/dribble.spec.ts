@@ -1,7 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import dribbleScene from "../tests/fixtures/match-api-v1/scenes/dribble.json" with { type: "json" };
-import waitingOpenPlay from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
+import dribbleScene from "../tests/fixtures/match-api-v1/examples/scenes/dribble.json" with { type: "json" };
+import waitingOpenPlay from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
 import { enableDebugResultContinuation } from "./support/result-continuation";
 

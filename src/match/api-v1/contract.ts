@@ -32,6 +32,17 @@ export const KNOWN_PLAYABLE_SCENES = [
 export type KnownMatchStatus = (typeof KNOWN_MATCH_STATUSES)[number];
 export type KnownPlayableScene = (typeof KNOWN_PLAYABLE_SCENES)[number];
 export type BackendActionTeam = "MY_TEAM" | "OPPONENT_TEAM" | "NEUTRAL";
+export type BackendLegendStatus =
+  | "AVAILABLE"
+  | "SUBSTITUTED"
+  | "INJURED"
+  | "EXPELLED";
+export type BackendLegendAvailability = "AVAILABLE" | "UNAVAILABLE";
+export type BackendPlayerParticipation =
+  | "NOT_PARTICIPATING"
+  | "PARTICIPATING"
+  | "OBSERVING";
+export type BackendTerminalResult = "WIN" | "DRAW" | "LOSS" | "NO_CONTEST";
 
 export interface BackendTeam {
   id: string;
@@ -151,7 +162,7 @@ export interface BackendMatch {
   pending_action: BackendPendingAction | null;
   legend_profile?: BackendLegendProfile;
   legend_player_id?: string;
-  player_participation?: string;
+  player_participation?: BackendPlayerParticipation;
   [key: string]: unknown;
 }
 
@@ -231,6 +242,118 @@ export interface BackendPendingSettlementEvent {
   status: "PENDING";
 }
 
+export interface BackendMatchScore {
+  my_team: number;
+  opponent_team: number;
+}
+
+export interface BackendTeamStatisticLine {
+  score: number;
+  attacks: number;
+  goals_in_play: number;
+  yellow_cards: number;
+  red_cards: number;
+}
+
+export interface BackendTeamStatistics {
+  my_team: BackendTeamStatisticLine;
+  opponent_team: BackendTeamStatisticLine;
+}
+
+export interface BackendLegendAvailabilityState {
+  version: 1;
+  status: BackendLegendStatus;
+  availability: BackendLegendAvailability;
+  participation: BackendPlayerParticipation;
+  interactive_controls: boolean;
+  unavailable_since_minute: number | null;
+}
+
+export interface BackendAdministrativeResult {
+  version: 1;
+  responsible_side: "MY_TEAM" | "OPPONENT_TEAM" | "BOTH";
+  minute: number;
+  score_before: BackendMatchScore;
+  score_after: BackendMatchScore;
+  disposition:
+    | "ADMINISTRATIVE_0_3"
+    | "RESULT_PRESERVED_WORSE"
+    | "ABANDONED_NO_CONTEST";
+  no_contest: boolean;
+}
+
+export interface BackendLegendContribution {
+  version: 1;
+  legend_player_id: string;
+  status: BackendLegendStatus;
+  availability: BackendLegendAvailability;
+  minutes_played: number;
+  interventions: number;
+  completed_actions: number;
+  successful_actions: number;
+  goals: number;
+  assists: number;
+  yellow_cards: number;
+  red_card: boolean;
+  injured: boolean;
+  substituted: boolean;
+  administrative_result?: BackendAdministrativeResult;
+  energy_start: number;
+  energy_current: number;
+  stamina: number;
+}
+
+export interface BackendHalftimeRecovery {
+  version: 1;
+  config_version: "halftime-recovery/1";
+  eligibility: "ELIGIBLE" | "INELIGIBLE_UNAVAILABLE";
+  legend_status: BackendLegendStatus;
+  stamina: number;
+  energy_before: number;
+  energy_recovered: number;
+  energy_after: number;
+  minimum_energy: 4;
+  maximum_energy: 18;
+}
+
+export interface BackendHalftimeSummary {
+  version: 1;
+  match_id: string;
+  minute: 45;
+  score: BackendMatchScore;
+  team_statistics: BackendTeamStatistics;
+  legend_contribution: BackendLegendContribution;
+  recovery: BackendHalftimeRecovery;
+  continue_required: true;
+  tactics_editable: false;
+}
+
+export interface BackendKeyMatchEvent {
+  event_id: number;
+  minute: number;
+  action: string;
+  team: BackendActionTeam;
+  description: string;
+  score: BackendMatchScore;
+  outcome_type: string | null;
+}
+
+export interface BackendFullTimeHandoff {
+  version: 2;
+  match_id: string;
+  status: "FULL_TIME" | "ABANDONED";
+  terminal_reason: "REGULATION" | "ADMINISTRATIVE";
+  final_score: BackendMatchScore;
+  result: BackendTerminalResult;
+  season_points_delta: -1 | 1 | 3 | null;
+  key_events: BackendKeyMatchEvent[];
+  team_statistics: BackendTeamStatistics;
+  legend_contribution: BackendLegendContribution;
+  pending_settlement_events: BackendPendingSettlementEvent[];
+  administrative_result: BackendAdministrativeResult | null;
+  settlement_status: "PENDING_HANDOFF";
+}
+
 export interface BackendUnsupportedSceneRecovery {
   version: 1;
   status: "RECOVERY_REQUIRED";
@@ -265,6 +388,9 @@ export interface BackendMatchResponse {
   decision_result?: BackendDecisionResult;
   pending_settlement_events: BackendPendingSettlementEvent[];
   unsupported_scene: BackendUnsupportedSceneRecovery | null;
+  legend_availability: BackendLegendAvailabilityState;
+  halftime_summary: BackendHalftimeSummary | null;
+  full_time_handoff: BackendFullTimeHandoff | null;
   [key: string]: unknown;
 }
 
@@ -277,6 +403,9 @@ export interface BackendMatchSnapshot {
   field_state: BackendFieldState | null;
   pending_settlement_events: BackendPendingSettlementEvent[];
   unsupported_scene: BackendUnsupportedSceneRecovery | null;
+  legend_availability: BackendLegendAvailabilityState;
+  halftime_summary: BackendHalftimeSummary | null;
+  full_time_handoff: BackendFullTimeHandoff | null;
   [key: string]: unknown;
 }
 
@@ -452,7 +581,9 @@ export const BackendMatchSchema: z.ZodType<BackendMatch> = z
     engine_version: z.string().trim().min(1),
     ruleset_version: z.string().trim().min(1),
     initial_state: z.record(z.string(), z.unknown()),
-    player_participation: z.string().trim().min(1).optional(),
+    player_participation: z
+      .enum(["NOT_PARTICIPATING", "PARTICIPATING", "OBSERVING"])
+      .optional(),
   })
   .passthrough();
 
@@ -508,9 +639,9 @@ export const BackendTimelineEventSchema: z.ZodType<BackendTimelineEvent> = z
     match_id: identifier,
     event_id: z.number().int().min(0),
     action: z.string().trim().min(1),
-    minute: z.number().int().min(1).max(90),
+    minute: z.number().int().min(0).max(90),
     team: actionTeam,
-    description: z.string(),
+    description: z.string().min(1),
     my_team_score: z.number().int().min(0),
     opponent_team_score: z.number().int().min(0),
     my_team_scored: z.boolean(),
@@ -541,13 +672,243 @@ const BackendPendingSettlementEventSchema: z.ZodType<BackendPendingSettlementEve
       created_revision: z.number().int().min(1),
       created_time: z
         .object({
-          match_minute: z.number().int().min(1).max(89),
-          decision_sequence: z.number().int().min(1),
+          // Administrative outcomes are authored before a player decision, so
+          // their lifecycle handoff is valid at minute/decision sequence zero.
+          match_minute: z.number().int().min(0).max(89),
+          decision_sequence: z.number().int().min(0),
         })
         .strict(),
       status: z.literal("PENDING"),
     })
     .strict();
+
+const BackendMatchScoreSchema: z.ZodType<BackendMatchScore> = z
+  .object({
+    my_team: z.number().int().min(0),
+    opponent_team: z.number().int().min(0),
+  })
+  .strict();
+
+const BackendTeamStatisticLineSchema: z.ZodType<BackendTeamStatisticLine> = z
+  .object({
+    score: z.number().int().min(0),
+    attacks: z.number().int().min(0),
+    goals_in_play: z.number().int().min(0),
+    yellow_cards: z.number().int().min(0),
+    red_cards: z.number().int().min(0),
+  })
+  .strict();
+
+const BackendTeamStatisticsSchema: z.ZodType<BackendTeamStatistics> = z
+  .object({
+    my_team: BackendTeamStatisticLineSchema,
+    opponent_team: BackendTeamStatisticLineSchema,
+  })
+  .strict();
+
+const BackendAdministrativeResultSchema: z.ZodType<BackendAdministrativeResult> =
+  z
+    .object({
+      version: z.literal(1),
+      responsible_side: z.enum(["MY_TEAM", "OPPONENT_TEAM", "BOTH"]),
+      minute: z.number().int().min(0).max(89),
+      score_before: BackendMatchScoreSchema,
+      score_after: BackendMatchScoreSchema,
+      disposition: z.enum([
+        "ADMINISTRATIVE_0_3",
+        "RESULT_PRESERVED_WORSE",
+        "ABANDONED_NO_CONTEST",
+      ]),
+      no_contest: z.boolean(),
+    })
+    .strict();
+
+const BackendLegendContributionSchema: z.ZodType<BackendLegendContribution> = z
+  .object({
+    version: z.literal(1),
+    legend_player_id: identifier,
+    status: z.enum(["AVAILABLE", "SUBSTITUTED", "INJURED", "EXPELLED"]),
+    availability: z.enum(["AVAILABLE", "UNAVAILABLE"]),
+    minutes_played: z.number().int().min(0).max(90),
+    interventions: z.number().int().min(0),
+    completed_actions: z.number().int().min(0),
+    successful_actions: z.number().int().min(0),
+    goals: z.number().int().min(0),
+    assists: z.number().int().min(0),
+    yellow_cards: z.number().int().min(0).max(2),
+    red_card: z.boolean(),
+    injured: z.boolean(),
+    substituted: z.boolean(),
+    administrative_result: BackendAdministrativeResultSchema.optional(),
+    energy_start: rating,
+    energy_current: rating,
+    stamina: rating,
+  })
+  .strict();
+
+const BackendLegendAvailabilitySchema: z.ZodType<BackendLegendAvailabilityState> =
+  z
+    .object({
+      version: z.literal(1),
+      status: z.enum(["AVAILABLE", "SUBSTITUTED", "INJURED", "EXPELLED"]),
+      availability: z.enum(["AVAILABLE", "UNAVAILABLE"]),
+      participation: z.enum([
+        "NOT_PARTICIPATING",
+        "PARTICIPATING",
+        "OBSERVING",
+      ]),
+      interactive_controls: z.boolean(),
+      unavailable_since_minute: z.number().int().min(0).max(90).nullable(),
+    })
+    .strict()
+    .superRefine((availability, context) => {
+      const unavailable = availability.availability === "UNAVAILABLE";
+      const availableStatus = availability.status === "AVAILABLE";
+      if (unavailable === availability.interactive_controls) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Legend availability must agree with the authoritative control flag.",
+          path: ["interactive_controls"],
+        });
+      }
+      if (unavailable && availability.unavailable_since_minute === null) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "An unavailable Legend requires its authoritative removal minute.",
+          path: ["unavailable_since_minute"],
+        });
+      }
+      if (!unavailable && availability.unavailable_since_minute !== null) {
+        context.addIssue({
+          code: "custom",
+          message: "An available Legend cannot expose a removal minute.",
+          path: ["unavailable_since_minute"],
+        });
+      }
+      if (availableStatus === unavailable) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Legend status must agree with the authoritative availability flag.",
+          path: ["status"],
+        });
+      }
+      if (unavailable && availability.participation !== "OBSERVING") {
+        context.addIssue({
+          code: "custom",
+          message: "An unavailable Legend must remain an observer.",
+          path: ["participation"],
+        });
+      }
+    });
+
+const BackendHalftimeRecoverySchema: z.ZodType<BackendHalftimeRecovery> = z
+  .object({
+    version: z.literal(1),
+    config_version: z.literal("halftime-recovery/1"),
+    eligibility: z.enum(["ELIGIBLE", "INELIGIBLE_UNAVAILABLE"]),
+    legend_status: z.enum(["AVAILABLE", "SUBSTITUTED", "INJURED", "EXPELLED"]),
+    stamina: rating,
+    energy_before: rating,
+    energy_recovered: z.number().finite().min(0).max(18),
+    energy_after: rating,
+    minimum_energy: z.literal(4),
+    maximum_energy: z.literal(18),
+  })
+  .strict();
+
+const BackendHalftimeSummarySchema: z.ZodType<BackendHalftimeSummary> = z
+  .object({
+    version: z.literal(1),
+    match_id: identifier,
+    minute: z.literal(45),
+    score: BackendMatchScoreSchema,
+    team_statistics: BackendTeamStatisticsSchema,
+    legend_contribution: BackendLegendContributionSchema,
+    recovery: BackendHalftimeRecoverySchema,
+    continue_required: z.literal(true),
+    tactics_editable: z.literal(false),
+  })
+  .strict();
+
+const BackendKeyMatchEventSchema: z.ZodType<BackendKeyMatchEvent> = z
+  .object({
+    event_id: z.number().int().min(1),
+    minute: z.number().int().min(0).max(90),
+    action: z.string().trim().min(1),
+    team: actionTeam,
+    description: z.string().trim().min(1),
+    score: BackendMatchScoreSchema,
+    outcome_type: z.string().trim().min(1).nullable(),
+  })
+  .strict();
+
+const BackendFullTimeHandoffSchema: z.ZodType<BackendFullTimeHandoff> = z
+  .object({
+    version: z.literal(2),
+    match_id: identifier,
+    status: z.enum(["FULL_TIME", "ABANDONED"]),
+    terminal_reason: z.enum(["REGULATION", "ADMINISTRATIVE"]),
+    final_score: BackendMatchScoreSchema,
+    result: z.enum(["WIN", "DRAW", "LOSS", "NO_CONTEST"]),
+    season_points_delta: z.union([
+      z.literal(-1),
+      z.literal(1),
+      z.literal(3),
+      z.null(),
+    ]),
+    key_events: z.array(BackendKeyMatchEventSchema),
+    team_statistics: BackendTeamStatisticsSchema,
+    legend_contribution: BackendLegendContributionSchema,
+    pending_settlement_events: z.array(BackendPendingSettlementEventSchema),
+    administrative_result: BackendAdministrativeResultSchema.nullable(),
+    settlement_status: z.literal("PENDING_HANDOFF"),
+  })
+  .strict()
+  .superRefine((handoff, context) => {
+    if (
+      handoff.result === "NO_CONTEST" &&
+      handoff.season_points_delta !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "NO_CONTEST must preserve the backend's null season-point handoff.",
+        path: ["season_points_delta"],
+      });
+    }
+    if (
+      handoff.result !== "NO_CONTEST" &&
+      handoff.season_points_delta === null
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "A settled result requires the authoritative season-point delta.",
+        path: ["season_points_delta"],
+      });
+    }
+  });
+
+function requireLegendAvailabilityMatchesMatch(
+  match: BackendMatch,
+  availability: BackendLegendAvailabilityState,
+  context: z.RefinementCtx,
+) {
+  if (
+    match.player_participation !== undefined &&
+    availability.participation !== match.player_participation
+  ) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Legend availability participation must agree with the authoritative match.",
+      path: ["legend_availability", "participation"],
+    });
+  }
+}
 
 const RecoveryInputSchema = z
   .object({
@@ -649,9 +1010,17 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
     decision_result: BackendDecisionResultSchema.optional(),
     pending_settlement_events: z.array(BackendPendingSettlementEventSchema),
     unsupported_scene: BackendUnsupportedSceneRecoverySchema.nullable(),
+    legend_availability: BackendLegendAvailabilitySchema,
+    halftime_summary: BackendHalftimeSummarySchema.nullable(),
+    full_time_handoff: BackendFullTimeHandoffSchema.nullable(),
   })
   .passthrough()
   .superRefine((response, context) => {
+    requireLegendAvailabilityMatchesMatch(
+      response.match,
+      response.legend_availability,
+      context,
+    );
     if (response.status !== response.match.match_status) {
       context.addIssue({
         code: "custom",
@@ -664,6 +1033,53 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
         code: "custom",
         message: "Response minute must match the authoritative match.",
         path: ["minute"],
+      });
+    }
+    if (
+      response.halftime_summary &&
+      (response.halftime_summary.match_id !== response.match.id ||
+        (response.status === "HALFTIME" &&
+          (response.halftime_summary.score.my_team !==
+            response.match.my_team_score ||
+            response.halftime_summary.score.opponent_team !==
+              response.match.opponent_team_score)))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Halftime summary must belong to and agree with its match.",
+        path: ["halftime_summary"],
+      });
+    }
+    if (response.status === "HALFTIME" && !response.halftime_summary) {
+      context.addIssue({
+        code: "custom",
+        message: "HALFTIME requires an authoritative halftime summary.",
+        path: ["halftime_summary"],
+      });
+    }
+    if (
+      response.status === "FINISHED" &&
+      response.match.engine_version === "match-engine/5" &&
+      !response.full_time_handoff
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FINISHED requires an authoritative full-time handoff.",
+        path: ["full_time_handoff"],
+      });
+    }
+    if (
+      response.full_time_handoff &&
+      (response.full_time_handoff.match_id !== response.match.id ||
+        response.full_time_handoff.final_score.my_team !==
+          response.match.my_team_score ||
+        response.full_time_handoff.final_score.opponent_team !==
+          response.match.opponent_team_score)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Full-time handoff must belong to and agree with its match.",
+        path: ["full_time_handoff"],
       });
     }
 
@@ -827,11 +1243,69 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
     field_state: BackendFieldStateSchema.nullable(),
     pending_settlement_events: z.array(BackendPendingSettlementEventSchema),
     unsupported_scene: BackendUnsupportedSceneRecoverySchema.nullable(),
+    legend_availability: BackendLegendAvailabilitySchema,
+    halftime_summary: BackendHalftimeSummarySchema.nullable(),
+    full_time_handoff: BackendFullTimeHandoffSchema.nullable(),
   })
   .strict()
   .superRefine((response, context) => {
     requireMatchTeamIdentity(response, context);
     requirePrematchLegendData(response.match, context, ["match"]);
+    requireLegendAvailabilityMatchesMatch(
+      response.match,
+      response.legend_availability,
+      context,
+    );
+    if (
+      response.halftime_summary &&
+      (response.halftime_summary.match_id !== response.match.id ||
+        (response.match.match_status === "HALFTIME" &&
+          (response.halftime_summary.score.my_team !==
+            response.match.my_team_score ||
+            response.halftime_summary.score.opponent_team !==
+              response.match.opponent_team_score)))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Halftime summary must belong to and agree with its match.",
+        path: ["halftime_summary"],
+      });
+    }
+    if (
+      response.match.match_status === "HALFTIME" &&
+      !response.halftime_summary
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "HALFTIME requires an authoritative halftime summary.",
+        path: ["halftime_summary"],
+      });
+    }
+    if (
+      response.match.match_status === "FINISHED" &&
+      response.match.engine_version === "match-engine/5" &&
+      !response.full_time_handoff
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "FINISHED requires an authoritative full-time handoff.",
+        path: ["full_time_handoff"],
+      });
+    }
+    if (
+      response.full_time_handoff &&
+      (response.full_time_handoff.match_id !== response.match.id ||
+        response.full_time_handoff.final_score.my_team !==
+          response.match.my_team_score ||
+        response.full_time_handoff.final_score.opponent_team !==
+          response.match.opponent_team_score)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Full-time handoff must belong to and agree with its match.",
+        path: ["full_time_handoff"],
+      });
+    }
     const pendingAction = response.pending_action;
     if (response.unsupported_scene) {
       if (

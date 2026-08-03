@@ -103,6 +103,9 @@ export default function PreMatchScreen() {
           timelineEvents: response.timeline,
           pendingAction,
           unsupportedScene: response.unsupported_scene,
+          legendAvailability: response.legend_availability,
+          halftimeSummary: response.halftime_summary,
+          fullTimeHandoff: response.full_time_handoff,
         });
       } catch (error) {
         if (cancelled) return;

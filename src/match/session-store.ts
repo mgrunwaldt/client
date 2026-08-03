@@ -261,6 +261,9 @@ if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
         timelineEvents: response.events,
         pendingAction: response.pending_action,
         unsupportedScene: response.unsupported_scene,
+        legendAvailability: response.legend_availability,
+        halftimeSummary: response.halftime_summary,
+        fullTimeHandoff: response.full_time_handoff,
       });
     },
   });

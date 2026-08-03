@@ -1,4 +1,5 @@
 import {
+  type BackendLegendAvailabilityState,
   type BackendMatch,
   type BackendMatchResponse,
   type BackendPendingAction,
@@ -48,6 +49,9 @@ const initialData: MatchSessionData = {
   pendingCommand: null,
   decisionResult: null,
   unsupportedScene: null,
+  legendAvailability: null,
+  halftimeSummary: null,
+  fullTimeHandoff: null,
   diagnostic: null,
   error: null,
 };
@@ -95,6 +99,7 @@ function playbackStatusForPhase(phase: MatchSessionPhase): MatchPlaybackStatus {
     case "created":
       return "created";
     case "timeline_playback":
+    case "legend_unavailable_simulation":
       return "timeline_playing";
     case "scene_ready":
     case "submitting":
@@ -363,23 +368,34 @@ function sameRevisionHydrationAgrees(
 function phaseForMatch(
   match: BackendMatch,
   pendingAction: BackendPendingAction | null,
+  legendAvailability: BackendLegendAvailabilityState | null,
 ) {
   if (!isKnownMatchStatus(match.match_status)) return null;
+  const legendIsUnavailable = legendAvailability
+    ? legendAvailability.availability === "UNAVAILABLE"
+    : match.player_participation === "OBSERVING";
   switch (match.match_status) {
     case "NOT_STARTED":
       return "created" as const;
     case "IN_PROGRESS":
-      return match.player_participation === "OBSERVING"
+      return legendIsUnavailable
         ? ("legend_unavailable_simulation" as const)
         : ("timeline_playback" as const);
     case "WAITING_FOR_DECISION":
-      return pendingAction ? ("timeline_playback" as const) : null;
+      return legendIsUnavailable
+        ? ("legend_unavailable_simulation" as const)
+        : pendingAction
+          ? ("timeline_playback" as const)
+          : null;
     case "WAITING_FOR_RECOVERY":
       return null;
     case "HALFTIME":
       return "halftime" as const;
     case "FINISHED":
-      return "finished" as const;
+      return legendAvailability?.availability === "UNAVAILABLE" &&
+        match.prev_time < match.current_time
+        ? ("legend_unavailable_simulation" as const)
+        : ("finished" as const);
   }
 }
 
@@ -420,6 +436,9 @@ function applyAuthoritativeSnapshot(
       payload.timelineEvents,
     ),
     unsupportedScene: unsupportedRecovery,
+    legendAvailability: payload.legendAvailability ?? state.legendAvailability,
+    halftimeSummary: payload.halftimeSummary ?? state.halftimeSummary,
+    fullTimeHandoff: payload.fullTimeHandoff ?? state.fullTimeHandoff,
   };
   if (unsupportedRecovery) {
     if (
@@ -436,7 +455,11 @@ function applyAuthoritativeSnapshot(
     }
     return unsupportedSceneRecovery(hydratedState, unsupportedRecovery);
   }
-  const phase = phaseForMatch(match, pendingAction);
+  const phase = phaseForMatch(
+    match,
+    pendingAction,
+    payload.legendAvailability ?? state.legendAvailability,
+  );
   if (!phase) {
     if (match.match_status === "WAITING_FOR_RECOVERY") {
       return diagnosticState(hydratedState, {
@@ -473,8 +496,10 @@ function applyAuthoritativeSnapshot(
   const preservePlayback =
     options.preservePlayback &&
     sameMatch &&
-    state.phase === "timeline_playback" &&
-    phase === "timeline_playback";
+    ["timeline_playback", "legend_unavailable_simulation"].includes(
+      state.phase,
+    ) &&
+    ["timeline_playback", "legend_unavailable_simulation"].includes(phase);
   const nextPhase = options.resultPlayback ? "result_playback" : phase;
   const fieldState = pendingAction?.field_state ?? null;
   const pendingCommand = commandMatchesCurrentScene(
@@ -499,12 +524,17 @@ function applyAuthoritativeSnapshot(
       playbackMinute: preservePlayback
         ? state.playbackMinute
         : (options.playbackMinute ??
-          (phase === "timeline_playback"
+          (phase === "timeline_playback" ||
+          phase === "legend_unavailable_simulation"
             ? (payload.match.prev_time ?? 0)
             : payload.match.current_time)),
       pendingCommand,
       decisionResult: options.resultPlayback ? state.decisionResult : null,
       unsupportedScene: null,
+      legendAvailability:
+        payload.legendAvailability ?? state.legendAvailability,
+      halftimeSummary: payload.halftimeSummary ?? state.halftimeSummary,
+      fullTimeHandoff: payload.fullTimeHandoff ?? state.fullTimeHandoff,
       diagnostic: null,
       error: null,
     },
@@ -530,6 +560,9 @@ function responsePayload(
     timelineEvents: response.events,
     pendingAction,
     unsupportedScene: response.unsupported_scene,
+    legendAvailability: response.legend_availability,
+    halftimeSummary: response.halftime_summary,
+    fullTimeHandoff: response.full_time_handoff,
   };
 }
 
@@ -795,12 +828,24 @@ export function matchSessionReducer(
       };
     }
     case "TIMELINE_TICK": {
-      if (state.phase !== "timeline_playback" || !state.match) return state;
+      if (
+        (state.phase !== "timeline_playback" &&
+          state.phase !== "legend_unavailable_simulation") ||
+        !state.match
+      ) {
+        return state;
+      }
       const target = state.pendingAction?.minute ?? state.match.current_time;
       const minute = Math.min(
         target,
         Math.max(state.playbackMinute, event.minute),
       );
+      if (
+        state.phase === "legend_unavailable_simulation" &&
+        minute >= state.match.current_time
+      ) {
+        return withPhase({ ...state, playbackMinute: minute }, "finished");
+      }
       return { ...state, playbackMinute: minute };
     }
     case "SCENE_READY":
@@ -814,7 +859,21 @@ export function matchSessionReducer(
       return withPhase(state, "scene_ready");
     case "RESULT_ACKNOWLEDGED": {
       if (state.phase !== "result_playback" || !state.match) return state;
-      const phase = phaseForMatch(state.match, state.pendingAction);
+      if (
+        state.match.match_status === "FINISHED" &&
+        state.legendAvailability?.availability === "UNAVAILABLE" &&
+        state.playbackMinute < state.match.current_time
+      ) {
+        return withPhase(
+          { ...state, decisionResult: null },
+          "legend_unavailable_simulation",
+        );
+      }
+      const phase = phaseForMatch(
+        state.match,
+        state.pendingAction,
+        state.legendAvailability,
+      );
       if (!phase) return unsupportedStatus(state, state.match.match_status);
       return withPhase({ ...state, decisionResult: null }, phase);
     }
@@ -835,7 +894,11 @@ export function matchSessionReducer(
         },
         state.recoveryPhase ??
           (state.match
-            ? phaseForMatch(state.match, state.pendingAction)
+            ? phaseForMatch(
+                state.match,
+                state.pendingAction,
+                state.legendAvailability,
+              )
             : "idle") ??
           "timeline_playback",
       );

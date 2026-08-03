@@ -2,6 +2,9 @@ import type { MatchCommand } from "./api-v1/adapter";
 import type {
   BackendDecisionResult,
   BackendFieldState,
+  BackendFullTimeHandoff,
+  BackendHalftimeSummary,
+  BackendLegendAvailabilityState,
   BackendMatch,
   BackendMatchResponse,
   BackendPendingAction,
@@ -82,6 +85,9 @@ export interface MatchSessionData {
   pendingCommand: MatchCommand | null;
   decisionResult: BackendDecisionResult | null;
   unsupportedScene: BackendUnsupportedSceneRecovery | null;
+  legendAvailability: BackendLegendAvailabilityState | null;
+  halftimeSummary: BackendHalftimeSummary | null;
+  fullTimeHandoff: BackendFullTimeHandoff | null;
   diagnostic: MatchSessionDiagnostic | null;
   error: string | null;
 }
@@ -93,6 +99,9 @@ export interface HydratedMatchSession {
   timelineEvents: BackendTimelineEvent[];
   pendingAction?: BackendPendingAction | null;
   unsupportedScene?: BackendUnsupportedSceneRecovery | null;
+  legendAvailability?: BackendLegendAvailabilityState;
+  halftimeSummary?: BackendHalftimeSummary | null;
+  fullTimeHandoff?: BackendFullTimeHandoff | null;
 }
 
 export type MatchSessionEvent =

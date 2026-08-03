@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import waitingOpenPlayResponse from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
+import waitingOpenPlayResponse from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
 import {
   authenticateForContinuation,
   authenticateToHome,

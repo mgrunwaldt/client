@@ -259,6 +259,32 @@
         }
       }
     },
+    "/abandonMatch": {
+      "post": {
+        "operationId": "abandonMatch",
+        "tags": ["Matches"],
+        "summary": "Immediately abandon a live match with an authoritative administrative result",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/MatchRevision" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AbandonMatchRequest" } } }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/MatchProgress" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/processMatchAction": {
       "post": {
         "operationId": "processMatchAction",
@@ -660,7 +686,7 @@
         "enum": [
           "OPEN_PLAY", "DRIBBLE", "FREE_KICK", "CORNER", "PENALTY",
           "JUMPER", "BRAWL", "ARGUMENT_OPPONENT", "ARGUMENT_TEAMMATE", "BATHROOM",
-          "RANDOM_EVENT", "HALFTIME", "MATCH_END", "SUBSTITUTE", "RESUME_MATCH"
+          "RANDOM_EVENT", "HALFTIME", "MATCH_END", "SUBSTITUTE", "RESUME_MATCH", "ADMINISTRATIVE_ABANDONMENT"
         ]
       },
       "PlayableSceneType": {
@@ -790,8 +816,8 @@
           "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
           "engine_version": {
             "type": "string",
-            "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4"],
-            "description": "match-engine/4 supports live mutation. Persisted match-engine/1, match-engine/2, and match-engine/3 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
+            "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5"],
+            "description": "match-engine/5 supports live mutation. Persisted match-engine/1 through match-engine/4 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
             "x-overgoal-m1-required": true
           },
           "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
@@ -1125,7 +1151,7 @@
           "match_id": { "$ref": "#/components/schemas/Identifier" },
           "event_id": { "type": "integer", "minimum": 1 },
           "action": { "$ref": "#/components/schemas/MatchAction" },
-          "minute": { "type": "integer", "minimum": 1, "maximum": 90 },
+          "minute": { "type": "integer", "minimum": 0, "maximum": 90 },
           "team": { "$ref": "#/components/schemas/ActionTeam" },
           "description": { "type": "string", "minLength": 1 },
           "my_team_score": { "type": "integer", "minimum": 0 },
@@ -1164,7 +1190,7 @@
               "action_id": { "$ref": "#/components/schemas/Identifier" },
               "action_sequence": { "type": "integer", "minimum": 1 },
               "settlement_sequence": { "type": "integer", "minimum": 1 },
-              "scene_type": { "type": "string", "enum": ["JUMPER", "BRAWL", "ARGUMENT_OPPONENT", "ARGUMENT_TEAMMATE", "BATHROOM"] },
+              "scene_type": { "type": "string", "enum": ["JUMPER", "BRAWL", "ARGUMENT_OPPONENT", "ARGUMENT_TEAMMATE", "BATHROOM", "ADMINISTRATIVE_ABANDONMENT"] },
               "choice": { "type": "string", "minLength": 1 }
             },
             "additionalProperties": false
@@ -1175,8 +1201,8 @@
             "type": "object",
             "required": ["match_minute", "decision_sequence"],
             "properties": {
-              "match_minute": { "type": "integer", "minimum": 1, "maximum": 89 },
-              "decision_sequence": { "type": "integer", "minimum": 1 }
+              "match_minute": { "type": "integer", "minimum": 0, "maximum": 89 },
+              "decision_sequence": { "type": "integer", "minimum": 0 }
             },
             "additionalProperties": false
           },
@@ -1184,15 +1210,154 @@
         },
         "additionalProperties": false
       },
-      "FullTimeHandoff": {
+      "MatchScore": {
         "type": "object",
-        "required": ["version", "match_id", "status", "season_points_delta", "pending_settlement_events"],
+        "required": ["my_team", "opponent_team"],
+        "properties": {
+          "my_team": { "type": "integer", "minimum": 0 },
+          "opponent_team": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      },
+      "TeamStatisticLine": {
+        "type": "object",
+        "required": ["score", "attacks", "goals_in_play", "yellow_cards", "red_cards"],
+        "properties": {
+          "score": { "type": "integer", "minimum": 0 },
+          "attacks": { "type": "integer", "minimum": 0 },
+          "goals_in_play": { "type": "integer", "minimum": 0 },
+          "yellow_cards": { "type": "integer", "minimum": 0 },
+          "red_cards": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+      },
+      "TeamStatistics": {
+        "type": "object",
+        "required": ["my_team", "opponent_team"],
+        "properties": {
+          "my_team": { "$ref": "#/components/schemas/TeamStatisticLine" },
+          "opponent_team": { "$ref": "#/components/schemas/TeamStatisticLine" }
+        },
+        "additionalProperties": false
+      },
+      "LegendAvailability": {
+        "type": "object",
+        "required": ["version", "status", "availability", "participation", "interactive_controls", "unavailable_since_minute"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "status": { "type": "string", "enum": ["AVAILABLE", "SUBSTITUTED", "INJURED", "EXPELLED"] },
+          "availability": { "type": "string", "enum": ["AVAILABLE", "UNAVAILABLE"] },
+          "participation": { "$ref": "#/components/schemas/PlayerParticipation" },
+          "interactive_controls": { "type": "boolean" },
+          "unavailable_since_minute": {
+            "oneOf": [{ "type": "integer", "minimum": 0, "maximum": 90 }, { "type": "null" }]
+          }
+        },
+        "additionalProperties": false
+      },
+      "LegendContribution": {
+        "type": "object",
+        "required": ["version", "legend_player_id", "status", "availability", "minutes_played", "interventions", "completed_actions", "successful_actions", "goals", "assists", "yellow_cards", "red_card", "injured", "substituted", "energy_start", "energy_current", "stamina"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "legend_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "status": { "type": "string", "enum": ["AVAILABLE", "SUBSTITUTED", "INJURED", "EXPELLED"] },
+          "availability": { "type": "string", "enum": ["AVAILABLE", "UNAVAILABLE"] },
+          "minutes_played": { "type": "integer", "minimum": 0, "maximum": 90 },
+          "interventions": { "type": "integer", "minimum": 0 },
+          "completed_actions": { "type": "integer", "minimum": 0 },
+          "successful_actions": { "type": "integer", "minimum": 0 },
+          "goals": { "type": "integer", "minimum": 0 },
+          "assists": { "type": "integer", "minimum": 0 },
+          "yellow_cards": { "type": "integer", "minimum": 0, "maximum": 2 },
+          "red_card": { "type": "boolean" },
+          "injured": { "type": "boolean" },
+          "substituted": { "type": "boolean" },
+          "administrative_result": { "$ref": "#/components/schemas/AdministrativeResult" },
+          "energy_start": { "type": "number", "minimum": 0, "maximum": 100 },
+          "energy_current": { "type": "number", "minimum": 0, "maximum": 100 },
+          "stamina": { "type": "number", "minimum": 0, "maximum": 100 }
+        },
+        "additionalProperties": false
+      },
+      "HalftimeRecovery": {
+        "type": "object",
+        "required": ["version", "config_version", "eligibility", "legend_status", "stamina", "energy_before", "energy_recovered", "energy_after", "minimum_energy", "maximum_energy"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "config_version": { "type": "string", "const": "halftime-recovery/1" },
+          "eligibility": { "type": "string", "enum": ["ELIGIBLE", "INELIGIBLE_UNAVAILABLE"] },
+          "legend_status": { "type": "string", "enum": ["AVAILABLE", "SUBSTITUTED", "INJURED", "EXPELLED"] },
+          "stamina": { "type": "number", "minimum": 0, "maximum": 100 },
+          "energy_before": { "type": "number", "minimum": 0, "maximum": 100 },
+          "energy_recovered": { "type": "number", "minimum": 0, "maximum": 18 },
+          "energy_after": { "type": "number", "minimum": 0, "maximum": 100 },
+          "minimum_energy": { "type": "number", "const": 4 },
+          "maximum_energy": { "type": "number", "const": 18 }
+        },
+        "additionalProperties": false
+      },
+      "HalftimeSummary": {
+        "type": "object",
+        "required": ["version", "match_id", "minute", "score", "team_statistics", "legend_contribution", "recovery", "continue_required", "tactics_editable"],
         "properties": {
           "version": { "type": "integer", "const": 1 },
           "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "minute": { "type": "integer", "const": 45 },
+          "score": { "$ref": "#/components/schemas/MatchScore" },
+          "team_statistics": { "$ref": "#/components/schemas/TeamStatistics" },
+          "legend_contribution": { "$ref": "#/components/schemas/LegendContribution" },
+          "recovery": { "$ref": "#/components/schemas/HalftimeRecovery" },
+          "continue_required": { "type": "boolean", "const": true },
+          "tactics_editable": { "type": "boolean", "const": false }
+        },
+        "additionalProperties": false
+      },
+      "AdministrativeResult": {
+        "type": "object",
+        "required": ["version", "responsible_side", "minute", "score_before", "score_after", "disposition", "no_contest"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "responsible_side": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM", "BOTH"] },
+          "minute": { "type": "integer", "minimum": 0, "maximum": 89 },
+          "score_before": { "$ref": "#/components/schemas/MatchScore" },
+          "score_after": { "$ref": "#/components/schemas/MatchScore" },
+          "disposition": { "type": "string", "enum": ["ADMINISTRATIVE_0_3", "RESULT_PRESERVED_WORSE", "ABANDONED_NO_CONTEST"] },
+          "no_contest": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      },
+      "KeyMatchEvent": {
+        "type": "object",
+        "required": ["event_id", "minute", "action", "team", "description", "score", "outcome_type"],
+        "properties": {
+          "event_id": { "type": "integer", "minimum": 1 },
+          "minute": { "type": "integer", "minimum": 0, "maximum": 90 },
+          "action": { "$ref": "#/components/schemas/MatchAction" },
+          "team": { "$ref": "#/components/schemas/ActionTeam" },
+          "description": { "type": "string", "minLength": 1 },
+          "score": { "$ref": "#/components/schemas/MatchScore" },
+          "outcome_type": { "type": ["string", "null"] }
+        },
+        "additionalProperties": false
+      },
+      "FullTimeHandoff": {
+        "type": "object",
+        "required": ["version", "match_id", "status", "terminal_reason", "final_score", "result", "season_points_delta", "key_events", "team_statistics", "legend_contribution", "pending_settlement_events", "administrative_result", "settlement_status"],
+        "properties": {
+          "version": { "type": "integer", "const": 2 },
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
           "status": { "type": "string", "enum": ["FULL_TIME", "ABANDONED"] },
-          "season_points_delta": { "type": "integer", "enum": [-1, 1, 3] },
-          "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } }
+          "terminal_reason": { "type": "string", "enum": ["REGULATION", "ADMINISTRATIVE"] },
+          "final_score": { "$ref": "#/components/schemas/MatchScore" },
+          "result": { "type": "string", "enum": ["WIN", "DRAW", "LOSS", "NO_CONTEST"] },
+          "season_points_delta": { "oneOf": [{ "type": "integer", "enum": [-1, 1, 3] }, { "type": "null" }] },
+          "key_events": { "type": "array", "items": { "$ref": "#/components/schemas/KeyMatchEvent" } },
+          "team_statistics": { "$ref": "#/components/schemas/TeamStatistics" },
+          "legend_contribution": { "$ref": "#/components/schemas/LegendContribution" },
+          "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } },
+          "administrative_result": { "oneOf": [{ "$ref": "#/components/schemas/AdministrativeResult" }, { "type": "null" }] },
+          "settlement_status": { "type": "string", "const": "PENDING_HANDOFF" }
         },
         "additionalProperties": false
       },
@@ -1424,9 +1589,9 @@
       },
       "MatchProgressResponse": {
         "type": "object",
-        "required": ["minute", "status", "prev_time", "pending_action", "field_state", "action", "action_team", "events", "pending_settlement_events", "unsupported_scene", "match"],
+        "required": ["minute", "status", "prev_time", "pending_action", "field_state", "action", "action_team", "events", "pending_settlement_events", "unsupported_scene", "legend_availability", "halftime_summary", "full_time_handoff", "match"],
         "properties": {
-          "minute": { "type": "integer", "minimum": 1, "maximum": 90 },
+          "minute": { "type": "integer", "minimum": 0, "maximum": 90 },
           "status": { "$ref": "#/components/schemas/MatchStatus" },
           "prev_time": { "type": "integer", "minimum": 0, "maximum": 90 },
           "pending_action": { "oneOf": [{ "$ref": "#/components/schemas/PendingAction" }, { "type": "null" }] },
@@ -1437,7 +1602,9 @@
           "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } },
           "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] },
           "unsupported_scene_recovery": { "$ref": "#/components/schemas/UnsupportedSceneRecoveryResult" },
-          "full_time_handoff": { "$ref": "#/components/schemas/FullTimeHandoff" },
+          "legend_availability": { "$ref": "#/components/schemas/LegendAvailability" },
+          "halftime_summary": { "oneOf": [{ "$ref": "#/components/schemas/HalftimeSummary" }, { "type": "null" }] },
+          "full_time_handoff": { "oneOf": [{ "$ref": "#/components/schemas/FullTimeHandoff" }, { "type": "null" }] },
           "match": { "$ref": "#/components/schemas/Match" },
           "decision_result": { "$ref": "#/components/schemas/DecisionResult" },
           "last_decision": { "$ref": "#/components/schemas/LastDecision" }
@@ -1485,6 +1652,15 @@
         "type": "object",
         "required": ["match_id"],
         "properties": { "match_id": { "$ref": "#/components/schemas/Identifier" } },
+        "additionalProperties": false
+      },
+      "AbandonMatchRequest": {
+        "type": "object",
+        "required": ["match_id", "responsible_side"],
+        "properties": {
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "responsible_side": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM", "BOTH"] }
+        },
         "additionalProperties": false
       },
       "DecisionSeedHint": {
@@ -1744,7 +1920,7 @@
       },
       "MatchSnapshotResponse": {
         "type": "object",
-        "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state", "pending_settlement_events", "unsupported_scene"],
+        "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state", "pending_settlement_events", "unsupported_scene", "legend_availability", "halftime_summary", "full_time_handoff"],
         "properties": {
           "match": { "$ref": "#/components/schemas/Match" },
           "my_team": { "$ref": "#/components/schemas/Team" },
@@ -1753,7 +1929,10 @@
           "pending_action": { "oneOf": [{ "$ref": "#/components/schemas/PendingAction" }, { "type": "null" }] },
           "field_state": { "oneOf": [{ "$ref": "#/components/schemas/FieldState" }, { "type": "null" }] },
           "pending_settlement_events": { "type": "array", "items": { "$ref": "#/components/schemas/PendingSettlementEvent" } },
-          "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] }
+          "unsupported_scene": { "oneOf": [{ "$ref": "#/components/schemas/UnsupportedSceneRecoveryState" }, { "type": "null" }] },
+          "legend_availability": { "$ref": "#/components/schemas/LegendAvailability" },
+          "halftime_summary": { "oneOf": [{ "$ref": "#/components/schemas/HalftimeSummary" }, { "type": "null" }] },
+          "full_time_handoff": { "oneOf": [{ "$ref": "#/components/schemas/FullTimeHandoff" }, { "type": "null" }] }
         },
         "additionalProperties": false
       },

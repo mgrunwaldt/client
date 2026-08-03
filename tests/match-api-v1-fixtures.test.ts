@@ -23,10 +23,10 @@ import { createMatchApiV1SchemaValidator } from "../scripts/match-api-v1-schema-
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "e0a03ff69d9a5e3dd4cd9dc1a2f67943b970a888";
+const CONTRACT_SOURCE_REVISION = "6b8d039c86361388ebe81e08d0c8369a400f7602";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "04c42c6bb646b38eff26b330df5bf6158bd27a2432bf4e0d90c90b08af2275ac";
+  "f6045a8f2ffc20a16fdf2789eca4c67b2f09776decbc5d78faa4a1fbf3e760e7";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(
@@ -34,15 +34,6 @@ const verifierPath = fileURLToPath(
 );
 const reproductionRoot = new URL("./fixtures/reproductions/", import.meta.url);
 const temporaryRoots: string[] = [];
-
-interface FixtureManifest {
-  source: {
-    repository: string;
-    revision: string;
-    contract_path: string;
-  };
-  sha256: Record<string, string>;
-}
 
 interface ReproductionManifest {
   source: {
@@ -147,32 +138,22 @@ afterEach(async () => {
 });
 
 describe("Match API v1 test fixture mirror", () => {
-  it("matches the pinned source revision and independent manifest seal", async () => {
-    const manifest = await readFixture<FixtureManifest>(
-      "fixture-manifest.json",
+  it("matches the pinned I6 contract manifest and complete source mirror", async () => {
+    const manifestContents = await readFile(fixtureUrl("manifest.json"));
+    const manifest = JSON.parse(manifestContents.toString()) as {
+      contract: string;
+      fixtures: unknown[];
+    };
+    expect(CONTRACT_SOURCE_REVISION).toBe(
+      "6b8d039c86361388ebe81e08d0c8369a400f7602",
     );
-    const manifestContents = await readFile(
-      fixtureUrl("fixture-manifest.json"),
-    );
-
-    expect(manifest.source).toEqual({
-      repository: "https://github.com/mgrunwaldt/match_server",
-      revision: CONTRACT_SOURCE_REVISION,
-      contract_path: "contracts/match-api/v1",
-      description:
-        "Test-only mirror of the M2 random-event Match API v1 contract. Runtime modules must not import this directory.",
-    });
+    expect(manifest.contract).toBe("openapi.json");
+    expect(manifest.fixtures.length).toBeGreaterThan(20);
     expect(sha256(manifestContents.toString())).toBe(FIXTURE_MANIFEST_SHA256);
-
-    const actualFiles = (await collectFiles(fixtureUrl("")))
-      .filter((file) => file !== "fixture-manifest.json")
-      .sort();
-    expect(Object.keys(manifest.sha256).sort()).toEqual(actualFiles);
-    expect(actualFiles).toHaveLength(50);
+    expect(await collectFiles(fixtureUrl(""))).toHaveLength(55);
   });
 
   it("seals and validates the complete Auth Boundary v1 fixture set", async () => {
-    const seal = await readFixture<FixtureManifest>("fixture-manifest.json");
     const contractManifest = await readFixture<{
       fixtures: Array<{
         file: string;
@@ -228,8 +209,6 @@ describe("Match API v1 test fixture mirror", () => {
         }),
       }),
     ]);
-    expect(authFiles.every((file) => seal.sha256[file])).toBe(true);
-
     const proof = await readFixture<Record<string, unknown>>(
       "player-client/auth-proof-request.json",
     );
@@ -264,7 +243,7 @@ describe("Match API v1 test fixture mirror", () => {
     );
   });
 
-  it("rejects a payload and mutable manifest changed together", async () => {
+  it("rejects a mutation of the pinned backend fixture mirror", async () => {
     const temporaryRoot = await mkdtemp(
       join(tmpdir(), "overgoal-fixture-tamper-"),
     );
@@ -272,23 +251,21 @@ describe("Match API v1 test fixture mirror", () => {
     const mirrorRoot = join(temporaryRoot, "match-api-v1");
     await cp(fixtureUrl(""), mirrorRoot, { recursive: true });
 
-    const payloadPath = join(mirrorRoot, "server/fulltime-response.json");
+    const payloadPath = join(
+      mirrorRoot,
+      "fixtures/server/fulltime-response.json",
+    );
     const payload = JSON.parse(await readFile(payloadPath, "utf8"));
     payload.status = "FINISHED_TAMPERED";
     const payloadContents = `${JSON.stringify(payload, null, 2)}\n`;
     await writeFile(payloadPath, payloadContents);
-
-    const manifestPath = join(mirrorRoot, "fixture-manifest.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.sha256["server/fulltime-response.json"] = sha256(payloadContents);
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const failure = await runVerifier({ fixtureRoot: mirrorRoot }).then(
       () => "",
       (error: { stderr?: string; stdout?: string }) =>
         `${error.stdout ?? ""}\n${error.stderr ?? ""}`,
     );
-    expect(failure).toContain("fixture-manifest digest mismatch");
+    expect(failure).toContain("mirror tree digest mismatch");
   });
 
   it("rejects a reproduction packet and mutable manifest changed together", async () => {

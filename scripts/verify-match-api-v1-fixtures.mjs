@@ -15,12 +15,12 @@ import {
 const SOURCE_REPOSITORY = "https://github.com/mgrunwaldt/match_server";
 const REPRODUCTION_SOURCE_REPOSITORY =
   "https://github.com/overgoal/match_server";
-const CONTRACT_SOURCE_REVISION = "e0a03ff69d9a5e3dd4cd9dc1a2f67943b970a888";
+const CONTRACT_SOURCE_REVISION = "6b8d039c86361388ebe81e08d0c8369a400f7602";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
-const EXPECTED_FIXTURE_MANIFEST_SHA256 =
-  "04c42c6bb646b38eff26b330df5bf6158bd27a2432bf4e0d90c90b08af2275ac";
+const EXPECTED_CONTRACT_MANIFEST_SHA256 =
+  "f6045a8f2ffc20a16fdf2789eca4c67b2f09776decbc5d78faa4a1fbf3e760e7";
 const EXPECTED_MIRROR_TREE_SHA256 =
-  "dbaf68d19a2cd3c7247833c3ed74f80cdba17b5b14c2aade568a97fb194a1997";
+  "3feb82254ebdcbb43d88bf242c873f067e4ddff640b842feba5b7d3abe74a535";
 const EXPECTED_REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 
@@ -116,14 +116,14 @@ function assertFixtureAssociation(openapi, fixture) {
 
 function mirrorPathForContractFixture(file) {
   if (file.startsWith("../examples/scenes/")) {
-    return `scenes/${file.split("/").at(-1)}`;
+    return `examples/scenes/${file.split("/").at(-1)}`;
   }
-  return file;
+  return `fixtures/${file}`;
 }
 
 async function validateMirroredContract(fixtureRoot, reproduction) {
   const manifest = JSON.parse(
-    await readFile(new URL("manifest.json", fixtureRoot), "utf8"),
+    await readFile(new URL("fixtures/manifest.json", fixtureRoot), "utf8"),
   );
   if (manifest.contract !== "openapi.json") {
     throw new Error(
@@ -259,48 +259,20 @@ async function readSealedReproduction(reproductionRoot) {
 
 const fixtureRoot = fixtureRootFromEnvironment();
 const reproductionRoot = reproductionRootFromEnvironment();
-const manifestUrl = new URL("fixture-manifest.json", fixtureRoot);
+const manifestUrl = new URL("fixtures/manifest.json", fixtureRoot);
 const manifestContents = await readFile(manifestUrl);
-const manifest = JSON.parse(manifestContents);
-
-if (
-  manifest.source?.repository !== SOURCE_REPOSITORY ||
-  manifest.source?.revision !== CONTRACT_SOURCE_REVISION ||
-  manifest.source?.contract_path !== "contracts/match-api/v1"
-) {
-  throw new Error(
-    "Match API v1 fixture source provenance does not match the pinned contract",
-  );
-}
 
 const actualManifestDigest = sha256(manifestContents);
-if (actualManifestDigest !== EXPECTED_FIXTURE_MANIFEST_SHA256) {
+if (actualManifestDigest !== EXPECTED_CONTRACT_MANIFEST_SHA256) {
   throw new Error(
-    `Match API v1 fixture-manifest digest mismatch: expected ${EXPECTED_FIXTURE_MANIFEST_SHA256}, received ${actualManifestDigest}`,
-  );
-}
-
-const actualFiles = (await collectFixtureFiles(fixtureRoot))
-  .filter((file) => file !== "fixture-manifest.json")
-  .sort();
-const manifestFiles = Object.keys(manifest.sha256).sort();
-
-if (JSON.stringify(actualFiles) !== JSON.stringify(manifestFiles)) {
-  throw new Error(
-    "Match API v1 fixture manifest does not cover exactly the mirror files",
+    `Match API v1 contract manifest digest mismatch: expected ${EXPECTED_CONTRACT_MANIFEST_SHA256}, received ${actualManifestDigest}`,
   );
 }
 
 const fileHashes = [];
-for (const file of manifestFiles) {
+for (const file of (await collectFixtureFiles(fixtureRoot)).sort()) {
   const contents = await readFile(new URL(file, fixtureRoot));
-  const actualHash = sha256(contents);
-  if (actualHash !== manifest.sha256[file]) {
-    throw new Error(
-      `Match API v1 fixture hash mismatch for ${file}: expected ${manifest.sha256[file]}, received ${actualHash}`,
-    );
-  }
-  fileHashes.push([file, actualHash]);
+  fileHashes.push([file, sha256(contents)]);
 }
 
 const actualMirrorTreeDigest = mirrorTreeDigest(fileHashes);
@@ -314,5 +286,5 @@ const reproduction = await readSealedReproduction(reproductionRoot);
 await validateMirroredContract(fixtureRoot, reproduction);
 
 console.log(
-  `Match API v1 fixtures verified: ${manifestFiles.length} files from ${SOURCE_REPOSITORY}@${CONTRACT_SOURCE_REVISION}`,
+  `Match API v1 fixtures verified: ${fileHashes.length} files from ${SOURCE_REPOSITORY}@${CONTRACT_SOURCE_REVISION}`,
 );
