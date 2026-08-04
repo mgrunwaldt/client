@@ -93,8 +93,8 @@ describe("Playwright runner process ownership", () => {
     ]);
   });
 
-  it("keeps WebGL batches bounded and rejects unsafe overrides", () => {
-    expect(playwrightCasesPerProcess()).toBe(8);
+  it("isolates WebGL cases by default and rejects unsafe overrides", () => {
+    expect(playwrightCasesPerProcess()).toBe(1);
     expect(playwrightCasesPerProcess("16")).toBe(16);
     expect(() => playwrightCasesPerProcess("0")).toThrow("CASES_PER_PROCESS");
     expect(() => playwrightCasesPerProcess("17")).toThrow("CASES_PER_PROCESS");

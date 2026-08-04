@@ -67,7 +67,9 @@ export function collectPlaywrightCases(report) {
   return cases;
 }
 
-const DEFAULT_CASES_PER_PROCESS = 8;
+// Three.js/WebGL state survives Playwright contexts inside one browser process.
+// Use one case per process by default so a prior scene cannot corrupt later UI.
+const DEFAULT_CASES_PER_PROCESS = 1;
 const MAX_CASES_PER_PROCESS = 16;
 
 function escapedPattern(value) {

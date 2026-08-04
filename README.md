@@ -183,11 +183,10 @@ The browser smoke builds the normal production bundle, including Dojo SDK
 initialization and `DojoSdkProvider`, starts an owned Vite preview on an
 OS-assigned port, exports that URL as `PLAYWRIGHT_BASE_URL`, and verifies the
 routes in desktop Chromium plus a Pixel 5 viewport with real touch dispatch.
-The normal suite groups discovered tests into serial, project-specific batches
-of eight cases per Playwright process. This bounds accumulated WebGL state while
-avoiding a fresh browser startup for every individual test. Set
-`OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS` to an integer from 1 through 16 only
-when diagnosing CI behavior; the default is eight.
+The normal suite runs each discovered test in its own Playwright process. This
+prevents Three.js/WebGL state from one scene corrupting later visual or input
+tests. `OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS` can group 1 through 16 cases only
+as an explicit diagnostic override; release CI uses the isolated default of one.
 Startup, early preview exit, and failed teardown fail the command. Signal mode
 selects one desktop-only worker rather than duplicating its 60-second hold in
 the mobile project. `pnpm test:browser:stale-port` occupies a separate
