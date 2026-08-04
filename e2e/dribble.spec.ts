@@ -394,34 +394,13 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
   }
 });
 
-test("accepts lane and screen-side taps and submits once on the real eight-second timer", async ({
+test("accepts left and right screen-side taps and submits once", async ({
   context,
   page,
 }, testInfo) => {
   test.slow();
   await enableDebugResultContinuation(page);
   const requests: unknown[] = [];
-  await page.addInitScript(() => {
-    const originalFetch = window.fetch;
-    window.fetch = function (input, init) {
-      const url =
-        typeof input === "string"
-          ? input
-          : input instanceof URL
-            ? input.href
-            : input.url;
-      if (new URL(url, location.href).pathname === "/api/processMatchAction") {
-        document.documentElement.dataset.dribbleRequestTimerStart =
-          document.querySelector<HTMLElement>(
-            '[data-testid="dribble-controls"]',
-          )?.dataset.runStartedAtMs ?? "";
-        document.documentElement.dataset.dribbleRequestPerformanceNow = String(
-          performance.now(),
-        );
-      }
-      return originalFetch.call(this, input, init);
-    };
-  });
   await context.route("**/api/processMatchAction", async (route) => {
     const request = route.request().postDataJSON() as {
       match_decision: Record<string, unknown>;
@@ -434,7 +413,7 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
       body: JSON.stringify(
         committedDribble(
           DRIBBLE_OUTCOMES[0],
-          "action-dribble-real-timer",
+          "action-dribble-screen-taps",
           request.match_decision,
         ),
       ),
@@ -442,23 +421,12 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
   });
   await authenticateForContinuation(page);
   await page.bringToFront();
-  const realTimerResponse = dribbleResponse("action-dribble-real-timer");
-  const laneSwitchSeconds =
-    realTimerResponse.pending_action.field_state.dribble_pattern
-      .lane_switch_seconds;
-  await hydrateDribble(page, realTimerResponse);
-  const setupHandle = await page.waitForFunction(() => {
+  await hydrateDribble(page, dribbleResponse("action-dribble-screen-taps"));
+  await page.waitForFunction(() => {
     const controlsElement = document.querySelector<HTMLElement>(
       '[data-testid="dribble-controls"]',
     );
-    const center = document.querySelector<HTMLElement>(
-      '[data-testid="dribble-lane-center"]',
-    );
-    const timerStartedAtRaw = controlsElement?.dataset.runStartedAtMs;
-    const timerStartedAt = Number(timerStartedAtRaw);
-    if (!controlsElement || !center || !timerStartedAtRaw || !timerStartedAt) {
-      return null;
-    }
+    if (!controlsElement) return false;
     if (!document.documentElement.dataset.dribbleTraceObserverInstalled) {
       const captureTrace = () => {
         document.documentElement.dataset.dribbleObservedLaneTrace =
@@ -471,21 +439,12 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
       });
       document.documentElement.dataset.dribbleTraceObserverInstalled = "true";
     }
-    return {
-      timerStartedAtRaw,
-      timerStartedAt,
-    };
+    return true;
   });
-  const gestureSetup = await setupHandle.jsonValue();
-  if (!gestureSetup) throw new Error("Dribble gesture setup is unavailable.");
-  const { timerStartedAt, timerStartedAtRaw } = gestureSetup;
-  expect(timerStartedAt).toBeGreaterThan(0);
   const centerLane = page.getByTestId("dribble-lane-center");
   const rightLane = page.getByTestId("dribble-lane-right");
+  await advanceDribble(page, 1);
   await expect(centerLane).toBeEnabled();
-  await expect
-    .poll(() => page.evaluate(() => performance.now()))
-    .toBeGreaterThanOrEqual(timerStartedAt + laneSwitchSeconds * 1000 + 16);
   await tapDribbleScreenSide(
     page,
     "left",
@@ -506,13 +465,7 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
       .locator("html")
       .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
   ) as Array<{ at_second: number; lane: string }>;
-  await expect
-    .poll(() => page.evaluate(() => performance.now()))
-    .toBeGreaterThanOrEqual(
-      timerStartedAt +
-        (centerTrace.at(-1)!.at_second + laneSwitchSeconds) * 1000 +
-        16,
-    );
+  await advanceDribble(page, centerTrace.at(-1)!.at_second + 1);
   await expect(rightLane).toBeEnabled();
   await tapDribbleScreenSide(
     page,
@@ -541,27 +494,14 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
     "RIGHT",
   ]);
   expect(observedTrace[0]).toEqual({ at_second: 0, lane: "RIGHT" });
-  expect(observedTrace[1].at_second).toBeGreaterThanOrEqual(0.58);
-  expect(
-    observedTrace[2].at_second - observedTrace[1].at_second,
-  ).toBeGreaterThanOrEqual(0.58);
+  expect(observedTrace[1]).toEqual({ at_second: 1, lane: "CENTER" });
+  expect(observedTrace[2]).toEqual({ at_second: 2, lane: "RIGHT" });
   const legendLabel = page.getByTestId("legend-player-label");
   await expect(legendLabel).toHaveCount(1);
   await expect(legendLabel).toBeHidden();
 
-  await expect.poll(() => requests.length, { timeout: 10_000 }).toBe(1);
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-dribble-request-timer-start",
-    timerStartedAtRaw,
-  );
-  const requestPerformanceNow = Number(
-    await page
-      .locator("html")
-      .getAttribute("data-dribble-request-performance-now"),
-  );
-  const realTimerElapsed = requestPerformanceNow - timerStartedAt;
-  expect(realTimerElapsed).toBeGreaterThanOrEqual(7_500);
-  expect(realTimerElapsed).toBeLessThanOrEqual(10_000);
+  await advanceDribble(page, 8);
+  await expect.poll(() => requests.length).toBe(1);
   await page.waitForTimeout(300);
 
   const result = page.getByTestId("kick-result");
@@ -584,9 +524,8 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
   await nextAction.click();
   await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
 
-  // The production timer contract above remains entirely on one real rAF
-  // mount. Pause only this second action so visual baselines can compare two
-  // stable active frames without the eight-second result replacing the HUD.
+  // Keep this second action paused so visual baselines can compare two stable
+  // active frames without the eight-second result replacing the HUD.
   await hydrateDribble(
     page,
     dribbleResponse("action-dribble-visual-evidence", 2),
@@ -671,6 +610,92 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
     animations: "disabled",
     maxDiffPixelRatio: 0.0005,
   });
+  expect(requests).toHaveLength(1);
+});
+
+test("submits once after the real eight-second dribble deadline", async ({
+  context,
+  page,
+}) => {
+  test.slow();
+  const requests: unknown[] = [];
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch;
+    window.fetch = function (input, init) {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (new URL(url, location.href).pathname === "/api/processMatchAction") {
+        document.documentElement.dataset.dribbleRequestTimerStart =
+          document.querySelector<HTMLElement>(
+            '[data-testid="dribble-controls"]',
+          )?.dataset.runStartedAtMs ?? "";
+        document.documentElement.dataset.dribbleRequestPerformanceNow = String(
+          performance.now(),
+        );
+      }
+      return originalFetch.call(this, input, init);
+    };
+  });
+  await context.route("**/api/processMatchAction", async (route) => {
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
+    requests.push(request);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(
+        committedDribble(
+          DRIBBLE_OUTCOMES[0],
+          "action-dribble-real-timer",
+          request.match_decision,
+        ),
+      ),
+    });
+  });
+
+  await authenticateForContinuation(page);
+  await page.bringToFront();
+  await hydrateDribble(page, dribbleResponse("action-dribble-real-timer"));
+  const timerStartedAt = Number(
+    await page
+      .getByTestId("dribble-controls")
+      .getAttribute("data-run-started-at-ms"),
+  );
+  expect(timerStartedAt).toBeGreaterThan(0);
+  await page.waitForFunction(
+    (startedAt) => performance.now() >= startedAt + 7_500,
+    timerStartedAt,
+  );
+  expect(requests).toHaveLength(0);
+  await expect.poll(() => requests.length, { timeout: 5_000 }).toBe(1);
+
+  expect(
+    Number(
+      await page
+        .locator("html")
+        .getAttribute("data-dribble-request-timer-start"),
+    ),
+  ).toBe(timerStartedAt);
+  const requestPerformanceNow = Number(
+    await page
+      .locator("html")
+      .getAttribute("data-dribble-request-performance-now"),
+  );
+  const elapsedAtRequest = requestPerformanceNow - timerStartedAt;
+  expect(elapsedAtRequest).toBeGreaterThanOrEqual(7_900);
+  expect(elapsedAtRequest).toBeLessThanOrEqual(10_000);
+  expect(requests).toHaveLength(1);
+  expect((requests[0] as { match_decision: unknown }).match_decision).toEqual({
+    choice: "DRIBBLE_RUN",
+    lane_trace: [{ at_second: 0, lane: "RIGHT" }],
+  });
+  await page.waitForTimeout(300);
   expect(requests).toHaveLength(1);
 });
 

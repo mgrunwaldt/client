@@ -12,6 +12,7 @@ const REQUIRED_STABLE_FOCUS_FRAMES = 2;
 interface BallAimSurfaceProps {
   position: [number, number, number];
   maximumPower: number;
+  enabled?: boolean;
   focusOnMount?: boolean;
   onFocusRestored?: () => void;
   onAimChange: (draft: BallAimDraft | null) => void;
@@ -43,6 +44,7 @@ function aimPointFromEvent(
 export function BallAimSurface({
   position,
   maximumPower,
+  enabled = true,
   focusOnMount = false,
   onFocusRestored,
   onAimChange,
@@ -54,7 +56,7 @@ export function BallAimSurface({
   const dragCurrentRef = useRef<THREE.Vector3 | null>(null);
 
   useEffect(() => {
-    if (!focusOnMount) return;
+    if (!enabled || !focusOnMount) return;
 
     // Html mounts its DOM target through the R3F portal. Native autoFocus can
     // run before that target is attached when the contact dialog closes.
@@ -110,7 +112,7 @@ export function BallAimSurface({
     timeout = window.setTimeout(finish, FOCUS_RESTORE_TIMEOUT_MS);
     scheduleFocus();
     return cleanup;
-  }, [focusOnMount, onFocusRestored]);
+  }, [enabled, focusOnMount, onFocusRestored]);
 
   const clearDrag = () => {
     dragStartRef.current = null;
@@ -164,6 +166,8 @@ export function BallAimSurface({
         data-testid="ball-aim-target"
         data-kick-maximum-power={maximumPower}
         aria-label="Aim from the live ball"
+        aria-hidden={!enabled}
+        disabled={!enabled}
         className="h-20 w-20 rounded-full border-0 bg-transparent p-0 outline-offset-4 focus-visible:outline-2 focus-visible:outline-cyan-200"
         style={{ touchAction: "none" }}
         onPointerDown={handlePointerDown}

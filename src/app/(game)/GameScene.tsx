@@ -2078,10 +2078,11 @@ export default function GameScene({
                 onAimChange={setActiveAimDraft}
                 onAimRelease={handleAimRelease}
               />
-              {canAim && !releasedAimDraft && (
+              {canAim && (
                 <BallAimSurface
                   position={[ballX, ballY, ballZ]}
                   maximumPower={kickControlEnvelope?.maximum_power ?? 0}
+                  enabled={!releasedAimDraft}
                   focusOnMount={restoreAimFocus}
                   onFocusRestored={handleAimFocusRestored}
                   onAimChange={setActiveAimDraft}
