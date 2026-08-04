@@ -2172,7 +2172,7 @@ export default function GameScene({
             {parsedDribblePattern.error}
           </div>
         )}
-      {canDribble && pendingAction && dribblePattern && (
+      {canDribble && isCanvasReady && pendingAction && dribblePattern && (
         <DribbleControls
           key={pendingAction.id}
           pattern={dribblePattern}

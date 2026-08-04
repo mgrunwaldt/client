@@ -5,7 +5,9 @@ import * as THREE from "three";
 
 import { type BallAimDraft, buildBallAimDraft } from "../../match/kick-gesture";
 
-const MAX_FOCUS_RESTORE_FRAMES = 120;
+const MAX_CONNECTED_FOCUS_ATTEMPTS = 120;
+const FOCUS_RESTORE_TIMEOUT_MS = 10_000;
+const REQUIRED_STABLE_FOCUS_FRAMES = 2;
 
 interface BallAimSurfaceProps {
   position: [number, number, number];
@@ -56,26 +58,58 @@ export function BallAimSurface({
 
     // Html mounts its DOM target through the R3F portal. Native autoFocus can
     // run before that target is attached when the contact dialog closes.
-    let frame = 0;
+    let frame: number | null = null;
+    let timeout = 0;
     let attempts = 0;
-    const restoreFocus = () => {
-      const target = targetRef.current;
-      if (target?.isConnected) {
-        target.focus({ preventScroll: true });
-        if (document.activeElement === target) {
-          onFocusRestored?.();
-          return;
-        }
-      }
-      attempts += 1;
-      if (attempts < MAX_FOCUS_RESTORE_FRAMES) {
-        frame = requestAnimationFrame(restoreFocus);
-        return;
-      }
+    let stableFrames = 0;
+    let finished = false;
+    let observer: MutationObserver | null = null;
+
+    const cleanup = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      clearTimeout(timeout);
+      observer?.disconnect();
+    };
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      cleanup();
       onFocusRestored?.();
     };
-    frame = requestAnimationFrame(restoreFocus);
-    return () => cancelAnimationFrame(frame);
+    const scheduleFocus = () => {
+      if (finished || frame !== null) return;
+      frame = requestAnimationFrame(restoreFocus);
+    };
+    const restoreFocus = () => {
+      frame = null;
+      const target = targetRef.current;
+      if (!target?.isConnected) {
+        stableFrames = 0;
+        return;
+      }
+      attempts += 1;
+      target.focus({ preventScroll: true });
+      if (document.activeElement === target) {
+        stableFrames += 1;
+        if (stableFrames >= REQUIRED_STABLE_FOCUS_FRAMES) {
+          finish();
+          return;
+        }
+      } else {
+        stableFrames = 0;
+      }
+      if (attempts < MAX_CONNECTED_FOCUS_ATTEMPTS) {
+        scheduleFocus();
+        return;
+      }
+      finish();
+    };
+
+    observer = new MutationObserver(scheduleFocus);
+    observer.observe(document.body, { childList: true, subtree: true });
+    timeout = window.setTimeout(finish, FOCUS_RESTORE_TIMEOUT_MS);
+    scheduleFocus();
+    return cleanup;
   }, [focusOnMount, onFocusRestored]);
 
   const clearDrag = () => {

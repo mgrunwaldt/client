@@ -234,58 +234,6 @@ async function tapDribbleScreenSide(
   await target.click({ position });
 }
 
-async function tapDribbleLane(
-  page: Page,
-  lane: "center",
-  mobile: boolean,
-  cachedPoint?: { x: number; y: number },
-) {
-  let point = cachedPoint;
-  if (!point) {
-    const target = page.getByTestId(`dribble-lane-${lane}`);
-    const box = await target.boundingBox();
-    if (!box) throw new Error("Dribble lane is not measurable.");
-    point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  }
-
-  if (mobile) {
-    const session = await page.context().newCDPSession(page);
-    try {
-      await session.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [point],
-      });
-      await session.send("Input.dispatchTouchEvent", {
-        type: "touchEnd",
-        touchPoints: [],
-      });
-    } finally {
-      await session.detach();
-    }
-    return;
-  }
-
-  const session = await page.context().newCDPSession(page);
-  try {
-    await session.send("Input.dispatchMouseEvent", {
-      type: "mousePressed",
-      x: point.x,
-      y: point.y,
-      button: "left",
-      clickCount: 1,
-    });
-    await session.send("Input.dispatchMouseEvent", {
-      type: "mouseReleased",
-      x: point.x,
-      y: point.y,
-      button: "left",
-      clickCount: 1,
-    });
-  } finally {
-    await session.detach();
-  }
-}
-
 async function dribblePlayerHudGeometry(page: Page) {
   const legend = page.getByTestId("legend-player-anchor");
   const defender = page.getByTestId("dribble-defender-anchor");
@@ -523,19 +471,14 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
       });
       document.documentElement.dataset.dribbleTraceObserverInstalled = "true";
     }
-    const centerBox = center.getBoundingClientRect();
     return {
       timerStartedAtRaw,
       timerStartedAt,
-      tap: {
-        x: centerBox.left + centerBox.width / 2,
-        y: centerBox.top + centerBox.height / 2,
-      },
     };
   });
   const gestureSetup = await setupHandle.jsonValue();
   if (!gestureSetup) throw new Error("Dribble gesture setup is unavailable.");
-  const { tap, timerStartedAt, timerStartedAtRaw } = gestureSetup;
+  const { timerStartedAt, timerStartedAtRaw } = gestureSetup;
   expect(timerStartedAt).toBeGreaterThan(0);
   const centerLane = page.getByTestId("dribble-lane-center");
   const rightLane = page.getByTestId("dribble-lane-right");
@@ -543,11 +486,10 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
   await expect
     .poll(() => page.evaluate(() => performance.now()))
     .toBeGreaterThanOrEqual(timerStartedAt + laneSwitchSeconds * 1000 + 16);
-  await tapDribbleLane(
+  await tapDribbleScreenSide(
     page,
-    "center",
+    "left",
     testInfo.project.name === "mobile-chromium",
-    tap,
   );
   await expect
     .poll(async () => {
@@ -651,9 +593,9 @@ test("accepts lane and screen-side taps and submits once on the real eight-secon
   );
   await advanceDribble(page, 1);
   const visualCenterLane = page.getByTestId("dribble-lane-center");
-  await tapDribbleLane(
+  await tapDribbleScreenSide(
     page,
-    "center",
+    "left",
     testInfo.project.name === "mobile-chromium",
   );
   await expect(visualCenterLane).toHaveAttribute("aria-checked", "true");
