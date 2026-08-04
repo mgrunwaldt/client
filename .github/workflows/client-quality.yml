@@ -41,6 +41,7 @@ jobs:
       - name: Browser shard
         run: pnpm test:browser
         env:
+          OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS: 1
           OVERGOAL_PLAYWRIGHT_SHARD_INDEX: ${{ matrix.shard }}
           OVERGOAL_PLAYWRIGHT_SHARD_TOTAL: 8
 

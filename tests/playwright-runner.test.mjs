@@ -90,7 +90,7 @@ describe("Playwright runner process ownership", () => {
       "e2e/tactical-kick.spec.ts:10",
       "--project=chromium",
       "--grep",
-      "(?:renders OPEN_PLAY \\(mobile\\)|renders FREE_KICK)$",
+      "(?:^|\\s)(?:renders OPEN_PLAY \\(mobile\\)|renders FREE_KICK)$",
       "--output=test-results/batched/001-chromium",
     ]);
   });
@@ -120,10 +120,65 @@ describe("Playwright runner process ownership", () => {
 
     expect(reversedShards).toEqual(shards);
     expect(shards.flat()).toHaveLength(cases.length);
-    expect(new Set(shards.flat().map((entry) => entry.title))).toEqual(
-      new Set(cases.map((entry) => entry.title)),
+    const identity = (entry) =>
+      JSON.stringify([
+        entry.projectName,
+        entry.file,
+        entry.line,
+        entry.grepTitle ?? entry.title,
+      ]);
+    expect(new Set(shards.flat().map(identity))).toEqual(
+      new Set(cases.map(identity)),
     );
+    expect(new Set(shards.flat().map(identity))).toHaveLength(cases.length);
     expect(shards.every((shard) => shard.length >= 2)).toBe(true);
+  });
+
+  it("selects a same-line case by its full suite title rather than an overlapping suffix", () => {
+    const cases = collectPlaywrightCases({
+      suites: [
+        {
+          title: "overlap.spec.ts",
+          specs: [],
+          suites: [
+            {
+              title: "short",
+              specs: [
+                {
+                  file: "overlap.spec.ts",
+                  line: 12,
+                  title: "submits once",
+                  tests: [{ projectName: "chromium" }],
+                },
+              ],
+            },
+            {
+              title: "long short",
+              specs: [
+                {
+                  file: "overlap.spec.ts",
+                  line: 12,
+                  title: "submits once",
+                  tests: [{ projectName: "chromium" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(cases.map((entry) => entry.grepTitle)).toEqual([
+      "overlap.spec.ts short submits once",
+      "overlap.spec.ts long short submits once",
+    ]);
+    expect(
+      batchedPlaywrightArgs(
+        "playwright.js",
+        { cases: [cases[0]], projectName: "chromium" },
+        0,
+      ),
+    ).toContain("(?:^|\\s)(?:overlap\\.spec\\.ts short submits once)$");
   });
 
   it("validates shard configuration and rejects empty shards", () => {

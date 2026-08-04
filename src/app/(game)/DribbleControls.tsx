@@ -13,8 +13,6 @@ import {
   roundDribbleSecond,
 } from "../../match/dribble-input";
 
-const SWIPE_THRESHOLD_PX = 28;
-
 function laneLabel(lane: DribbleLane) {
   return lane.charAt(0) + lane.slice(1).toLowerCase();
 }
@@ -45,11 +43,6 @@ export function DribbleControls({
   const submittedRef = useRef(false);
   const startedAtRef = useRef<number | null>(null);
   const frameRef = useRef<number | null>(null);
-  const swipeStartRef = useRef<number | null>(null);
-  const pointerLaneRef = useRef<DribbleLane | null>(null);
-  const touchStartRef = useRef<number | null>(null);
-  const touchLaneRef = useRef<DribbleLane | null>(null);
-  const gestureHandledRef = useRef(false);
   const e2eClockPausedRef = useRef(false);
 
   const submitDecision = (
@@ -130,13 +123,16 @@ export function DribbleControls({
   );
   const canSimulate = Boolean(pressureWindow) && !disabled && !submitted;
 
-  const switchLane = (nextLane: DribbleLane, eventTime: number) => {
+  const switchLane = (nextLane: DribbleLane) => {
     const inputElapsed =
       e2eClockPausedRef.current || startedAtRef.current === null
         ? elapsedRef.current
         : elapsedDribbleSeconds(
             startedAtRef.current,
-            eventTime,
+            // Event time stamps are not guaranteed to share the rAF clock on
+            // mobile input dispatch. The live challenge is governed by this
+            // component's monotonic clock, so sample it when the input lands.
+            performance.now(),
             pattern.duration_seconds,
           );
     if (
@@ -156,64 +152,52 @@ export function DribbleControls({
     onLaneChange(nextLane);
   };
 
-  const switchRelative = (direction: -1 | 1, eventTime: number) => {
+  const switchRelative = (direction: -1 | 1) => {
     const next = DRIBBLE_LANES[DRIBBLE_LANES.indexOf(currentLane) + direction];
-    if (next) switchLane(next, eventTime);
+    if (next) switchLane(next);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key === "ArrowLeft") {
       event.preventDefault();
-      switchRelative(-1, event.timeStamp);
+      switchRelative(-1);
     }
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      switchRelative(1, event.timeStamp);
+      switchRelative(1);
     }
-  };
-
-  const finishLaneGesture = (
-    start: number,
-    end: number,
-    tappedLane: DribbleLane | null,
-    eventTime: number,
-  ) => {
-    if (gestureHandledRef.current) return;
-    gestureHandledRef.current = true;
-    const distance = end - start;
-    if (Math.abs(distance) >= SWIPE_THRESHOLD_PX) {
-      switchRelative(distance > 0 ? 1 : -1, eventTime);
-    } else if (tappedLane) {
-      switchLane(tappedLane, eventTime);
-    }
-  };
-
-  const laneFromTarget = (target: EventTarget | null) => {
-    const lane = (target as HTMLElement | null)?.closest<HTMLButtonElement>(
-      "[data-dribble-lane]",
-    )?.dataset.dribbleLane;
-    return DRIBBLE_LANES.includes(lane as DribbleLane)
-      ? (lane as DribbleLane)
-      : null;
-  };
-
-  const clearGesture = () => {
-    swipeStartRef.current = null;
-    pointerLaneRef.current = null;
-    touchStartRef.current = null;
-    touchLaneRef.current = null;
   };
 
   return (
     <section
-      data-testid="dribble-controls"
-      data-lane-trace={JSON.stringify(trace)}
-      data-run-started-at-ms={startedAt ?? ""}
+      data-testid="dribble-input-layer"
       aria-label="Dribble challenge"
       aria-describedby="dribble-instructions"
-      className="absolute inset-x-0 top-0 z-30 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] text-white sm:px-5"
+      className="pointer-events-none absolute inset-0 z-30 text-white"
     >
-      <div className="mx-auto max-w-md overflow-hidden rounded-[1.65rem] border border-cyan-300/55 bg-[linear-gradient(140deg,rgba(3,19,52,0.94),rgba(5,39,67,0.91)_55%,rgba(40,8,67,0.92))] shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_1px_rgba(255,255,255,0.16)] backdrop-blur-md">
+      <button
+        type="button"
+        data-testid="dribble-screen-left"
+        aria-label="Move one lane left"
+        disabled={disabled || submitted}
+        className="pointer-events-auto absolute inset-y-0 left-0 w-1/2 touch-manipulation bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cyan-200 disabled:pointer-events-none"
+        onClick={() => switchRelative(-1)}
+      />
+      <button
+        type="button"
+        data-testid="dribble-screen-right"
+        aria-label="Move one lane right"
+        disabled={disabled || submitted}
+        className="pointer-events-auto absolute inset-y-0 right-0 w-1/2 touch-manipulation bg-transparent focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-cyan-200 disabled:pointer-events-none"
+        onClick={() => switchRelative(1)}
+      />
+
+      <div
+        data-testid="dribble-controls"
+        data-lane-trace={JSON.stringify(trace)}
+        data-run-started-at-ms={startedAt ?? ""}
+        className="pointer-events-auto relative z-10 mx-3 mt-[calc(env(safe-area-inset-top)+0.75rem)] max-w-md overflow-hidden rounded-[1.65rem] border border-cyan-300/55 bg-[linear-gradient(140deg,rgba(3,19,52,0.94),rgba(5,39,67,0.91)_55%,rgba(40,8,67,0.92))] shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_1px_rgba(255,255,255,0.16)] backdrop-blur-md sm:mx-auto"
+      >
         <div className="border-b border-cyan-300/25 px-4 pt-3 pb-2">
           <div className="flex items-end justify-between gap-3">
             <div>
@@ -246,52 +230,7 @@ export function DribbleControls({
           aria-label="Dribble lane"
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          onPointerDown={(event) => {
-            gestureHandledRef.current = false;
-            swipeStartRef.current = event.clientX;
-            pointerLaneRef.current = laneFromTarget(event.target);
-            event.currentTarget.setPointerCapture(event.pointerId);
-          }}
-          onPointerUp={(event) => {
-            const start = swipeStartRef.current;
-            const tappedLane = pointerLaneRef.current;
-            if (start === null) return;
-            finishLaneGesture(
-              start,
-              event.clientX,
-              tappedLane,
-              event.timeStamp,
-            );
-            clearGesture();
-          }}
-          onPointerCancel={() => {
-            swipeStartRef.current = null;
-            pointerLaneRef.current = null;
-          }}
-          onTouchStart={(event) => {
-            const touch = event.touches[0];
-            if (!touch) return;
-            gestureHandledRef.current = false;
-            touchStartRef.current = touch.clientX;
-            touchLaneRef.current = laneFromTarget(event.target);
-          }}
-          onTouchEnd={(event) => {
-            const start = touchStartRef.current;
-            const touch = event.changedTouches[0];
-            if (start === null || !touch) return;
-            finishLaneGesture(
-              start,
-              touch.clientX,
-              touchLaneRef.current,
-              event.timeStamp,
-            );
-            clearGesture();
-          }}
           className="relative mx-3 mt-3 grid grid-cols-3 gap-2 rounded-2xl border border-cyan-200/20 bg-slate-950/45 p-2 outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
-          // The match field is a fixed game surface, not a scroll container.
-          // Owning the gesture prevents mobile browsers from cancelling a
-          // horizontal lane swipe before pointerup is delivered.
-          style={{ touchAction: "none" }}
         >
           <div
             aria-hidden="true"
@@ -320,7 +259,7 @@ export function DribbleControls({
                     ? "border-lime-200/80 bg-lime-300/14 text-lime-100"
                     : "border-cyan-200/22 bg-cyan-400/5 text-cyan-100"
                 }`}
-                onClick={(event) => switchLane(lane, event.timeStamp)}
+                onClick={() => switchLane(lane)}
               >
                 <span className="block text-[9px] text-cyan-200/70">Lane</span>
                 {laneLabel(lane)}
@@ -333,7 +272,8 @@ export function DribbleControls({
           id="dribble-instructions"
           className="px-4 pt-2 text-center text-[11px] text-cyan-100/75"
         >
-          Tap a neighbouring lane, swipe left or right, or use the arrow keys.
+          Tap either side of the field, choose a neighbouring lane, or use the
+          arrow keys.
         </p>
         <p aria-live="polite" className="sr-only">
           {`${laneLabel(currentLane)} lane. ${pressureWindow ? "Pressure window active." : "No pressure window."}`}

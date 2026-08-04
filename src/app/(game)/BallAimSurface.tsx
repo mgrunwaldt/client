@@ -1,14 +1,17 @@
 import { Html } from "@react-three/drei";
 import { useThree } from "@react-three/fiber";
-import { type PointerEvent, useRef } from "react";
+import { type PointerEvent, useEffect, useRef } from "react";
 import * as THREE from "three";
 
 import { type BallAimDraft, buildBallAimDraft } from "../../match/kick-gesture";
+
+const MAX_FOCUS_RESTORE_FRAMES = 120;
 
 interface BallAimSurfaceProps {
   position: [number, number, number];
   maximumPower: number;
   focusOnMount?: boolean;
+  onFocusRestored?: () => void;
   onAimChange: (draft: BallAimDraft | null) => void;
   onAimRelease: (draft: BallAimDraft) => void;
 }
@@ -39,12 +42,41 @@ export function BallAimSurface({
   position,
   maximumPower,
   focusOnMount = false,
+  onFocusRestored,
   onAimChange,
   onAimRelease,
 }: BallAimSurfaceProps) {
   const { camera, gl } = useThree();
+  const targetRef = useRef<HTMLButtonElement>(null);
   const dragStartRef = useRef<THREE.Vector3 | null>(null);
   const dragCurrentRef = useRef<THREE.Vector3 | null>(null);
+
+  useEffect(() => {
+    if (!focusOnMount) return;
+
+    // Html mounts its DOM target through the R3F portal. Native autoFocus can
+    // run before that target is attached when the contact dialog closes.
+    let frame = 0;
+    let attempts = 0;
+    const restoreFocus = () => {
+      const target = targetRef.current;
+      if (target?.isConnected) {
+        target.focus({ preventScroll: true });
+        if (document.activeElement === target) {
+          onFocusRestored?.();
+          return;
+        }
+      }
+      attempts += 1;
+      if (attempts < MAX_FOCUS_RESTORE_FRAMES) {
+        frame = requestAnimationFrame(restoreFocus);
+        return;
+      }
+      onFocusRestored?.();
+    };
+    frame = requestAnimationFrame(restoreFocus);
+    return () => cancelAnimationFrame(frame);
+  }, [focusOnMount, onFocusRestored]);
 
   const clearDrag = () => {
     dragStartRef.current = null;
@@ -93,8 +125,8 @@ export function BallAimSurface({
   return (
     <Html position={position} center>
       <button
+        ref={targetRef}
         type="button"
-        autoFocus={focusOnMount}
         data-testid="ball-aim-target"
         data-kick-maximum-power={maximumPower}
         aria-label="Aim from the live ball"

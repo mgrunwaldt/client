@@ -22,10 +22,14 @@ export function collectPlaywrightCases(report) {
   }
 
   const cases = [];
-  const visit = (suite) => {
+  const visit = (suite, parentTitles = []) => {
     if (!isRecord(suite)) {
       throw new Error("Playwright inventory contains an invalid suite");
     }
+    const suiteTitles =
+      typeof suite.title === "string" && suite.title.length > 0
+        ? [...parentTitles, suite.title]
+        : parentTitles;
     for (const spec of Array.isArray(suite.specs) ? suite.specs : []) {
       if (!isRecord(spec) || !Array.isArray(spec.tests)) {
         throw new Error("Playwright inventory contains an invalid spec");
@@ -33,6 +37,10 @@ export function collectPlaywrightCases(report) {
       const file = requireString(spec.file, "test file");
       const line = requireLine(spec.line);
       const title = requireString(spec.title, "test title");
+      const tags = Array.isArray(spec.tags)
+        ? spec.tags.map((tag) => `@${requireString(tag, "test tag")}`)
+        : [];
+      const grepTitle = [...suiteTitles, title, ...tags].join(" ");
       for (const entry of spec.tests) {
         if (!isRecord(entry)) {
           throw new Error("Playwright inventory contains an invalid project");
@@ -41,19 +49,20 @@ export function collectPlaywrightCases(report) {
           file,
           line,
           title,
+          grepTitle,
           projectName: requireString(entry.projectName, "project name"),
         });
       }
     }
     for (const child of Array.isArray(suite.suites) ? suite.suites : []) {
-      visit(child);
+      visit(child, suiteTitles);
     }
   };
   for (const suite of report.suites) visit(suite);
 
   const identities = new Set();
   for (const entry of cases) {
-    const identity = `${entry.projectName}\u0000${entry.file}\u0000${entry.line}\u0000${entry.title}`;
+    const identity = `${entry.projectName}\u0000${entry.file}\u0000${entry.line}\u0000${entry.grepTitle}`;
     if (identities.has(identity)) {
       throw new Error(
         `Playwright inventory repeated ${entry.projectName} ${entry.file}:${entry.line} ${entry.title}`,
@@ -133,7 +142,7 @@ export function playwrightShard(indexValue, totalValue) {
 }
 
 function caseIdentity(entry) {
-  return `${entry.projectName}\u0000${entry.file}\u0000${String(entry.line).padStart(10, "0")}\u0000${entry.title}`;
+  return `${entry.projectName}\u0000${entry.file}\u0000${String(entry.line).padStart(10, "0")}\u0000${entry.grepTitle ?? entry.title}`;
 }
 
 export function shardPlaywrightCases(cases, shard) {
@@ -203,7 +212,9 @@ export function batchedPlaywrightArgs(
     ...locations,
     `--project=${batch.projectName}`,
     "--grep",
-    `(?:${batch.cases.map((entry) => escapedPattern(entry.title)).join("|")})$`,
+    `(?:^|\\s)(?:${batch.cases
+      .map((entry) => escapedPattern(entry.grepTitle ?? entry.title))
+      .join("|")})$`,
     `--output=test-results/batched/${ordinal}-${pathSegment(batch.projectName)}`,
   ];
   if (updateSnapshots) args.push("--update-snapshots");

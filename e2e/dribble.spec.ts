@@ -217,92 +217,21 @@ async function hydrateDribble(
   await expect(page.getByTestId("dribble-controls")).toBeVisible();
 }
 
-async function swipeDribbleControls(
+async function tapDribbleScreenSide(
   page: Page,
+  side: "left" | "right",
   mobile: boolean,
-  cached?: { start: { x: number; y: number }; end: { x: number; y: number } },
 ) {
-  let { start, end } = cached ?? { start: undefined, end: undefined };
-  if (!start || !end) {
-    const controls = page.getByRole("radiogroup", { name: "Dribble lane" });
-    const box = await controls.boundingBox();
-    if (!box) throw new Error("Dribble lane controls are not measurable.");
-    start = { x: box.x + box.width * 0.5, y: box.y + box.height * 0.5 };
-    end = { x: box.x + box.width * 0.82, y: start.y };
-  }
-
+  const target = page.getByTestId(`dribble-screen-${side}`);
+  await expect(target).toBeEnabled();
+  const box = await target.boundingBox();
+  if (!box) throw new Error(`Dribble ${side} screen side is not measurable.`);
+  const position = { x: 20, y: Math.max(20, box.height - 20) };
   if (mobile) {
-    const session = await page.context().newCDPSession(page);
-    const waitForAnimationFrame = () =>
-      page.evaluate(
-        () =>
-          new Promise<void>((resolve) => {
-            requestAnimationFrame(() => resolve());
-          }),
-      );
-    const touchPoint = (x: number, y: number) => ({
-      id: 1,
-      x,
-      y,
-      radiusX: 1,
-      radiusY: 1,
-      force: 1,
-    });
-    try {
-      await session.send("Input.dispatchTouchEvent", {
-        type: "touchStart",
-        touchPoints: [touchPoint(start.x, start.y)],
-      });
-      await waitForAnimationFrame();
-      for (const progress of [0.33, 0.66, 1]) {
-        await session.send("Input.dispatchTouchEvent", {
-          type: "touchMove",
-          touchPoints: [
-            touchPoint(start.x + (end.x - start.x) * progress, start.y),
-          ],
-        });
-        await waitForAnimationFrame();
-      }
-      await session.send("Input.dispatchTouchEvent", {
-        type: "touchEnd",
-        touchPoints: [],
-      });
-    } finally {
-      await session.detach();
-    }
+    await target.tap({ position });
     return;
   }
-
-  const session = await page.context().newCDPSession(page);
-  try {
-    await session.send("Input.dispatchMouseEvent", {
-      type: "mouseMoved",
-      x: start.x,
-      y: start.y,
-    });
-    await session.send("Input.dispatchMouseEvent", {
-      type: "mousePressed",
-      x: start.x,
-      y: start.y,
-      button: "left",
-      clickCount: 1,
-    });
-    await session.send("Input.dispatchMouseEvent", {
-      type: "mouseMoved",
-      x: end.x,
-      y: end.y,
-      button: "left",
-    });
-    await session.send("Input.dispatchMouseEvent", {
-      type: "mouseReleased",
-      x: end.x,
-      y: end.y,
-      button: "left",
-      clickCount: 1,
-    });
-  } finally {
-    await session.detach();
-  }
+  await target.click({ position });
 }
 
 async function tapDribbleLane(
@@ -517,7 +446,7 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
   }
 });
 
-test("accepts tap and real pointer swipe and submits once on the real eight-second timer", async ({
+test("accepts lane and screen-side taps and submits once on the real eight-second timer", async ({
   context,
   page,
 }, testInfo) => {
@@ -577,18 +506,9 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
     const center = document.querySelector<HTMLElement>(
       '[data-testid="dribble-lane-center"]',
     );
-    const laneGroup = document.querySelector<HTMLElement>(
-      '[role="radiogroup"][aria-label="Dribble lane"]',
-    );
     const timerStartedAtRaw = controlsElement?.dataset.runStartedAtMs;
     const timerStartedAt = Number(timerStartedAtRaw);
-    if (
-      !controlsElement ||
-      !center ||
-      !laneGroup ||
-      !timerStartedAtRaw ||
-      !timerStartedAt
-    ) {
+    if (!controlsElement || !center || !timerStartedAtRaw || !timerStartedAt) {
       return null;
     }
     if (!document.documentElement.dataset.dribbleTraceObserverInstalled) {
@@ -604,8 +524,6 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
       document.documentElement.dataset.dribbleTraceObserverInstalled = "true";
     }
     const centerBox = center.getBoundingClientRect();
-    const groupBox = laneGroup.getBoundingClientRect();
-    const swipeY = groupBox.top + groupBox.height * 0.5;
     return {
       timerStartedAtRaw,
       timerStartedAt,
@@ -613,15 +531,11 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
         x: centerBox.left + centerBox.width / 2,
         y: centerBox.top + centerBox.height / 2,
       },
-      swipe: {
-        start: { x: groupBox.left + groupBox.width * 0.5, y: swipeY },
-        end: { x: groupBox.left + groupBox.width * 0.82, y: swipeY },
-      },
     };
   });
   const gestureSetup = await setupHandle.jsonValue();
   if (!gestureSetup) throw new Error("Dribble gesture setup is unavailable.");
-  const { swipe, tap, timerStartedAt, timerStartedAtRaw } = gestureSetup;
+  const { tap, timerStartedAt, timerStartedAtRaw } = gestureSetup;
   expect(timerStartedAt).toBeGreaterThan(0);
   const centerLane = page.getByTestId("dribble-lane-center");
   const rightLane = page.getByTestId("dribble-lane-right");
@@ -645,11 +559,23 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
       return trace?.at(-1)?.lane ?? null;
     })
     .toBe("CENTER");
+  const centerTrace = JSON.parse(
+    (await page
+      .locator("html")
+      .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
+  ) as Array<{ at_second: number; lane: string }>;
+  await expect
+    .poll(() => page.evaluate(() => performance.now()))
+    .toBeGreaterThanOrEqual(
+      timerStartedAt +
+        (centerTrace.at(-1)!.at_second + laneSwitchSeconds) * 1000 +
+        16,
+    );
   await expect(rightLane).toBeEnabled();
-  await swipeDribbleControls(
+  await tapDribbleScreenSide(
     page,
+    "right",
     testInfo.project.name === "mobile-chromium",
-    swipe,
   );
   await expect
     .poll(async () => {
@@ -732,22 +658,40 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
   );
   await expect(visualCenterLane).toHaveAttribute("aria-checked", "true");
   await advanceDribble(page, 2);
-  const beforeSwipeGeometry = await dribblePlayerHudGeometry(page);
-  expectDribblePlayersClearOfHud(beforeSwipeGeometry);
+  const beforeSideTapGeometry = await dribblePlayerHudGeometry(page);
+  expectDribblePlayersClearOfHud(beforeSideTapGeometry);
   await expect(page).toHaveScreenshot("dribble-active-before-swipe.png", {
     animations: "disabled",
     maxDiffPixelRatio: 0.0005,
   });
-  await swipeDribbleControls(page, testInfo.project.name === "mobile-chromium");
-  await expect(page.getByTestId("dribble-lane-right")).toHaveAttribute(
+  await tapDribbleScreenSide(
+    page,
+    "left",
+    testInfo.project.name === "mobile-chromium",
+  );
+  await expect(page.getByTestId("dribble-lane-left")).toHaveAttribute(
     "aria-checked",
     "true",
   );
+  const outerLaneTrace = await page
+    .getByTestId("dribble-controls")
+    .getAttribute("data-lane-trace");
   await advanceDribble(page, 2.97);
-  const afterSwipeGeometry = await dribblePlayerHudGeometry(page);
-  expectDribblePlayersClearOfHud(afterSwipeGeometry);
+  await tapDribbleScreenSide(
+    page,
+    "left",
+    testInfo.project.name === "mobile-chromium",
+  );
+  await expect(page.getByTestId("dribble-controls")).toHaveAttribute(
+    "data-lane-trace",
+    outerLaneTrace!,
+  );
+  const afterSideTapGeometry = await dribblePlayerHudGeometry(page);
+  expectDribblePlayersClearOfHud(afterSideTapGeometry);
   expect(
-    Math.abs(afterSwipeGeometry.legend.top - beforeSwipeGeometry.legend.top),
+    Math.abs(
+      afterSideTapGeometry.legend.top - beforeSideTapGeometry.legend.top,
+    ),
   ).toBeLessThanOrEqual(1);
   await expect(legendLabel).toBeHidden();
   expect(

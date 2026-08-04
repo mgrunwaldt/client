@@ -190,6 +190,10 @@ as an explicit diagnostic override; release CI uses the isolated default of one.
 Release CI partitions the stable inventory across eight independent GitHub
 Actions runners with `OVERGOAL_PLAYWRIGHT_SHARD_INDEX` and
 `OVERGOAL_PLAYWRIGHT_SHARD_TOTAL`. Every case still owns its browser process;
+the workflow pins `OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS=1` rather than relying
+only on the runner default. Case selection uses the complete suite title, file,
+line, and project identity so overlapping leaf titles cannot select each other.
+The protected aggregate check fails when any shard fails. These controls mean
 the shards reduce wall-clock time without sharing WebGL state or listeners. The
 post-suite HTTPS cross-origin smoke runs once in shard 1 rather than being
 duplicated across all eight runners.

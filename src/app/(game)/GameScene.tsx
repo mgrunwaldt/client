@@ -1483,6 +1483,10 @@ export default function GameScene({
     clearFieldDraft();
   };
 
+  const handleAimFocusRestored = useCallback(() => {
+    setRestoreAimFocus(false);
+  }, []);
+
   const handleStrikeContactChange = (contact: { x: number; y: number }) => {
     setStrikeContact(contact);
     if (!match || !pendingAction || !releasedAimDraft) return;
@@ -2079,6 +2083,7 @@ export default function GameScene({
                   position={[ballX, ballY, ballZ]}
                   maximumPower={kickControlEnvelope?.maximum_power ?? 0}
                   focusOnMount={restoreAimFocus}
+                  onFocusRestored={handleAimFocusRestored}
                   onAimChange={setActiveAimDraft}
                   onAimRelease={handleAimRelease}
                 />
