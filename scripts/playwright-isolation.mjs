@@ -67,6 +67,9 @@ export function collectPlaywrightCases(report) {
   return cases;
 }
 
+const DEFAULT_CASES_PER_PROCESS = 8;
+const MAX_CASES_PER_PROCESS = 16;
+
 function escapedPattern(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
@@ -75,33 +78,80 @@ function pathSegment(value) {
   return value.replace(/[^a-zA-Z0-9_-]+/gu, "-").replace(/^-+|-+$/gu, "");
 }
 
-export function isolatedPlaywrightArgs(
+export function playwrightCasesPerProcess(value) {
+  if (value === undefined || value === "") return DEFAULT_CASES_PER_PROCESS;
+
+  const parsed = Number(value);
+  if (
+    !Number.isInteger(parsed) ||
+    parsed < 1 ||
+    parsed > MAX_CASES_PER_PROCESS
+  ) {
+    throw new Error(
+      `OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS must be an integer from 1 to ${MAX_CASES_PER_PROCESS}`,
+    );
+  }
+  return parsed;
+}
+
+export function groupPlaywrightCases(cases, casesPerProcess) {
+  if (!Number.isInteger(casesPerProcess) || casesPerProcess < 1) {
+    throw new Error("Playwright cases per process must be a positive integer");
+  }
+
+  const projects = new Map();
+  for (const entry of cases) {
+    const projectCases = projects.get(entry.projectName) ?? [];
+    projectCases.push(entry);
+    projects.set(entry.projectName, projectCases);
+  }
+
+  const batches = [];
+  for (const [projectName, projectCases] of projects) {
+    for (let start = 0; start < projectCases.length; start += casesPerProcess) {
+      batches.push({
+        projectName,
+        cases: projectCases.slice(start, start + casesPerProcess),
+      });
+    }
+  }
+  return batches;
+}
+
+export function batchedPlaywrightArgs(
   playwrightCli,
-  entry,
+  batch,
   index,
   updateSnapshots = false,
 ) {
+  if (!batch || !Array.isArray(batch.cases) || batch.cases.length === 0) {
+    throw new Error("Playwright batch must include at least one test case");
+  }
+
   const ordinal = String(index + 1).padStart(3, "0");
+  const locations = [
+    ...new Set(batch.cases.map((entry) => `e2e/${entry.file}:${entry.line}`)),
+  ];
   const args = [
     playwrightCli,
     "test",
-    `e2e/${entry.file}:${entry.line}`,
-    `--project=${entry.projectName}`,
+    ...locations,
+    `--project=${batch.projectName}`,
     "--grep",
-    `${escapedPattern(entry.title)}$`,
-    `--output=test-results/isolated/${ordinal}-${pathSegment(entry.projectName)}`,
+    `(?:${batch.cases.map((entry) => escapedPattern(entry.title)).join("|")})$`,
+    `--output=test-results/batched/${ordinal}-${pathSegment(batch.projectName)}`,
   ];
   if (updateSnapshots) args.push("--update-snapshots");
   return args;
 }
 
-export async function runIsolatedPlaywrightCases(cases, runCase) {
+export async function runPlaywrightBatches(batches, runBatch) {
   const failures = [];
-  for (const [index, entry] of cases.entries()) {
+  for (const [index, batch] of batches.entries()) {
     try {
-      await runCase(entry, index);
+      await runBatch(batch, index);
     } catch (error) {
-      failures.push({ entry, error });
+      failures.push({ batch, error });
     }
   }
   return failures;

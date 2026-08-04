@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 
 import argumentOpponent from "../tests/fixtures/match-api-v1/examples/scenes/argument-opponent.json" with { type: "json" };
 import argumentTeammate from "../tests/fixtures/match-api-v1/examples/scenes/argument-teammate.json" with { type: "json" };
@@ -22,6 +22,10 @@ const randomScenes = [
   brawl,
   jumper,
 ] as const;
+const RANDOM_SCENE_COUNT = 5;
+const RANDOM_SCENE_CHOICES_PER_SCENE = 3;
+const RANDOM_SCENE_TOTAL_CHOICES =
+  RANDOM_SCENE_COUNT * RANDOM_SCENE_CHOICES_PER_SCENE;
 
 const teams = {
   myTeam: {
@@ -344,16 +348,28 @@ async function hydrateScene(
   }
 }
 
-test("renders all five random scenes and submits each authoritative choice exactly once", async ({
-  context,
-  page,
-}) => {
-  test.slow();
-  // This is a deliberately complete authenticated matrix: five server scenes
-  // times three choices, each returning through the real continuation route.
-  test.setTimeout(240_000);
+async function renderRandomSceneChoices(
+  context: BrowserContext,
+  page: Page,
+  scene: (typeof randomScenes)[number],
+) {
+  expect(randomScenes).toHaveLength(RANDOM_SCENE_COUNT);
+  expect(
+    randomScenes.reduce(
+      (total, candidate) => total + candidate.available_choices.length,
+      0,
+    ),
+  ).toBe(RANDOM_SCENE_TOTAL_CHOICES);
+  expect(scene.available_choices).toHaveLength(RANDOM_SCENE_CHOICES_PER_SCENE);
+  expect(new Set(scene.available_choices.map((choice) => choice.id)).size).toBe(
+    RANDOM_SCENE_CHOICES_PER_SCENE,
+  );
   const requests: unknown[] = [];
-  let result = committedRandomEvent(jumper, "action-jumper-0", "ACCEPT_HUG");
+  let result = committedRandomEvent(
+    scene,
+    `action-${scene.scene_type}-initial`,
+    scene.available_choices[0]!.id,
+  );
   await context.route("**/api/processMatchAction", async (route) => {
     requests.push(route.request().postDataJSON());
     await route.fulfill({
@@ -366,74 +382,84 @@ test("renders all five random scenes and submits each authoritative choice exact
   await enableDebugResultContinuation(page);
   await authenticateForContinuation(page);
 
-  let index = 0;
-  for (const scene of randomScenes) {
-    for (const choice of scene.available_choices) {
-      const actionId = `action-${scene.scene_type.toLowerCase()}-${index}`;
-      result = committedRandomEvent(scene, actionId, choice.id, index * 2);
-      await hydrateScene(page, randomEventResponse(scene, actionId, index * 2));
+  for (const [index, choice] of scene.available_choices.entries()) {
+    const actionId = `action-${scene.scene_type.toLowerCase()}-${index}`;
+    const revision = index * 2;
+    result = committedRandomEvent(scene, actionId, choice.id, revision);
+    await hydrateScene(page, randomEventResponse(scene, actionId, revision));
 
-      const event = page.getByTestId("random-event-scene");
-      await expect(event).toHaveAttribute("data-scene-type", scene.scene_type);
-      await expect(event.getByRole("heading")).toHaveText(scene.title);
-      await expect(
-        event.getByText(scene.description, { exact: true }),
-      ).toBeVisible();
-      const choiceButton = page.getByTestId(`random-event-choice-${choice.id}`);
-      await expect(choiceButton).toContainText(choice.label);
-      await expect(choiceButton).toContainText(choice.description);
+    const event = page.getByTestId("random-event-scene");
+    await expect(event).toHaveAttribute("data-scene-type", scene.scene_type);
+    await expect(event.getByRole("heading")).toHaveText(scene.title);
+    await expect(
+      event.getByText(scene.description, { exact: true }),
+    ).toBeVisible();
+    const choiceButton = page.getByTestId(`random-event-choice-${choice.id}`);
+    await expect(choiceButton).toContainText(choice.label);
+    await expect(choiceButton).toContainText(choice.description);
 
-      if (test.info().project.name === "mobile-chromium") {
-        await choiceButton.tap();
-      } else {
-        await choiceButton.focus();
-        await expect(choiceButton).toBeFocused();
-        await page.keyboard.press("Enter");
-      }
-
-      const resultPanel = page.getByTestId("kick-result");
-      await expect(resultPanel).toContainText(
-        `Authoritative ${scene.scene_type} ${choice.id} result.`,
-      );
-      await expect(resultPanel).toContainText(
-        `${scene.minute}' · ${scene.scene_type}`,
-      );
-      await expect(page.getByTestId("game-field")).toHaveAttribute(
-        "data-result-minute",
-        String(scene.minute),
-      );
-      await expect(page.getByTestId("game-field")).toHaveAttribute(
-        "data-continuation-minute",
-        String(scene.minute + 1),
-      );
-      expect(result.prev_time).toBe(scene.minute);
-      expect(
-        result.pending_settlement_events[0]?.created_time.match_minute,
-      ).toBe(scene.minute);
-      expect(result.minute).toBeGreaterThan(result.prev_time);
-      await expect(
-        resultPanel.getByTestId("random-event-result-details"),
-      ).toContainText("Energy");
-      await expect(
-        resultPanel.getByTestId("random-event-result-details"),
-      ).toContainText("SOCIAL · FAN REPUTATION");
-      expect(requests).toHaveLength(index + 1);
-      expect(requests[index]).toMatchObject({
-        action_id: actionId,
-        match_decision: { choice: choice.id },
-      });
-      expect(
-        (requests[index] as { match_decision: unknown }).match_decision,
-      ).toEqual({ choice: choice.id });
-
-      const nextAction = resultPanel.getByTestId("next-action");
-      await nextAction.click();
-      await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
-      index += 1;
+    if (test.info().project.name === "mobile-chromium") {
+      await choiceButton.tap();
+    } else {
+      await choiceButton.focus();
+      await expect(choiceButton).toBeFocused();
+      await page.keyboard.press("Enter");
     }
+
+    const resultPanel = page.getByTestId("kick-result");
+    await expect(resultPanel).toContainText(
+      `Authoritative ${scene.scene_type} ${choice.id} result.`,
+    );
+    await expect(resultPanel).toContainText(
+      `${scene.minute}' · ${scene.scene_type}`,
+    );
+    await expect(page.getByTestId("game-field")).toHaveAttribute(
+      "data-result-minute",
+      String(scene.minute),
+    );
+    await expect(page.getByTestId("game-field")).toHaveAttribute(
+      "data-continuation-minute",
+      String(scene.minute + 1),
+    );
+    expect(result.prev_time).toBe(scene.minute);
+    expect(result.pending_settlement_events[0]?.created_time.match_minute).toBe(
+      scene.minute,
+    );
+    expect(result.minute).toBeGreaterThan(result.prev_time);
+    await expect(
+      resultPanel.getByTestId("random-event-result-details"),
+    ).toContainText("Energy");
+    await expect(
+      resultPanel.getByTestId("random-event-result-details"),
+    ).toContainText("SOCIAL · FAN REPUTATION");
+    expect(requests).toHaveLength(index + 1);
+    expect(requests[index]).toMatchObject({
+      action_id: actionId,
+      match_decision: { choice: choice.id },
+    });
+    expect(
+      (requests[index] as { match_decision: unknown }).match_decision,
+    ).toEqual({ choice: choice.id });
+
+    const nextAction = resultPanel.getByTestId("next-action");
+    await nextAction.click();
+    await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
   }
-  expect(index).toBe(15);
-});
+
+  expect(requests).toHaveLength(RANDOM_SCENE_CHOICES_PER_SCENE);
+}
+
+for (const scene of randomScenes) {
+  test(`renders ${scene.scene_type} and submits each of its three authoritative choices exactly once`, async ({
+    context,
+    page,
+  }) => {
+    // Each scene proves the same three-choice matrix and debug continuation,
+    // but has its own limit so one slow 3D transition cannot hide later scenes.
+    test.setTimeout(120_000);
+    await renderRandomSceneChoices(context, page, scene);
+  });
+}
 
 test("uses the full-color V1 mobile and desktop event treatment", async ({
   page,
