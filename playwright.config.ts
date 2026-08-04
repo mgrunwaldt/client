@@ -27,7 +27,7 @@ if (
 export default defineConfig({
   testDir: "./e2e",
   snapshotPathTemplate:
-    "{testDir}/{testFilePath}-snapshots/{arg}-{projectName}{ext}",
+    "{testDir}/{testFilePath}-snapshots/{arg}-{platform}-{projectName}{ext}",
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,

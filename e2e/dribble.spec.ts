@@ -215,6 +215,9 @@ async function hydrateDribble(
   );
   await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
   await expect(page.getByTestId("dribble-controls")).toBeVisible();
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_DRIBBLE_ADVANCE__" in globalThis,
+  );
 }
 
 async function tapDribbleScreenSide(
@@ -668,11 +671,28 @@ test("submits once after the real eight-second dribble deadline", async ({
       .getAttribute("data-run-started-at-ms"),
   );
   expect(timerStartedAt).toBeGreaterThan(0);
+  await page.evaluate((startedAt) => {
+    window.setTimeout(
+      () => {
+        const requestedAt = Number(
+          document.documentElement.dataset.dribbleRequestPerformanceNow,
+        );
+        document.documentElement.dataset.dribbleRequestObservedBeforeSeven =
+          Number.isFinite(requestedAt) && requestedAt < startedAt + 7_000
+            ? "true"
+            : "false";
+      },
+      Math.max(0, startedAt + 7_000 - performance.now()),
+    );
+  }, timerStartedAt);
   await page.waitForFunction(
     (startedAt) => performance.now() >= startedAt + 7_500,
     timerStartedAt,
   );
-  expect(requests).toHaveLength(0);
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-dribble-request-observed-before-seven",
+    "false",
+  );
   await expect.poll(() => requests.length, { timeout: 5_000 }).toBe(1);
 
   expect(

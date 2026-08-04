@@ -168,7 +168,9 @@ export function BallAimSurface({
         aria-label="Aim from the live ball"
         aria-hidden={!enabled}
         disabled={!enabled}
-        className="h-20 w-20 rounded-full border-0 bg-transparent p-0 outline-offset-4 focus-visible:outline-2 focus-visible:outline-cyan-200"
+        className={`h-20 w-20 rounded-full border-0 bg-transparent p-0 outline-offset-4 focus-visible:outline-2 focus-visible:outline-cyan-200 ${
+          enabled ? "" : "pointer-events-none"
+        }`}
         style={{ touchAction: "none" }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

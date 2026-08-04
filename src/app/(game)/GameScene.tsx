@@ -1161,6 +1161,7 @@ export default function GameScene({
   useEffect(() => {
     if (
       !retainedFieldDraft ||
+      !authoritativeRouteReady ||
       !match ||
       !pendingAction ||
       retainedFieldDraft.matchId !== match.id ||
@@ -1172,7 +1173,13 @@ export default function GameScene({
     }
     setReleasedAimDraft(retainedFieldDraft.aim);
     setStrikeContact(retainedFieldDraft.contact);
-  }, [match, pendingAction, releasedAimDraft, retainedFieldDraft]);
+  }, [
+    authoritativeRouteReady,
+    match,
+    pendingAction,
+    releasedAimDraft,
+    retainedFieldDraft,
+  ]);
   const handleRenderReadiness = useCallback(
     (sceneKey: string, ready: boolean) => {
       if (!ready) {

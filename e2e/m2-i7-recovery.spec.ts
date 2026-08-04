@@ -431,9 +431,14 @@ test("clears only abandoned hydration loading across match-surface re-entry", as
     const hydrationInFlight = new Promise<void>((resolve) => {
       hydrationStarted = resolve;
     });
+    let hydrationCompleted!: () => void;
+    const abandonedHydrationCompleted = new Promise<void>((resolve) => {
+      hydrationCompleted = resolve;
+    });
     await context.route(`**/api/match/${surface.id}`, async (route) => {
       hydrations += 1;
-      if (hydrations === 2) {
+      const isAbandonedHydration = hydrations === 2;
+      if (isAbandonedHydration) {
         hydrationStarted();
         await hydrationReleased;
       }
@@ -443,6 +448,7 @@ test("clears only abandoned hydration loading across match-surface re-entry", as
         contentType: "application/json",
         body: JSON.stringify(snapshotFromResponse(surface.response)),
       });
+      if (isAbandonedHydration) hydrationCompleted();
     });
 
     await page.goto(surface.path);
@@ -460,6 +466,7 @@ test("clears only abandoned hydration loading across match-surface re-entry", as
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     await expect(page).toHaveURL(/\/$/u);
+    await expect(surface.screen).toHaveCount(0);
     await page.evaluate((path) => {
       window.history.pushState({}, "", path);
       window.dispatchEvent(new PopStateEvent("popstate"));
@@ -474,6 +481,11 @@ test("clears only abandoned hydration loading across match-surface re-entry", as
       await expect(page.getByRole("button", { name: "Play" })).toBeEnabled();
     }
     releaseHydration();
+    await abandonedHydrationCompleted;
+    await expect(surface.screen).toHaveAttribute(
+      "data-session-loading",
+      "false",
+    );
   }
 });
 
