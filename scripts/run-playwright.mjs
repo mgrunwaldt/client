@@ -10,7 +10,9 @@ import {
   collectPlaywrightCases,
   groupPlaywrightCases,
   playwrightCasesPerProcess,
+  playwrightShard,
   runPlaywrightBatches,
+  shardPlaywrightCases,
 } from "./playwright-isolation.mjs";
 import { extractVitePreviewUrl } from "./preview-url.mjs";
 
@@ -425,6 +427,10 @@ async function main() {
     OVERGOAL_E2E_CERTIFICATE_SPKI: certificateSpki,
     PLAYWRIGHT_BASE_URL: baseUrl,
   };
+  const shard = playwrightShard(
+    process.env.OVERGOAL_PLAYWRIGHT_SHARD_INDEX,
+    process.env.OVERGOAL_PLAYWRIGHT_SHARD_TOTAL,
+  );
   const isFocusedRun =
     Boolean(focusedGrep) ||
     process.env.OVERGOAL_RUNNER_SIGNAL_PROOF === "1" ||
@@ -444,12 +450,15 @@ async function main() {
       [playwrightCli, "test", "--list", "--reporter=json"],
       { env: browserEnvironment },
     );
-    const cases = collectPlaywrightCases(JSON.parse(inventory.stdout));
+    const allCases = collectPlaywrightCases(JSON.parse(inventory.stdout));
+    const cases = shardPlaywrightCases(allCases, shard);
     const casesPerProcess = playwrightCasesPerProcess(
       process.env.OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS,
     );
     const batches = groupPlaywrightCases(cases, casesPerProcess);
-    console.log(`OVERGOAL_PLAYWRIGHT_CASE_TOTAL=${cases.length}`);
+    console.log(`OVERGOAL_PLAYWRIGHT_CASE_TOTAL=${allCases.length}`);
+    console.log(`OVERGOAL_PLAYWRIGHT_SHARD=${shard.index}/${shard.total}`);
+    console.log(`OVERGOAL_PLAYWRIGHT_SHARD_CASE_TOTAL=${cases.length}`);
     console.log(`OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS=${casesPerProcess}`);
     console.log(`OVERGOAL_PLAYWRIGHT_BATCH_TOTAL=${batches.length}`);
     const failures = await runPlaywrightBatches(
@@ -490,7 +499,8 @@ async function main() {
   await stopOwnedChild(preview, "preview");
   if (
     process.env.OVERGOAL_STALE_PORT_PROOF === "1" ||
-    process.env.OVERGOAL_SKIP_DIRECT_API === "true"
+    process.env.OVERGOAL_SKIP_DIRECT_API === "true" ||
+    shard.index > 1
   ) {
     return;
   }

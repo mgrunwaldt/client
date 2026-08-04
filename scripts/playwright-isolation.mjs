@@ -71,6 +71,7 @@ export function collectPlaywrightCases(report) {
 // Use one case per process by default so a prior scene cannot corrupt later UI.
 const DEFAULT_CASES_PER_PROCESS = 1;
 const MAX_CASES_PER_PROCESS = 16;
+const MAX_SHARD_TOTAL = 32;
 
 function escapedPattern(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
@@ -94,6 +95,68 @@ export function playwrightCasesPerProcess(value) {
     );
   }
   return parsed;
+}
+
+export function playwrightShard(indexValue, totalValue) {
+  if (
+    (indexValue === undefined || indexValue === "") &&
+    (totalValue === undefined || totalValue === "")
+  ) {
+    return { index: 1, total: 1 };
+  }
+  if (
+    indexValue === undefined ||
+    indexValue === "" ||
+    totalValue === undefined ||
+    totalValue === ""
+  ) {
+    throw new Error(
+      "OVERGOAL_PLAYWRIGHT_SHARD_INDEX and OVERGOAL_PLAYWRIGHT_SHARD_TOTAL must be set together",
+    );
+  }
+
+  const index = Number(indexValue);
+  const total = Number(totalValue);
+  if (
+    !Number.isInteger(index) ||
+    !Number.isInteger(total) ||
+    total < 1 ||
+    total > MAX_SHARD_TOTAL ||
+    index < 1 ||
+    index > total
+  ) {
+    throw new Error(
+      `Playwright shard must use an integer index from 1 through a total no greater than ${MAX_SHARD_TOTAL}`,
+    );
+  }
+  return { index, total };
+}
+
+function caseIdentity(entry) {
+  return `${entry.projectName}\u0000${entry.file}\u0000${String(entry.line).padStart(10, "0")}\u0000${entry.title}`;
+}
+
+export function shardPlaywrightCases(cases, shard) {
+  if (!Array.isArray(cases) || cases.length === 0) {
+    throw new Error("Playwright shard requires a non-empty case inventory");
+  }
+  const { index, total } = playwrightShard(shard?.index, shard?.total);
+  const sorted = [...cases].sort((left, right) => {
+    const leftIdentity = caseIdentity(left);
+    const rightIdentity = caseIdentity(right);
+    if (leftIdentity < rightIdentity) return -1;
+    if (leftIdentity > rightIdentity) return 1;
+    return 0;
+  });
+  const selected = sorted.filter(
+    (_, position) => position % total === index - 1,
+  );
+  if (selected.length === 0) {
+    throw new Error(
+      `Playwright shard ${index}/${total} contains no test cases`,
+    );
+  }
+  return selected;
 }
 
 export function groupPlaywrightCases(cases, casesPerProcess) {

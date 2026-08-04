@@ -7,7 +7,9 @@ import {
   collectPlaywrightCases,
   groupPlaywrightCases,
   playwrightCasesPerProcess,
+  playwrightShard,
   runPlaywrightBatches,
+  shardPlaywrightCases,
 } from "../scripts/playwright-isolation.mjs";
 
 const runnerUrl = new URL("../scripts/run-playwright.mjs", import.meta.url);
@@ -99,6 +101,53 @@ describe("Playwright runner process ownership", () => {
     expect(() => playwrightCasesPerProcess("0")).toThrow("CASES_PER_PROCESS");
     expect(() => playwrightCasesPerProcess("17")).toThrow("CASES_PER_PROCESS");
     expect(() => groupPlaywrightCases([], 0)).toThrow("positive integer");
+  });
+
+  it("partitions the stable case inventory into exclusive deterministic shards", () => {
+    const cases = Array.from({ length: 19 }, (_, index) => ({
+      projectName: index % 2 === 0 ? "chromium" : "mobile-chromium",
+      file: `scene-${String(18 - index).padStart(2, "0")}.spec.ts`,
+      line: index + 1,
+      title: `case ${index}`,
+    }));
+    const reversed = [...cases].reverse();
+    const shards = Array.from({ length: 8 }, (_, index) =>
+      shardPlaywrightCases(cases, { index: index + 1, total: 8 }),
+    );
+    const reversedShards = Array.from({ length: 8 }, (_, index) =>
+      shardPlaywrightCases(reversed, { index: index + 1, total: 8 }),
+    );
+
+    expect(reversedShards).toEqual(shards);
+    expect(shards.flat()).toHaveLength(cases.length);
+    expect(new Set(shards.flat().map((entry) => entry.title))).toEqual(
+      new Set(cases.map((entry) => entry.title)),
+    );
+    expect(shards.every((shard) => shard.length >= 2)).toBe(true);
+  });
+
+  it("validates shard configuration and rejects empty shards", () => {
+    expect(playwrightShard()).toEqual({ index: 1, total: 1 });
+    expect(playwrightShard("3", "8")).toEqual({ index: 3, total: 8 });
+    expect(() => playwrightShard("1", undefined)).toThrow(
+      "must be set together",
+    );
+    expect(() => playwrightShard("0", "8")).toThrow("integer index");
+    expect(() => playwrightShard("9", "8")).toThrow("integer index");
+    expect(() => playwrightShard("1", "33")).toThrow("no greater than 32");
+    expect(() =>
+      shardPlaywrightCases(
+        [
+          {
+            projectName: "chromium",
+            file: "only.spec.ts",
+            line: 1,
+            title: "only",
+          },
+        ],
+        { index: 2, total: 2 },
+      ),
+    ).toThrow("contains no test cases");
   });
 
   it("rejects an empty or duplicate Playwright inventory", () => {

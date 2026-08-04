@@ -187,6 +187,12 @@ The normal suite runs each discovered test in its own Playwright process. This
 prevents Three.js/WebGL state from one scene corrupting later visual or input
 tests. `OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS` can group 1 through 16 cases only
 as an explicit diagnostic override; release CI uses the isolated default of one.
+Release CI partitions the stable inventory across eight independent GitHub
+Actions runners with `OVERGOAL_PLAYWRIGHT_SHARD_INDEX` and
+`OVERGOAL_PLAYWRIGHT_SHARD_TOTAL`. Every case still owns its browser process;
+the shards reduce wall-clock time without sharing WebGL state or listeners. The
+post-suite HTTPS cross-origin smoke runs once in shard 1 rather than being
+duplicated across all eight runners.
 Startup, early preview exit, and failed teardown fail the command. Signal mode
 selects one desktop-only worker rather than duplicating its 60-second hold in
 the mobile project. `pnpm test:browser:stale-port` occupies a separate
