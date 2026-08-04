@@ -6,9 +6,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ec } from "starknet";
 import {
+  batchedPlaywrightArgs,
   collectPlaywrightCases,
-  isolatedPlaywrightArgs,
-  runIsolatedPlaywrightCases,
+  groupPlaywrightCases,
+  playwrightCasesPerProcess,
+  runPlaywrightBatches,
 } from "./playwright-isolation.mjs";
 import { extractVitePreviewUrl } from "./preview-url.mjs";
 
@@ -443,18 +445,27 @@ async function main() {
       { env: browserEnvironment },
     );
     const cases = collectPlaywrightCases(JSON.parse(inventory.stdout));
-    console.log(`OVERGOAL_PLAYWRIGHT_ISOLATED_TOTAL=${cases.length}`);
-    const failures = await runIsolatedPlaywrightCases(
-      cases,
-      async (entry, index) => {
+    const casesPerProcess = playwrightCasesPerProcess(
+      process.env.OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS,
+    );
+    const batches = groupPlaywrightCases(cases, casesPerProcess);
+    console.log(`OVERGOAL_PLAYWRIGHT_CASE_TOTAL=${cases.length}`);
+    console.log(`OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS=${casesPerProcess}`);
+    console.log(`OVERGOAL_PLAYWRIGHT_BATCH_TOTAL=${batches.length}`);
+    const failures = await runPlaywrightBatches(
+      batches,
+      async (batch, index) => {
         const ordinal = String(index + 1).padStart(3, "0");
+        const caseSummary = batch.cases
+          .map((entry) => `${entry.file}:${entry.line}:${entry.title}`)
+          .join(" | ");
         console.log(
-          `OVERGOAL_PLAYWRIGHT_CASE=${ordinal}/${cases.length}:${entry.projectName}:${entry.file}:${entry.line}:${entry.title}`,
+          `OVERGOAL_PLAYWRIGHT_BATCH=${ordinal}/${batches.length}:${batch.projectName}:${batch.cases.length}:${caseSummary}`,
         );
         const browser = spawnOwned(
           `playwright-${ordinal}`,
           process.execPath,
-          isolatedPlaywrightArgs(playwrightCli, entry, index, updateSnapshots),
+          batchedPlaywrightArgs(playwrightCli, batch, index, updateSnapshots),
           { stdio: "inherit", env: browserEnvironment },
         );
         await waitForBrowserOrPreviewExit(browser, preview);
@@ -463,13 +474,15 @@ async function main() {
     if (failures.length > 0) {
       throw new AggregateError(
         failures.map(
-          ({ entry, error }) =>
+          ({ batch, error }) =>
             new Error(
-              `${entry.projectName} ${entry.file}:${entry.line} ${entry.title}`,
+              `${batch.projectName} batch (${batch.cases
+                .map((entry) => `${entry.file}:${entry.line}:${entry.title}`)
+                .join(" | ")})`,
               { cause: error },
             ),
         ),
-        `${failures.length} isolated Playwright case(s) failed`,
+        `${failures.length} Playwright batch(es) failed`,
       );
     }
   }
