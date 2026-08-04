@@ -12,6 +12,7 @@ import {
   matchSessionReducer,
 } from "./session-machine";
 import {
+  matchCommandsExactly,
   type MatchFieldDraft,
   readMatchRecoveryJournal,
   writeMatchRecoveryJournal,
@@ -39,9 +40,12 @@ interface MatchSessionActions {
   resetMatchSession: () => void;
   beginCreateCommand: (command: MatchCommand) => boolean;
   setLoading: (loading: boolean) => void;
+  beginHydrationLoading: () => number;
+  finishHydrationLoading: (generation: number) => void;
   setError: (error: unknown | null) => void;
   retainPendingCommand: (command: MatchCommand) => void;
   clearPendingCommand: () => void;
+  requireCommandReconciliation: (command: MatchCommand) => void;
   retainFieldDraft: (draft: MatchFieldDraft) => void;
   clearFieldDraft: () => void;
   showTransitionLoader: (payload: Partial<MatchTransitionLoaderState>) => void;
@@ -57,9 +61,18 @@ interface MatchSessionActions {
   beginStartCommand: (command: MatchCommand) => boolean;
   beginResumeCommand: (command: MatchCommand) => boolean;
   beginActionCommand: (command: MatchCommand) => boolean;
-  setStartResponse: (response: BackendMatchResponse) => void;
-  setResumeResponse: (response: BackendMatchResponse) => void;
-  setActionResponse: (response: BackendMatchResponse) => void;
+  setStartResponse: (
+    response: BackendMatchResponse,
+    command: MatchCommand,
+  ) => boolean;
+  setResumeResponse: (
+    response: BackendMatchResponse,
+    command: MatchCommand,
+  ) => boolean;
+  setActionResponse: (
+    response: BackendMatchResponse,
+    command: MatchCommand,
+  ) => boolean;
   acknowledgeDecisionResult: () => void;
   hydrateMatchSession: (payload: HydratedMatchSession) => void;
   setPlaybackMinute: (minute: number) => void;
@@ -70,6 +83,7 @@ interface MatchSessionActions {
 
 interface MatchSessionUiState {
   loading: boolean;
+  loadingGeneration: number;
   transitionLoader: MatchTransitionLoaderState;
 }
 
@@ -79,6 +93,7 @@ type MatchSessionStore = MatchSessionData &
 
 const initialUiState: MatchSessionUiState = {
   loading: false,
+  loadingGeneration: 0,
   transitionLoader: {
     visible: false,
     title: "Loading",
@@ -94,6 +109,7 @@ function initialSessionState() {
     ...createInitialMatchSession(),
     pendingCommand: journal.pendingCommand,
     fieldDraft: journal.fieldDraft,
+    acknowledgedResult: journal.acknowledgedResult,
   };
 }
 
@@ -102,6 +118,7 @@ function persistRecoveryJournal(state: MatchSessionData) {
     version: 1,
     pendingCommand: state.pendingCommand,
     fieldDraft: state.fieldDraft,
+    acknowledgedResult: state.acknowledgedResult,
   });
 }
 
@@ -129,6 +146,8 @@ function updateSession(
     return {
       ...next,
       loading: loadingForPhase(next.phase),
+      // A reducer transition supersedes a screen-owned hydration loader.
+      loadingGeneration: state.loadingGeneration + 1,
     };
   });
   if (!result) throw new Error("The match session transition did not run.");
@@ -144,6 +163,18 @@ function commandAccepted(
   return (
     state.phase === phase &&
     state.pendingCommand?.idempotencyKey === command.idempotencyKey
+  );
+}
+
+function responseAccepted(
+  state: MatchSessionData,
+  response: BackendMatchResponse,
+) {
+  return Boolean(
+    state.pendingCommand === null &&
+      state.match?.id === response.match.id &&
+      state.match.revision === response.match.revision &&
+      state.diagnostic === null,
   );
 }
 
@@ -174,14 +205,18 @@ function diagnosticFromError(error: unknown): MatchSessionDiagnostic {
   };
 }
 
-export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
+export const useMatchSessionStore = create<MatchSessionStore>((set, get) => ({
   ...initialSessionState(),
   ...initialUiState,
   resetMatchSession: () =>
-    set(() => {
+    set((state) => {
       const next = { ...createInitialMatchSession(), ...initialUiState };
       persistRecoveryJournal(next);
-      return next;
+      return {
+        ...next,
+        // Do not let an unmounted route reuse a reset generation value.
+        loadingGeneration: state.loadingGeneration + 1,
+      };
     }),
   beginCreateCommand: (command) =>
     commandAccepted(
@@ -189,7 +224,27 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       command,
       "creating",
     ),
-  setLoading: (loading) => set({ loading }),
+  setLoading: (loading) =>
+    set((state) => ({
+      loading,
+      loadingGeneration: state.loadingGeneration + 1,
+    })),
+  beginHydrationLoading: () => {
+    let generation = 0;
+    set((state) => {
+      generation = state.loadingGeneration + 1;
+      return { loading: true, loadingGeneration: generation };
+    });
+    return generation;
+  },
+  finishHydrationLoading: (generation) =>
+    set((state) => {
+      if (state.loadingGeneration !== generation) return {};
+      return {
+        loading: false,
+        loadingGeneration: generation + 1,
+      };
+    }),
   setError: (error) => {
     if (error === null) {
       updateSession(set, { type: "ERROR_CLEARED" });
@@ -203,6 +258,8 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
   retainPendingCommand: (command) =>
     updateSession(set, { type: "COMMAND_RETAINED", command }),
   clearPendingCommand: () => updateSession(set, { type: "COMMAND_CLEARED" }),
+  requireCommandReconciliation: (command) =>
+    updateSession(set, { type: "COMMAND_RECONCILIATION_REQUIRED", command }),
   retainFieldDraft: (draft) =>
     updateSession(set, { type: "FIELD_DRAFT_RETAINED", draft }),
   clearFieldDraft: () => updateSession(set, { type: "FIELD_DRAFT_CLEARED" }),
@@ -249,24 +306,42 @@ export const useMatchSessionStore = create<MatchSessionStore>((set) => ({
       command,
       "submitting",
     ),
-  setStartResponse: (response) =>
-    updateSession(set, {
-      type: "COMMAND_RESOLVED",
+  setStartResponse: (response, command) => {
+    if (!matchCommandsExactly(get().pendingCommand, command)) return false;
+    return responseAccepted(
+      updateSession(set, {
+        type: "COMMAND_RESOLVED",
+        command,
+        response,
+        source: "start",
+      }),
       response,
-      source: "start",
-    }),
-  setResumeResponse: (response) =>
-    updateSession(set, {
-      type: "COMMAND_RESOLVED",
+    );
+  },
+  setResumeResponse: (response, command) => {
+    if (!matchCommandsExactly(get().pendingCommand, command)) return false;
+    return responseAccepted(
+      updateSession(set, {
+        type: "COMMAND_RESOLVED",
+        command,
+        response,
+        source: "resume",
+      }),
       response,
-      source: "resume",
-    }),
-  setActionResponse: (response) =>
-    updateSession(set, {
-      type: "COMMAND_RESOLVED",
+    );
+  },
+  setActionResponse: (response, command) => {
+    if (!matchCommandsExactly(get().pendingCommand, command)) return false;
+    return responseAccepted(
+      updateSession(set, {
+        type: "COMMAND_RESOLVED",
+        command,
+        response,
+        source: "action",
+      }),
       response,
-      source: "action",
-    }),
+    );
+  },
   acknowledgeDecisionResult: () =>
     updateSession(set, { type: "RESULT_ACKNOWLEDGED" }),
   hydrateMatchSession: (payload) =>

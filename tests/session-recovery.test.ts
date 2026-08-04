@@ -59,6 +59,26 @@ function draftFor(action: BackendPendingAction, revision = 7): MatchFieldDraft {
   };
 }
 
+function lastDecisionFor(
+  action: BackendPendingAction,
+  decisionData: Record<string, unknown>,
+) {
+  return {
+    id: `decision-${action.id}`,
+    match_id: "match-fixture-1",
+    sequence: 1,
+    minute: action.minute,
+    action: action.scene_type,
+    action_team: action.action_team,
+    action_id: action.id,
+    action_version: action.contract_version ?? 1,
+    decision_version: 1,
+    decision_data: decisionData,
+    field_state_id: action.field_state_id,
+    timestamp: 1,
+  };
+}
+
 describe("M2-I7 session recovery", () => {
   it("discards malformed journal commands and drafts before hydration", async () => {
     const { action } = await fixture();
@@ -94,6 +114,7 @@ describe("M2-I7 session recovery", () => {
       version: 1,
       pendingCommand: null,
       fieldDraft: null,
+      acknowledgedResult: null,
     });
   });
 
@@ -227,7 +248,7 @@ describe("M2-I7 session recovery", () => {
             version: 1,
             submitted_action: action,
             submitted_field_state: action.field_state ?? null,
-            last_decision: { choice: "KICK" },
+            last_decision: lastDecisionFor(action, { choice: "KICK" }),
             decision_result: {
               description: "Successful pass.",
               success: true,
@@ -246,6 +267,157 @@ describe("M2-I7 session recovery", () => {
       fieldDraft: null,
       decisionResult: { outcome_type: "PASS_COMPLETED" },
       resultPlayback: { operation_id: "operation-receipt-1" },
+    });
+
+    const acknowledgedReceipt = state.resultPlayback;
+    state = matchSessionReducer(state, { type: "RESULT_ACKNOWLEDGED" });
+    expect(state).toMatchObject({
+      phase: "timeline_playback",
+      acknowledgedResult: {
+        matchId: match.id,
+        committedRevision: committedMatch.revision,
+        actionId: action.id,
+      },
+    });
+
+    state = matchSessionReducer(state, {
+      type: "HYDRATED",
+      payload: {
+        match: committedMatch,
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: [],
+        latestOperation: acknowledgedReceipt,
+      },
+    });
+    expect(state).toMatchObject({
+      phase: "timeline_playback",
+      resultPlayback: null,
+      decisionResult: null,
+    });
+
+    const nextAction = {
+      ...action,
+      id: "action-after-acknowledged-result",
+    };
+    const nextCommand = createMatchCommand(
+      "action",
+      {
+        match_id: match.id,
+        action_id: nextAction.id,
+        match_decision: { choice: "KICK" },
+      },
+      {
+        matchId: match.id,
+        revision: committedMatch.revision,
+        actionId: nextAction.id,
+        idempotencyKey: "next-action-after-old-receipt",
+      },
+    );
+    state = matchSessionReducer(
+      { ...state, pendingCommand: nextCommand },
+      {
+        type: "HYDRATED",
+        payload: {
+          match: {
+            ...committedMatch,
+            match_status: "WAITING_FOR_DECISION",
+            pending_action: nextAction,
+          },
+          myTeam: teams.my_team,
+          opponentTeam: teams.opponent_team,
+          timelineEvents: [],
+          pendingAction: nextAction,
+          latestOperation: acknowledgedReceipt,
+        },
+      },
+    );
+    expect(state).toMatchObject({
+      phase: "recoverable_error",
+      retrySafe: true,
+      pendingCommand: { idempotencyKey: "next-action-after-old-receipt" },
+      diagnostic: { recoveryAction: "RETRY_SAME_REQUEST" },
+    });
+  });
+
+  it("rejects a same-action receipt for a different exact decision", async () => {
+    const { action, match, teams } = await fixture();
+    const command = createMatchCommand(
+      "action",
+      {
+        match_id: match.id,
+        action_id: action.id,
+        match_decision: { choice: "KICK", contact: { x: 0.4, y: 0 } },
+      },
+      {
+        matchId: match.id,
+        revision: match.revision,
+        actionId: action.id,
+        idempotencyKey: "receipt-decision-fingerprint",
+      },
+    );
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match,
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: [],
+      },
+    });
+    state = matchSessionReducer(state, {
+      type: "TIMELINE_TICK",
+      minute: action.minute,
+    });
+    state = matchSessionReducer(state, { type: "SCENE_READY" });
+    state = matchSessionReducer(state, { type: "ACTION_REQUESTED", command });
+
+    const committedMatch = {
+      ...match,
+      revision: match.revision + 1,
+      match_status: "IN_PROGRESS" as const,
+      pending_action: null,
+    };
+    state = matchSessionReducer(state, {
+      type: "HYDRATED",
+      payload: {
+        match: committedMatch,
+        myTeam: teams.my_team,
+        opponentTeam: teams.opponent_team,
+        timelineEvents: [],
+        latestOperation: {
+          version: 1,
+          operation_id: "different-decision-receipt",
+          operation: "processMatchAction",
+          status: "COMMITTED",
+          request_revision: match.revision,
+          committed_revision: committedMatch.revision,
+          action_id: action.id,
+          playback: {
+            version: 1,
+            submitted_action: action,
+            submitted_field_state: action.field_state ?? null,
+            last_decision: lastDecisionFor(action, {
+              choice: "KICK",
+              contact: { x: -0.4, y: 0 },
+            }),
+            decision_result: {
+              description: "A different kick was committed.",
+              success: false,
+              outcome_type: "BALL_LOST",
+            },
+            events: [],
+          },
+        },
+      },
+    });
+
+    expect(state).toMatchObject({
+      phase: "recoverable_error",
+      pendingCommand: { idempotencyKey: "receipt-decision-fingerprint" },
+      decisionResult: null,
+      resultPlayback: null,
+      diagnostic: { kind: "contract" },
     });
   });
 
@@ -302,6 +474,28 @@ describe("M2-I7 session recovery", () => {
     });
 
     expect(state).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "scene_ready",
+      retrySafe: true,
+      pendingCommand: { idempotencyKey: "retry-after-receipt-check" },
+      diagnostic: { recoveryAction: "RETRY_SAME_REQUEST" },
+    });
+
+    const reloadedState = matchSessionReducer(
+      { ...createInitialMatchSession(), pendingCommand: command },
+      {
+        type: "HYDRATED",
+        payload: {
+          match,
+          myTeam: teams.my_team,
+          opponentTeam: teams.opponent_team,
+          timelineEvents: [],
+          pendingAction: action,
+          latestOperation: null,
+        },
+      },
+    );
+    expect(reloadedState).toMatchObject({
       phase: "recoverable_error",
       recoveryPhase: "scene_ready",
       retrySafe: true,
@@ -390,7 +584,16 @@ describe("M2-I7 session recovery", () => {
             version: 1,
             submitted_action: null,
             submitted_field_state: null,
-            last_decision: { choice: "CONTINUE_WITHOUT_EVENT" },
+            last_decision: {
+              ...lastDecisionFor(action, {
+                choice: "CONTINUE_WITHOUT_EVENT",
+                unsupported_scene_type: recovery.scene_type,
+              }),
+              action: "RANDOM_EVENT",
+              action_team: "NEUTRAL",
+              action_version: recovery.version,
+              decision_version: 5,
+            },
             decision_result: {
               description: "Unsupported event skipped.",
               success: true,

@@ -11,6 +11,7 @@ import {
   authenticateForContinuation,
   authenticateToHome,
 } from "./support/auth";
+import { withCommittedActionReceipt } from "./support/operation-receipt";
 import { enableDebugResultContinuation } from "./support/result-continuation";
 
 const FIELD_READY_TIMEOUT_MS = 45_000;
@@ -42,6 +43,7 @@ const teams = {
 function randomEventResponse(
   scene: (typeof randomScenes)[number],
   actionId: string,
+  revision = 0,
 ) {
   const response = structuredClone(waitingOpenPlay);
   const pendingAction = structuredClone(scene);
@@ -65,6 +67,7 @@ function randomEventResponse(
     ],
     match: {
       ...response.match,
+      revision,
       current_time: pendingAction.minute,
       prev_time: pendingAction.minute - 1,
       match_status: "WAITING_FOR_DECISION",
@@ -77,8 +80,9 @@ function resolvedRandomEvent(
   scene: (typeof randomScenes)[number],
   actionId: string,
   choice: string,
+  revision = 0,
 ) {
-  const response = randomEventResponse(scene, actionId);
+  const response = randomEventResponse(scene, actionId, revision);
   const actionMinute = response.minute;
   const continuationMinute = actionMinute + 1;
   const settlement = {
@@ -143,10 +147,38 @@ function resolvedRandomEvent(
   };
 }
 
-function recoveredResponse() {
+function committedRandomEvent(
+  scene: (typeof randomScenes)[number],
+  actionId: string,
+  choice: string,
+  revision = 0,
+) {
+  return withCommittedActionReceipt(
+    randomEventResponse(scene, actionId, revision),
+    resolvedRandomEvent(scene, actionId, choice, revision),
+    { decisionData: { choice } },
+  );
+}
+
+function recoveredResponse(actionId: string, sceneType: string) {
   const response = structuredClone(waitingOpenPlay);
   const minute = response.minute + 1;
   const description = "Unsupported event skipped without applying effects.";
+  const decisionResult = {
+    description,
+    success: true,
+    outcome_type: "SKIPPED_NO_EFFECT",
+    immediate_effects: {},
+    pending_settlement_events: [],
+    unsupported_scene_recovery: {
+      version: 1,
+      status: "RECOVERED",
+      outcome: "SKIPPED_NO_EFFECT",
+      scene_type: sceneType,
+      action_id: actionId,
+      recovered_revision: response.match.revision + 1,
+    },
+  } as const;
   return {
     ...response,
     minute,
@@ -167,6 +199,7 @@ function recoveredResponse() {
     ],
     pending_settlement_events: [],
     unsupported_scene: null,
+    decision_result: decisionResult,
     match: {
       ...response.match,
       current_time: minute,
@@ -174,6 +207,47 @@ function recoveredResponse() {
       revision: response.match.revision + 1,
       match_status: "IN_PROGRESS",
       pending_action: null,
+    },
+    latest_operation: {
+      version: 1,
+      operation_id: `operation-recover-${actionId}`,
+      operation: "processMatchAction",
+      status: "COMMITTED",
+      request_revision: response.match.revision,
+      committed_revision: response.match.revision + 1,
+      action_id: actionId,
+      playback: {
+        version: 1,
+        submitted_action: null,
+        submitted_field_state: null,
+        last_decision: {
+          id: `decision-${actionId}`,
+          match_id: response.match.id,
+          sequence: 1,
+          minute: response.minute,
+          action: "RANDOM_EVENT",
+          action_team: "NEUTRAL",
+          action_id: actionId,
+          action_version: 1,
+          decision_version: 5,
+          decision_data: {
+            choice: "CONTINUE_WITHOUT_EVENT",
+            unsupported_scene_type: sceneType,
+          },
+          field_state_id: `field-${actionId}`,
+          timestamp: 1,
+        },
+        decision_result: decisionResult,
+        events: [
+          {
+            ...response.events[0],
+            event_id: response.events[0].event_id + 1,
+            action: "UNSUPPORTED_SCENE_SKIPPED",
+            minute,
+            description,
+          },
+        ],
+      },
     },
   };
 }
@@ -221,13 +295,8 @@ async function hydrateScene(
   response: unknown,
   options: { waitForField?: boolean } = {},
 ) {
-  const currentPath = new URL(page.url()).pathname;
-  if (/^\/match\/[^/]+$/u.test(currentPath)) {
-    await page.goBack();
-    await expect(page).toHaveURL(/\/game$/u);
-  } else if (currentPath !== "/game") {
-    await page.goto("/game");
-  }
+  const matchId = (response as { match: { id: string } }).match.id;
+  const gamePath = `/game/${matchId}`;
   await page.waitForFunction(
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
   );
@@ -258,6 +327,13 @@ async function hydrateScene(
     },
     { matchResponse: response, ...teams },
   );
+  if (new URL(page.url()).pathname !== gamePath) {
+    await page.evaluate((pathname) => {
+      window.history.pushState({}, "", pathname);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, gamePath);
+    await expect(page).toHaveURL(new RegExp(`${gamePath}$`, "u"));
+  }
   if (options.waitForField !== false) {
     await expect(page.getByTestId("game-field")).toHaveAttribute(
       "data-render-ready",
@@ -277,7 +353,7 @@ test("renders all five random scenes and submits each authoritative choice exact
   // times three choices, each returning through the real continuation route.
   test.setTimeout(240_000);
   const requests: unknown[] = [];
-  let result = resolvedRandomEvent(jumper, "action-jumper-0", "ACCEPT_HUG");
+  let result = committedRandomEvent(jumper, "action-jumper-0", "ACCEPT_HUG");
   await context.route("**/api/processMatchAction", async (route) => {
     requests.push(route.request().postDataJSON());
     await route.fulfill({
@@ -294,8 +370,8 @@ test("renders all five random scenes and submits each authoritative choice exact
   for (const scene of randomScenes) {
     for (const choice of scene.available_choices) {
       const actionId = `action-${scene.scene_type.toLowerCase()}-${index}`;
-      result = resolvedRandomEvent(scene, actionId, choice.id);
-      await hydrateScene(page, randomEventResponse(scene, actionId));
+      result = committedRandomEvent(scene, actionId, choice.id, index * 2);
+      await hydrateScene(page, randomEventResponse(scene, actionId, index * 2));
 
       const event = page.getByTestId("random-event-scene");
       await expect(event).toHaveAttribute("data-scene-type", scene.scene_type);
@@ -390,7 +466,7 @@ test("submits a valid future fourth choice and auto-continues in production mode
   };
   const scene = structuredClone(jumper);
   scene.available_choices.push(futureChoice);
-  const result = resolvedRandomEvent(scene, actionId, futureChoice.id);
+  const result = committedRandomEvent(scene, actionId, futureChoice.id);
   await context.route("**/api/processMatchAction", async (route) => {
     requests.push(route.request().postDataJSON());
     await route.fulfill({
@@ -438,7 +514,7 @@ test("keeps a debug result indefinitely until Next Action is activated", async (
   test.slow();
   const requests: unknown[] = [];
   const actionId = "action-jumper-debug-hold";
-  const result = resolvedRandomEvent(jumper, actionId, "DODGE");
+  const result = committedRandomEvent(jumper, actionId, "DODGE");
   await context.route("**/api/processMatchAction", async (route) => {
     requests.push(route.request().postDataJSON());
     await route.fulfill({
@@ -456,7 +532,7 @@ test("keeps a debug result indefinitely until Next Action is activated", async (
   const resultPanel = page.getByTestId("kick-result");
   await expect(resultPanel).toBeVisible();
   await page.waitForTimeout(3_200);
-  await expect(page).toHaveURL(/\/game$/u);
+  await expect(page).toHaveURL(/\/game\/match-fixture-1$/u);
   await expect(resultPanel).toBeVisible();
   expect(requests).toHaveLength(1);
 
@@ -477,7 +553,9 @@ test("recovers a hidden unknown scene exactly once and exposes safe malformed-ev
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
-      body: JSON.stringify(recoveredResponse()),
+      body: JSON.stringify(
+        recoveredResponse("action-future-1", "FUTURE_RANDOM_EVENT_V99"),
+      ),
     });
   });
   await authenticateForContinuation(page);
@@ -505,7 +583,7 @@ test("recovers a hidden unknown scene exactly once and exposes safe malformed-ev
     match_decision: { choice: "CONTINUE_WITHOUT_EVENT" },
   });
 
-  const malformed = randomEventResponse(jumper, "action-malformed-1");
+  const malformed = randomEventResponse(jumper, "action-malformed-1", 2);
   malformed.pending_action.available_choices[0].input_schema = {
     required: ["choice"],
     allowed: ["choice", "unsafe"],

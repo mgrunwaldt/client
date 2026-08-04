@@ -47,6 +47,9 @@ export function DribbleControls({
   const frameRef = useRef<number | null>(null);
   const swipeStartRef = useRef<number | null>(null);
   const pointerLaneRef = useRef<DribbleLane | null>(null);
+  const touchStartRef = useRef<number | null>(null);
+  const touchLaneRef = useRef<DribbleLane | null>(null);
+  const gestureHandledRef = useRef(false);
   const e2eClockPausedRef = useRef(false);
 
   const submitDecision = (
@@ -169,6 +172,38 @@ export function DribbleControls({
     }
   };
 
+  const finishLaneGesture = (
+    start: number,
+    end: number,
+    tappedLane: DribbleLane | null,
+    eventTime: number,
+  ) => {
+    if (gestureHandledRef.current) return;
+    gestureHandledRef.current = true;
+    const distance = end - start;
+    if (Math.abs(distance) >= SWIPE_THRESHOLD_PX) {
+      switchRelative(distance > 0 ? 1 : -1, eventTime);
+    } else if (tappedLane) {
+      switchLane(tappedLane, eventTime);
+    }
+  };
+
+  const laneFromTarget = (target: EventTarget | null) => {
+    const lane = (target as HTMLElement | null)?.closest<HTMLButtonElement>(
+      "[data-dribble-lane]",
+    )?.dataset.dribbleLane;
+    return DRIBBLE_LANES.includes(lane as DribbleLane)
+      ? (lane as DribbleLane)
+      : null;
+  };
+
+  const clearGesture = () => {
+    swipeStartRef.current = null;
+    pointerLaneRef.current = null;
+    touchStartRef.current = null;
+    touchLaneRef.current = null;
+  };
+
   return (
     <section
       data-testid="dribble-controls"
@@ -212,35 +247,51 @@ export function DribbleControls({
           tabIndex={0}
           onKeyDown={handleKeyDown}
           onPointerDown={(event) => {
+            gestureHandledRef.current = false;
             swipeStartRef.current = event.clientX;
-            const lane = (
-              event.target as HTMLElement
-            ).closest<HTMLButtonElement>("[data-dribble-lane]")?.dataset
-              .dribbleLane;
-            pointerLaneRef.current = DRIBBLE_LANES.includes(lane as DribbleLane)
-              ? (lane as DribbleLane)
-              : null;
+            pointerLaneRef.current = laneFromTarget(event.target);
             event.currentTarget.setPointerCapture(event.pointerId);
           }}
           onPointerUp={(event) => {
             const start = swipeStartRef.current;
             const tappedLane = pointerLaneRef.current;
-            swipeStartRef.current = null;
-            pointerLaneRef.current = null;
             if (start === null) return;
-            const distance = event.clientX - start;
-            if (Math.abs(distance) >= SWIPE_THRESHOLD_PX) {
-              switchRelative(distance > 0 ? 1 : -1, event.timeStamp);
-            } else if (tappedLane) {
-              switchLane(tappedLane, event.timeStamp);
-            }
+            finishLaneGesture(
+              start,
+              event.clientX,
+              tappedLane,
+              event.timeStamp,
+            );
+            clearGesture();
           }}
           onPointerCancel={() => {
             swipeStartRef.current = null;
             pointerLaneRef.current = null;
           }}
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            if (!touch) return;
+            gestureHandledRef.current = false;
+            touchStartRef.current = touch.clientX;
+            touchLaneRef.current = laneFromTarget(event.target);
+          }}
+          onTouchEnd={(event) => {
+            const start = touchStartRef.current;
+            const touch = event.changedTouches[0];
+            if (start === null || !touch) return;
+            finishLaneGesture(
+              start,
+              touch.clientX,
+              touchLaneRef.current,
+              event.timeStamp,
+            );
+            clearGesture();
+          }}
           className="relative mx-3 mt-3 grid grid-cols-3 gap-2 rounded-2xl border border-cyan-200/20 bg-slate-950/45 p-2 outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
-          style={{ touchAction: "pan-y" }}
+          // The match field is a fixed game surface, not a scroll container.
+          // Owning the gesture prevents mobile browsers from cancelling a
+          // horizontal lane swipe before pointerup is delivered.
+          style={{ touchAction: "none" }}
         >
           <div
             aria-hidden="true"

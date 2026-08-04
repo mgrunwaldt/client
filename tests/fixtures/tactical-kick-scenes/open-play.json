@@ -309,6 +309,7 @@
         }
       ],
       "legend_player_id": "team_1_RB_2",
+      "distance_to_goal": 8,
       "carrier_player_id": "team_1_RB_2",
       "ball_x": 50,
       "ball_y": 8,
@@ -605,6 +606,7 @@
       }
     ],
     "legend_player_id": "team_1_RB_2",
+    "distance_to_goal": 8,
     "carrier_player_id": "team_1_RB_2",
     "ball_x": 50,
     "ball_y": 8,

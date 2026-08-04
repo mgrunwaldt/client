@@ -90,6 +90,7 @@ describe("M2-I6 authoritative match lifecycle", () => {
     state = matchSessionReducer(state, {
       type: "COMMAND_RESOLVED",
       source: "resume",
+      command,
       response,
     });
 
@@ -217,6 +218,7 @@ describe("M2-I6 authoritative match lifecycle", () => {
     state = matchSessionReducer(state, {
       type: "COMMAND_RESOLVED",
       source: "resume",
+      command,
       response: {
         ...fulltime,
         prev_time: 89,

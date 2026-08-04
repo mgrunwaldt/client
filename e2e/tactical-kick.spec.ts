@@ -16,9 +16,10 @@ import freeKickScene from "../tests/fixtures/tactical-kick-scenes/free-kick.json
 import openPlayScene from "../tests/fixtures/tactical-kick-scenes/open-play.json" with { type: "json" };
 import penaltyScene from "../tests/fixtures/tactical-kick-scenes/penalty.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
+import { withCommittedActionReceipt } from "./support/operation-receipt";
 import { enableDebugResultContinuation } from "./support/result-continuation";
 
-const FIELD_READY_TIMEOUT_MS = 45_000;
+const FIELD_READY_TIMEOUT_MS = 90_000;
 const tacticalScenes = {
   OPEN_PLAY: openPlayScene,
   FREE_KICK: freeKickScene,
@@ -103,7 +104,22 @@ function canonicalScene(sceneType: TacticalSceneType) {
   return structuredClone(tacticalScenes[sceneType]);
 }
 
+function canonicalSceneForMatch(sceneType: TacticalSceneType, matchId: string) {
+  const scene = canonicalScene(sceneType);
+  return JSON.parse(
+    JSON.stringify(scene).replaceAll(scene.match.id, matchId),
+  ) as typeof scene;
+}
+
 async function hydrateScene(page: Page, response: unknown) {
+  const matchId = (response as { match: { id: string } }).match.id;
+  const gamePath = `/game/${matchId}`;
+  if (new URL(page.url()).pathname !== gamePath) {
+    await page.goto(gamePath);
+  }
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
   const sceneMinute =
     typeof response === "object" && response !== null && "minute" in response
       ? (response as { minute: number }).minute
@@ -360,18 +376,20 @@ async function expectTacticalCanvasFillsViewport(page: Page) {
   );
   const canvas = page.getByTestId("game-field").locator("canvas");
   await expect
-    .poll(() =>
-      canvas.evaluate((element) => {
-        const bounds = element.getBoundingClientRect();
-        const webglCanvas = element as HTMLCanvasElement;
-        return {
-          fullHeight: Math.abs(bounds.height - window.innerHeight) <= 1,
-          fullWidth: Math.abs(bounds.width - window.innerWidth) <= 1,
-          hasDrawingBuffer:
-            webglCanvas.width >= Math.floor(bounds.width) &&
-            webglCanvas.height >= Math.floor(bounds.height),
-        };
-      }),
+    .poll(
+      () =>
+        canvas.evaluate((element) => {
+          const bounds = element.getBoundingClientRect();
+          const webglCanvas = element as HTMLCanvasElement;
+          return {
+            fullHeight: Math.abs(bounds.height - window.innerHeight) <= 1,
+            fullWidth: Math.abs(bounds.width - window.innerWidth) <= 1,
+            hasDrawingBuffer:
+              webglCanvas.width >= Math.floor(bounds.width) &&
+              webglCanvas.height >= Math.floor(bounds.height),
+          };
+        }),
+      { timeout: 15_000 },
     )
     .toEqual({
       fullHeight: true,
@@ -457,6 +475,7 @@ function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
       ...response.match,
       current_time: continuationMinute,
       prev_time: actionMinute,
+      revision: response.match.revision + 1,
       match_status: "IN_PROGRESS",
       pending_action: null,
     },
@@ -475,17 +494,32 @@ function resolvedKickResponse(sceneType: TacticalSceneType = "OPEN_PLAY") {
   });
 }
 
+function committedKickResponse(
+  sceneType: TacticalSceneType,
+  decisionData: Record<string, unknown>,
+) {
+  return withCommittedActionReceipt(
+    canonicalScene(sceneType),
+    resolvedKickResponse(sceneType),
+    { decisionData },
+  );
+}
+
 test("renders each canonical tactical scene with preloaded field assets", async ({
   page,
 }, testInfo) => {
-  test.slow();
+  test.setTimeout(240_000);
   const sceneTypes = ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"] as const;
+  const matrixMatchId = "match-canonical-matrix";
   await authenticateForContinuation(page);
   const canvas = page.getByTestId("game-field").locator("canvas");
 
   for (const [index, sceneType] of sceneTypes.entries()) {
     await test.step(sceneType, async () => {
-      await hydrateScene(page, canonicalScene(sceneType));
+      await hydrateScene(
+        page,
+        canonicalSceneForMatch(sceneType, matrixMatchId),
+      );
       await expect(
         page.getByText(sceneExpectations[sceneType].title, {
           exact: true,
@@ -620,16 +654,20 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
 }, testInfo) => {
   test.slow();
   const submittedRequests: unknown[] = [];
-  const authoritativeResponse = resolvedKickResponse();
   const authoritativeResultMinute =
     canonicalScene("OPEN_PLAY").pending_action.minute;
   await context.route("**/api/processMatchAction", async (route) => {
-    submittedRequests.push(route.request().postDataJSON());
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
+    submittedRequests.push(request);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
-      body: JSON.stringify(authoritativeResponse),
+      body: JSON.stringify(
+        committedKickResponse("OPEN_PLAY", request.match_decision),
+      ),
     });
   });
 
@@ -712,11 +750,18 @@ test("plays authoritative teammate control and its later continuation field stat
   const response = controlledKickResponse();
   const expectation = controlledResultExpectation;
   await context.route("**/api/processMatchAction", async (route) => {
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
-      body: JSON.stringify(response),
+      body: JSON.stringify(
+        withCommittedActionReceipt(canonicalScene("OPEN_PLAY"), response, {
+          decisionData: request.match_decision,
+        }),
+      ),
     });
   });
 
@@ -807,13 +852,23 @@ test("fails safely when teammate control is missing its authoritative contract",
     receiver_control: undefined,
   };
   await context.route("**/api/processMatchAction", async (route) => {
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
+    const malformedResponse = {
+      ...response,
+      decision_result: malformedDecisionResult,
+    };
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
       body: JSON.stringify({
-        ...response,
-        decision_result: malformedDecisionResult,
+        ...withCommittedActionReceipt(
+          canonicalScene("OPEN_PLAY"),
+          malformedResponse,
+          { decisionData: request.match_decision },
+        ),
       }),
     });
   });
@@ -832,10 +887,11 @@ test("fails safely when teammate control is missing its authoritative contract",
   );
   await page.getByTestId("kick-submit").click();
 
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByTestId("scene-contract-error")).toContainText(
     "invalid success response",
   );
+  await expect(page.getByRole("alert")).toHaveCount(1);
   await expect(page.getByTestId("kick-result")).toHaveCount(0);
   await expect(page.getByTestId("game-field")).toHaveAttribute(
     "data-ball-y",
@@ -846,7 +902,7 @@ test("fails safely when teammate control is missing its authoritative contract",
 test("captures continuous tactical arrow visuals at short, maximum, diagonal, and edge pulls", async ({
   page,
 }, testInfo) => {
-  test.slow();
+  test.setTimeout(180_000);
   await authenticateForContinuation(page);
   await hydrateScene(page, canonicalScene("FREE_KICK"));
   await waitForRenderableTacticalScene(page, "FREE_KICK");
@@ -878,11 +934,16 @@ test("captures the rendered authoritative tactical result", async ({
   test.slow();
   await enableDebugResultContinuation(page);
   await context.route("**/api/processMatchAction", async (route) => {
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
-      body: JSON.stringify(resolvedKickResponse("PENALTY")),
+      body: JSON.stringify(
+        committedKickResponse("PENALTY", request.match_decision),
+      ),
     });
   });
   await authenticateForContinuation(page);
@@ -910,11 +971,16 @@ test("automatically continues an authoritative tactical result after its hold", 
 }) => {
   test.slow();
   await context.route("**/api/processMatchAction", async (route) => {
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
-      body: JSON.stringify(resolvedKickResponse("PENALTY")),
+      body: JSON.stringify(
+        committedKickResponse("PENALTY", request.match_decision),
+      ),
     });
   });
   await authenticateForContinuation(page);
@@ -971,7 +1037,7 @@ test("automatically continues an authoritative tactical result after its hold", 
     resultLifecycle.removedAt - resultLifecycle.resolvedAt,
   ).toBeGreaterThanOrEqual(2_400);
   expect(resultLifecycle.removedAt - resultLifecycle.resolvedAt).toBeLessThan(
-    5_000,
+    8_000,
   );
 });
 

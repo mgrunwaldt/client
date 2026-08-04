@@ -11,6 +11,7 @@ import {
   type BackendTeam,
   createMatchCommand,
   fetchBackendMatch,
+  type MatchCommand,
   startBackendMatch,
 } from "../../../lib/backend-match";
 import {
@@ -18,6 +19,13 @@ import {
   hasAuthoritativePrematchState,
 } from "../../../match/authoritative-route-state";
 import { preloadMatchExperience } from "../../../match/match-preload";
+import {
+  beginHydration,
+  createReconnectHydrationGate,
+  isRetryableHydrationFailure,
+  requestReconnectHydration,
+  settleHydration,
+} from "../../../match/reconnect-hydration";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { cn } from "../../../utils/utils";
 import teamsData from "../Seasons/components/teams.json";
@@ -33,6 +41,11 @@ export default function PreMatchScreen() {
   const params = useParams();
   const startLock = useRef(false);
   const startCompleted = useRef(false);
+  const startRequestGeneration = useRef(0);
+  const activeStartCommand = useRef<MatchCommand | null>(null);
+  const preserveTransitionLoader = useRef(false);
+  const hydrationGate = useRef(createReconnectHydrationGate());
+  const hydrationRequestGeneration = useRef(0);
   const [reloadKey, setReloadKey] = useState(0);
   const match = useMatchSessionStore((state) => state.match);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
@@ -44,11 +57,18 @@ export default function PreMatchScreen() {
     (state) => state.setStartResponse,
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
+  const beginHydrationLoading = useMatchSessionStore(
+    (state) => state.beginHydrationLoading,
+  );
+  const finishHydrationLoading = useMatchSessionStore(
+    (state) => state.finishHydrationLoading,
+  );
   const setError = useMatchSessionStore((state) => state.setError);
   const beginStartCommand = useMatchSessionStore(
     (state) => state.beginStartCommand,
   );
   const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
+  const retrySafe = useMatchSessionStore((state) => state.retrySafe);
   const showTransitionLoader = useMatchSessionStore(
     (state) => state.showTransitionLoader,
   );
@@ -71,21 +91,46 @@ export default function PreMatchScreen() {
   const authoritativeMatchReady = hasAuthoritativePrematchState(routeState);
 
   useEffect(() => {
+    startLock.current = false;
+    startCompleted.current = false;
+    preserveTransitionLoader.current = false;
+    startRequestGeneration.current += 1;
+    return () => {
+      startRequestGeneration.current += 1;
+      startLock.current = false;
+      const command = activeStartCommand.current;
+      activeStartCommand.current = null;
+      if (command) {
+        useMatchSessionStore.getState().requireCommandReconciliation(command);
+      }
+      if (!preserveTransitionLoader.current) {
+        useMatchSessionStore.getState().hideTransitionLoader();
+      }
+    };
+  }, [params.matchId]);
+
+  useEffect(() => {
     const matchId = params.matchId;
     if (
       !matchId ||
-      authoritativeMatchReady ||
-      (authoritativeMatchIdentity && match?.match_status !== "NOT_STARTED")
+      (reloadKey === 0 &&
+        (authoritativeMatchReady ||
+          (authoritativeMatchIdentity &&
+            match?.match_status !== "NOT_STARTED")))
     ) {
       return;
     }
 
     let cancelled = false;
+    const requestGeneration = ++hydrationRequestGeneration.current;
+    beginHydration(hydrationGate.current);
+    setError(null);
+    const loadingGeneration = beginHydrationLoading();
 
     const loadMatch = async () => {
+      let succeeded = false;
+      let retryableFailure = true;
       try {
-        setLoading(true);
-        setError(null);
         const response = await fetchBackendMatch(matchId);
         if (cancelled) return;
         const pendingAction =
@@ -109,10 +154,22 @@ export default function PreMatchScreen() {
           fullTimeHandoff: response.full_time_handoff,
           latestOperation: response.latest_operation,
         });
+        succeeded = true;
       } catch (error) {
+        retryableFailure = isRetryableHydrationFailure(error);
         if (cancelled) return;
         setError(error);
-        setLoading(false);
+      } finally {
+        if (requestGeneration === hydrationRequestGeneration.current) {
+          const retryQueuedReconnect = settleHydration(
+            hydrationGate.current,
+            succeeded,
+            retryableFailure,
+          );
+          if (!cancelled && retryQueuedReconnect) {
+            setReloadKey((value) => value + 1);
+          }
+        }
       }
     };
 
@@ -120,6 +177,7 @@ export default function PreMatchScreen() {
 
     return () => {
       cancelled = true;
+      finishHydrationLoading(loadingGeneration);
     };
   }, [
     hydrateMatchSession,
@@ -130,7 +188,8 @@ export default function PreMatchScreen() {
     params.matchId,
     reloadKey,
     setError,
-    setLoading,
+    beginHydrationLoading,
+    finishHydrationLoading,
   ]);
 
   useEffect(() => {
@@ -155,7 +214,9 @@ export default function PreMatchScreen() {
 
   useEffect(() => {
     const rehydrateAfterReconnect = () => {
-      setReloadKey((value) => value + 1);
+      if (requestReconnectHydration(hydrationGate.current)) {
+        setReloadKey((value) => value + 1);
+      }
     };
     window.addEventListener("online", rehydrateAfterReconnect);
     return () => window.removeEventListener("online", rehydrateAfterReconnect);
@@ -171,27 +232,43 @@ export default function PreMatchScreen() {
       return;
     }
 
+    let requestGeneration = startRequestGeneration.current;
     try {
-      setError(null);
       const matchSnapshot = match;
       if (!matchSnapshot) {
         throw new Error("Match state is unavailable. Reconnect and try again.");
       }
 
       if (!startCompleted.current) {
-        const command =
+        const retainedCommand =
           pendingCommand?.operation === "start" &&
           pendingCommand.matchId === matchId
             ? pendingCommand
-            : createMatchCommand(
-                "start",
-                { match_id: matchId },
-                { matchId, revision: matchSnapshot.revision ?? null },
-              );
+            : null;
+        const exactRetryAuthorized = Boolean(
+          retainedCommand &&
+            phase === "recoverable_error" &&
+            retrySafe &&
+            diagnostic?.recoveryAction === "RETRY_SAME_REQUEST",
+        );
+        if (retainedCommand && !exactRetryAuthorized) {
+          startLock.current = false;
+          setReloadKey((value) => value + 1);
+          return;
+        }
+        setError(null);
+        const command =
+          retainedCommand ??
+          createMatchCommand(
+            "start",
+            { match_id: matchId },
+            { matchId, revision: matchSnapshot.revision ?? null },
+          );
         if (!beginStartCommand(command)) {
           startLock.current = false;
           return;
         }
+        activeStartCommand.current = command;
 
         showTransitionLoader({
           title: "Starting Match",
@@ -199,13 +276,32 @@ export default function PreMatchScreen() {
           stage: "Match engine",
           progress: 8,
         });
+        requestGeneration = ++startRequestGeneration.current;
         const response = await startBackendMatch(matchSnapshot, command);
+        if (requestGeneration !== startRequestGeneration.current) {
+          if (activeStartCommand.current === command) {
+            useMatchSessionStore
+              .getState()
+              .requireCommandReconciliation(command);
+            activeStartCommand.current = null;
+            useMatchSessionStore.getState().hideTransitionLoader();
+          }
+          startLock.current = false;
+          return;
+        }
         updateTransitionLoader({
           stage: "Backend response",
           progress: 38,
           subtitle: "Kickoff state and live events received.",
         });
-        setStartResponse(response);
+        if (!setStartResponse(response, command)) {
+          activeStartCommand.current = null;
+          startLock.current = false;
+          setLoading(false);
+          useMatchSessionStore.getState().hideTransitionLoader();
+          return;
+        }
+        activeStartCommand.current = null;
         startCompleted.current = true;
       } else {
         showTransitionLoader({
@@ -217,19 +313,35 @@ export default function PreMatchScreen() {
       }
 
       await preloadMatchExperience((update) => {
+        if (requestGeneration !== startRequestGeneration.current) return;
         updateTransitionLoader({
           stage: update.stage,
           progress: 40 + update.progress * 0.54,
           subtitle: update.detail,
         });
       });
+      if (requestGeneration !== startRequestGeneration.current) return;
+      if (!startCompleted.current) return;
       updateTransitionLoader({
         stage: "Live feed",
         progress: 96,
         subtitle: "Opening the minute-by-minute timeline.",
       });
+      preserveTransitionLoader.current = true;
       navigate(`/match/${matchId}`);
     } catch (error) {
+      if (requestGeneration !== startRequestGeneration.current) {
+        if (activeStartCommand.current) {
+          useMatchSessionStore
+            .getState()
+            .requireCommandReconciliation(activeStartCommand.current);
+          activeStartCommand.current = null;
+          useMatchSessionStore.getState().hideTransitionLoader();
+        }
+        startLock.current = false;
+        return;
+      }
+      activeStartCommand.current = null;
       setError(error);
       setLoading(false);
       useMatchSessionStore.getState().hideTransitionLoader();
@@ -307,7 +419,12 @@ export default function PreMatchScreen() {
   }
 
   return (
-    <div className="bg-overgoal-dark-blue h-full min-h-dvh w-full p-4">
+    <div
+      data-testid="prematch-screen"
+      data-session-phase={phase}
+      data-session-loading={loading}
+      className="bg-overgoal-dark-blue h-full min-h-dvh w-full p-4"
+    >
       <img
         src={preMatchBackground}
         alt="pre-match-background"
@@ -356,12 +473,32 @@ export default function PreMatchScreen() {
             >
               <Button
                 className="h-full w-full"
-                onClick={handleStartMatch}
+                onClick={() => {
+                  const exactRetryAuthorized = Boolean(
+                    error &&
+                      retrySafe &&
+                      diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
+                      pendingCommand?.operation === "start" &&
+                      pendingCommand.matchId === match.id,
+                  );
+                  if (error && !exactRetryAuthorized) {
+                    setReloadKey((value) => value + 1);
+                    return;
+                  }
+                  void handleStartMatch();
+                }}
                 disabled={loading}
                 aria-describedby={error ? "start-match-error" : undefined}
               >
                 <p className="airstrike-normal !text-5xl text-white uppercase">
-                  {loading ? "..." : error ? "Retry" : "Play"}
+                  {loading
+                    ? "..."
+                    : error
+                      ? retrySafe &&
+                        diagnostic?.recoveryAction === "RETRY_SAME_REQUEST"
+                        ? "Retry"
+                        : "Refresh"
+                      : "Play"}
                 </p>
               </Button>
             </div>

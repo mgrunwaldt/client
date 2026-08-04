@@ -517,6 +517,21 @@ describe("backend match client", () => {
     );
   });
 
+  it("rejects a snapshot for a different route match identity", async () => {
+    const snapshot = await readFixture<Record<string, unknown>>(
+      "server/match-snapshot-response.json",
+    );
+    const mismatchedSnapshot = JSON.parse(
+      JSON.stringify(snapshot).replaceAll("match-fixture-1", "another-match"),
+    ) as Record<string, unknown>;
+    fetchMock.mockResolvedValueOnce(jsonResponse(mismatchedSnapshot));
+
+    await expect(fetchBackendMatch("match-fixture-1")).rejects.toMatchObject({
+      name: "MatchApiContractError",
+      message: expect.stringContaining("another-match"),
+    });
+  });
+
   it("rejects a response whose pending action and field state disagree", async () => {
     const response = await readFixture<BackendMatchResponse>(
       "server/waiting-open-play-response.json",

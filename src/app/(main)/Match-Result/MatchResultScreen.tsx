@@ -1,10 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import LoadingScreen from "../../../components/loader/LoadingScreen";
 import { Button } from "../../../components/ui/button";
 import { fetchBackendMatch } from "../../../lib/backend-match";
 import { hasAuthoritativeMatchIdentity } from "../../../match/authoritative-route-state";
+import {
+  beginHydration,
+  createReconnectHydrationGate,
+  isRetryableHydrationFailure,
+  requestReconnectHydration,
+  settleHydration,
+} from "../../../match/reconnect-hydration";
 import { useMatchSessionStore } from "../../../match/session-store";
 
 function pointsLabel(points: number | null) {
@@ -34,11 +41,20 @@ export default function MatchResultScreen() {
   const hydrateMatchSession = useMatchSessionStore(
     (state) => state.hydrateMatchSession,
   );
-  const setLoading = useMatchSessionStore((state) => state.setLoading);
+  const beginHydrationLoading = useMatchSessionStore(
+    (state) => state.beginHydrationLoading,
+  );
+  const finishHydrationLoading = useMatchSessionStore(
+    (state) => state.finishHydrationLoading,
+  );
   const setError = useMatchSessionStore((state) => state.setError);
+  const loading = useMatchSessionStore((state) => state.loading);
   const error = useMatchSessionStore((state) => state.error);
   const diagnostic = useMatchSessionStore((state) => state.diagnostic);
+  const phase = useMatchSessionStore((state) => state.phase);
   const [reloadKey, setReloadKey] = useState(0);
+  const hydrationGate = useRef(createReconnectHydrationGate());
+  const hydrationRequestGeneration = useRef(0);
   const authoritativeIdentity = hasAuthoritativeMatchIdentity({
     routeMatchId: matchId,
     match,
@@ -50,12 +66,16 @@ export default function MatchResultScreen() {
   );
 
   useEffect(() => {
-    if (!matchId || ready) return;
+    if (!matchId || (ready && reloadKey === 0)) return;
     let cancelled = false;
+    const requestGeneration = ++hydrationRequestGeneration.current;
+    beginHydration(hydrationGate.current);
+    setError(null);
+    const loadingGeneration = beginHydrationLoading();
     const load = async () => {
+      let succeeded = false;
+      let retryableFailure = true;
       try {
-        setLoading(true);
-        setError(null);
         const response = await fetchBackendMatch(matchId);
         if (cancelled) return;
         hydrateMatchSession({
@@ -70,18 +90,39 @@ export default function MatchResultScreen() {
           fullTimeHandoff: response.full_time_handoff,
           latestOperation: response.latest_operation,
         });
+        succeeded = true;
       } catch (reason) {
+        retryableFailure = isRetryableHydrationFailure(reason);
         if (!cancelled) {
           setError(reason);
-          setLoading(false);
+        }
+      } finally {
+        if (requestGeneration === hydrationRequestGeneration.current) {
+          const retryQueuedReconnect = settleHydration(
+            hydrationGate.current,
+            succeeded,
+            retryableFailure,
+          );
+          if (!cancelled && retryQueuedReconnect) {
+            setReloadKey((value) => value + 1);
+          }
         }
       }
     };
     void load();
     return () => {
       cancelled = true;
+      finishHydrationLoading(loadingGeneration);
     };
-  }, [hydrateMatchSession, matchId, ready, reloadKey, setError, setLoading]);
+  }, [
+    beginHydrationLoading,
+    finishHydrationLoading,
+    hydrateMatchSession,
+    matchId,
+    ready,
+    reloadKey,
+    setError,
+  ]);
 
   useEffect(() => {
     if (authoritativeIdentity && match && match.match_status !== "FINISHED") {
@@ -91,11 +132,14 @@ export default function MatchResultScreen() {
 
   useEffect(() => {
     const rehydrateAfterReconnect = () => {
-      setReloadKey((value) => value + 1);
+      if (diagnostic?.recoveryAction === "STOP") return;
+      if (requestReconnectHydration(hydrationGate.current)) {
+        setReloadKey((value) => value + 1);
+      }
     };
     window.addEventListener("online", rehydrateAfterReconnect);
     return () => window.removeEventListener("online", rehydrateAfterReconnect);
-  }, []);
+  }, [diagnostic?.recoveryAction]);
 
   if (error) {
     const recoveryAction = diagnostic?.recoveryAction;
@@ -130,6 +174,13 @@ export default function MatchResultScreen() {
                   : "Retry result"}
             </Button>
           )}
+          <Button
+            variant="ghost"
+            className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"
+            onClick={() => navigate("/")}
+          >
+            Back to home
+          </Button>
         </section>
       </main>
     );
@@ -181,6 +232,8 @@ export default function MatchResultScreen() {
   return (
     <main
       data-testid="match-result-screen"
+      data-session-phase={phase}
+      data-session-loading={loading}
       className="min-h-dvh bg-[url('/backgrounds/glitch-bg.webp')] bg-cover bg-center px-4 py-8 text-white"
     >
       <section className="mx-auto w-full max-w-lg rounded-[2rem] border border-cyan-300/45 bg-slate-950/90 p-6 shadow-[0_0_44px_rgba(34,211,238,0.15)]">

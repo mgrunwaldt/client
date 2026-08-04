@@ -11,8 +11,10 @@ import {
 import { parseDribblePattern } from "./dribble-input";
 import { isRandomEventAction, parseRandomEventAction } from "./random-event";
 import {
+  actionCommandMatchesDecision,
   commandCanRetryAfterHydration,
   fieldDraftMatchesSnapshot,
+  matchCommandsExactly,
 } from "./session-recovery";
 import type {
   HydratedMatchSession,
@@ -54,6 +56,7 @@ const initialData: MatchSessionData = {
   pendingCommand: null,
   retrySafe: false,
   fieldDraft: null,
+  acknowledgedResult: null,
   decisionResult: null,
   resultPlayback: null,
   unsupportedScene: null,
@@ -69,7 +72,7 @@ export function createInitialMatchSession(): MatchSessionData {
   return { ...initialData };
 }
 
-function receiptMatchesCommand(
+function receiptIdentityMatchesCommand(
   receipt: BackendMatchOperationReceipt | null | undefined,
   command: MatchSessionData["pendingCommand"],
 ) {
@@ -87,14 +90,153 @@ function receiptMatchesCommand(
   );
 }
 
-function receiptCanRestoreResult(
+function receiptMatchesCommand(
   receipt: BackendMatchOperationReceipt | null | undefined,
+  command: MatchSessionData["pendingCommand"],
 ) {
+  if (!receipt || !command) return false;
+  const identityMatches = receiptIdentityMatchesCommand(receipt, command);
+  if (!identityMatches || command.operation !== "action") {
+    return identityMatches;
+  }
+  if (receiptIsNoEffectRecovery(receipt)) {
+    const recovery =
+      receipt.playback?.decision_result?.unsupported_scene_recovery;
+    const lastDecision = receipt.playback?.last_decision;
+    if (!recovery || !lastDecision || command.revision === null) return false;
+    return (
+      actionCommandMatchesDecision(command, {
+        matchId: command.matchId,
+        revision: command.revision,
+        actionId: command.actionId!,
+        decision: { choice: "CONTINUE_WITHOUT_EVENT" },
+      }) &&
+      contractValuesAgree(lastDecision.decision_data, {
+        choice: "CONTINUE_WITHOUT_EVENT",
+        unsupported_scene_type: recovery.scene_type,
+      })
+    );
+  }
   return Boolean(
-    receipt?.operation === "processMatchAction" &&
-      receipt.playback?.submitted_action &&
-      receipt.playback.decision_result,
+    receipt.playback?.last_decision &&
+      command.revision !== null &&
+      command.actionId &&
+      actionCommandMatchesDecision(command, {
+        matchId: command.matchId,
+        revision: command.revision,
+        actionId: command.actionId,
+        decision: receipt.playback.last_decision.decision_data,
+      }),
   );
+}
+
+type ActionReceiptInspection =
+  | { kind: "none" }
+  | { kind: "normal"; receipt: BackendMatchOperationReceipt }
+  | { kind: "no_effect"; receipt: BackendMatchOperationReceipt }
+  | { kind: "invalid"; message: string };
+
+function inspectActionReceipt(
+  receipt: BackendMatchOperationReceipt | null | undefined,
+  payload: HydratedMatchSession,
+): ActionReceiptInspection {
+  if (!receipt || receipt.operation !== "processMatchAction") {
+    return { kind: "none" };
+  }
+  if (
+    receipt.committed_revision !== payload.match.revision ||
+    receipt.request_revision === null ||
+    !Number.isSafeInteger(receipt.request_revision) ||
+    receipt.request_revision < 0 ||
+    receipt.request_revision >= receipt.committed_revision
+  ) {
+    return {
+      kind: "invalid",
+      message:
+        "The committed action receipt does not match the authoritative match revision.",
+    };
+  }
+  const playback = receipt.playback;
+  if (
+    !receipt.action_id ||
+    !playback?.decision_result ||
+    !playback.last_decision
+  ) {
+    return {
+      kind: "invalid",
+      message: "The committed action receipt is missing playback identity.",
+    };
+  }
+  const lastDecision = playback.last_decision;
+  if (
+    lastDecision.match_id !== payload.match.id ||
+    lastDecision.action_id !== receipt.action_id
+  ) {
+    return {
+      kind: "invalid",
+      message:
+        "The committed action receipt decision identity does not match the authoritative action.",
+    };
+  }
+  if (playback.events.some((event) => event.match_id !== payload.match.id)) {
+    return {
+      kind: "invalid",
+      message:
+        "The committed action receipt contains events for another match.",
+    };
+  }
+
+  if (receiptIsNoEffectRecovery(receipt)) {
+    const recovery = playback.decision_result.unsupported_scene_recovery;
+    if (
+      playback.submitted_action !== null ||
+      playback.submitted_field_state !== null ||
+      !recovery ||
+      recovery.action_id !== receipt.action_id ||
+      recovery.recovered_revision !== receipt.committed_revision ||
+      lastDecision.action !== "RANDOM_EVENT" ||
+      lastDecision.action_team !== "NEUTRAL" ||
+      lastDecision.action_version !== recovery.version ||
+      lastDecision.decision_version !== 5 ||
+      !contractValuesAgree(lastDecision.decision_data, {
+        choice: "CONTINUE_WITHOUT_EVENT",
+        unsupported_scene_type: recovery.scene_type,
+      })
+    ) {
+      return {
+        kind: "invalid",
+        message:
+          "The unsupported-scene receipt does not match its authoritative recovery identity.",
+      };
+    }
+    return { kind: "no_effect", receipt };
+  }
+
+  const submittedAction = playback.submitted_action;
+  const submittedFieldState = playback.submitted_field_state;
+  if (
+    !submittedAction ||
+    !submittedFieldState ||
+    submittedAction.id !== receipt.action_id ||
+    submittedAction.field_state_id !== submittedFieldState.id ||
+    submittedFieldState.match_id !== payload.match.id ||
+    lastDecision.match_id !== payload.match.id ||
+    lastDecision.action_id !== receipt.action_id ||
+    lastDecision.field_state_id !== submittedFieldState.id ||
+    lastDecision.minute !== submittedAction.minute ||
+    lastDecision.action !== submittedAction.scene_type ||
+    lastDecision.action_team !== submittedAction.action_team ||
+    (submittedAction.field_state !== undefined &&
+      (submittedAction.field_state.id !== submittedFieldState.id ||
+        submittedAction.field_state.match_id !== payload.match.id))
+  ) {
+    return {
+      kind: "invalid",
+      message:
+        "The committed action receipt does not match the submitted action and field state.",
+    };
+  }
+  return { kind: "normal", receipt };
 }
 
 function receiptIsNoEffectRecovery(
@@ -106,23 +248,72 @@ function receiptIsNoEffectRecovery(
   );
 }
 
-function safeRetryAfterActionHydration(
+function resultReceiptIdentity(
+  matchId: string,
+  receipt: BackendMatchOperationReceipt | null,
+) {
+  if (!receipt?.action_id) return null;
+  return {
+    matchId,
+    committedRevision: receipt.committed_revision,
+    actionId: receipt.action_id,
+  };
+}
+
+function resultReceiptWasAcknowledged(
+  state: MatchSessionData,
+  matchId: string,
+  receipt: BackendMatchOperationReceipt,
+) {
+  const identity = state.acknowledgedResult;
+  return Boolean(
+    identity &&
+      identity.matchId === matchId &&
+      identity.committedRevision === receipt.committed_revision &&
+      identity.actionId === receipt.action_id,
+  );
+}
+
+function safeRetryAfterHydration(
   state: MatchSessionData,
   payload: HydratedMatchSession,
-) {
-  return Boolean(
-    state.phase === "recoverable_error" &&
-      state.pendingCommand?.operation === "action" &&
-      commandCanRetryAfterHydration(state.pendingCommand, {
-        match: payload.match,
-      }) &&
-      commandMatchesCurrentScene(
-        payload.pendingAction ?? payload.match.pending_action ?? null,
-        state.pendingCommand,
-        payload.match.revision,
-      ) &&
-      !receiptMatchesCommand(payload.latestOperation, state.pendingCommand),
+): MatchSessionPhase | null {
+  const command = state.pendingCommand;
+  const commandIsInFlight = ["starting", "resuming", "submitting"].includes(
+    state.phase,
   );
+  if (
+    !command ||
+    !commandCanRetryAfterHydration(command, { match: payload.match }) ||
+    receiptMatchesCommand(payload.latestOperation, command)
+  ) {
+    return null;
+  }
+  if (commandIsInFlight && !sameRevisionHydrationAgrees(state, payload)) {
+    return null;
+  }
+  if (command.operation === "action") {
+    return commandMatchesCurrentScene(
+      payload.pendingAction ?? payload.match.pending_action ?? null,
+      command,
+      payload.match.revision,
+    )
+      ? "scene_ready"
+      : null;
+  }
+  if (
+    command.operation === "start" &&
+    payload.match.match_status === "NOT_STARTED"
+  ) {
+    return "created";
+  }
+  if (
+    command.operation === "resume" &&
+    payload.match.match_status === "HALFTIME"
+  ) {
+    return "halftime";
+  }
+  return null;
 }
 
 function mergeTimelineEvents(
@@ -676,6 +867,7 @@ function responseIsStale(
 function responseMatchesPendingCommand(
   state: MatchSessionData,
   source: "start" | "resume" | "action",
+  command: NonNullable<MatchSessionData["pendingCommand"]>,
 ) {
   const expectedPhase = {
     start: "starting",
@@ -684,7 +876,9 @@ function responseMatchesPendingCommand(
   } as const;
   return (
     state.phase === expectedPhase[source] &&
-    state.pendingCommand?.operation === source
+    state.pendingCommand?.operation === source &&
+    command.operation === source &&
+    matchCommandsExactly(state.pendingCommand, command)
   );
 }
 
@@ -759,6 +953,23 @@ export function matchSessionReducer(
     }
     case "COMMAND_CLEARED":
       return { ...state, pendingCommand: null };
+    case "COMMAND_RECONCILIATION_REQUIRED":
+      if (
+        !matchCommandsExactly(state.pendingCommand, event.command) ||
+        !["starting", "resuming", "submitting"].includes(state.phase)
+      ) {
+        return state;
+      }
+      return diagnosticState(
+        { ...state, retrySafe: false },
+        {
+          kind: "network",
+          message:
+            "The request left its active screen before confirmation. Refresh the authoritative match state before continuing.",
+          retryable: true,
+          recoveryAction: "HYDRATE_MATCH",
+        },
+      );
     case "FIELD_DRAFT_RETAINED":
       if (
         state.match?.id !== event.draft.matchId ||
@@ -775,9 +986,14 @@ export function matchSessionReducer(
       return { ...state, fieldDraft: event.draft };
     case "FIELD_DRAFT_CLEARED":
       return { ...state, fieldDraft: null };
-    case "START_REQUESTED":
+    case "START_REQUESTED": {
+      const isExactStartRetry =
+        state.phase === "recoverable_error" &&
+        state.recoveryPhase === "created" &&
+        state.retrySafe &&
+        matchCommandsExactly(state.pendingCommand, event.command);
       if (
-        state.phase !== "created" ||
+        (state.phase !== "created" && !isExactStartRetry) ||
         event.command.operation !== "start" ||
         event.command.actionId !== null ||
         !commandMatchesMatch(state, event.command)
@@ -792,9 +1008,15 @@ export function matchSessionReducer(
         { ...state, pendingCommand: event.command, retrySafe: false },
         "starting",
       );
-    case "RESUME_REQUESTED":
+    }
+    case "RESUME_REQUESTED": {
+      const isExactResumeRetry =
+        state.phase === "recoverable_error" &&
+        state.recoveryPhase === "halftime" &&
+        state.retrySafe &&
+        matchCommandsExactly(state.pendingCommand, event.command);
       if (
-        state.phase !== "halftime" ||
+        (state.phase !== "halftime" && !isExactResumeRetry) ||
         event.command.operation !== "resume" ||
         event.command.actionId !== null ||
         !commandMatchesMatch(state, event.command)
@@ -809,10 +1031,17 @@ export function matchSessionReducer(
         { ...state, pendingCommand: event.command, retrySafe: false },
         "resuming",
       );
-    case "ACTION_REQUESTED":
+    }
+    case "ACTION_REQUESTED": {
+      const isExactRecoveryRetry =
+        state.phase === "recoverable_error" &&
+        state.recoveryPhase === "scene_ready" &&
+        state.retrySafe &&
+        matchCommandsExactly(state.pendingCommand, event.command);
       if (
         (state.phase !== "scene_ready" &&
-          state.phase !== "unsupported_recovery") ||
+          state.phase !== "unsupported_recovery" &&
+          !isExactRecoveryRetry) ||
         event.command.operation !== "action" ||
         !commandMatchesMatch(state, event.command)
       ) {
@@ -836,20 +1065,71 @@ export function matchSessionReducer(
         { ...state, pendingCommand: event.command, retrySafe: false },
         "submitting",
       );
+    }
     case "HYDRATED": {
       if (
-        receiptMatchesCommand(
-          event.payload.latestOperation,
-          state.pendingCommand,
-        )
+        state.match?.id === event.payload.match.id &&
+        event.payload.match.revision < state.match.revision
       ) {
-        const receipt = event.payload.latestOperation!;
-        // Unsupported-scene recovery can commit a durable no-effect receipt.
-        // Its authoritative snapshot is the continuation; rendering it as a
-        // kick result would fabricate field gameplay that never happened.
+        // A slower GET must never roll an already-applied authoritative
+        // revision backwards, regardless of the receipt it happens to carry.
+        return state;
+      }
+      const actionReceipt = inspectActionReceipt(
+        event.payload.latestOperation,
+        event.payload,
+      );
+      if (actionReceipt.kind === "invalid") {
+        const hydrated = applyAuthoritativeSnapshot(state, event.payload, {
+          preservePlayback: false,
+          resultPlayback: false,
+        });
+        return diagnosticState(hydrated, {
+          kind: "contract",
+          message: actionReceipt.message,
+          retryable: true,
+        });
+      }
+      const actionReceiptMatchesPending =
+        (actionReceipt.kind === "normal" ||
+          actionReceipt.kind === "no_effect") &&
+        receiptMatchesCommand(actionReceipt.receipt, state.pendingCommand);
+      if (
+        (actionReceipt.kind === "normal" ||
+          actionReceipt.kind === "no_effect") &&
+        state.pendingCommand &&
+        receiptIdentityMatchesCommand(
+          actionReceipt.receipt,
+          state.pendingCommand,
+        ) &&
+        !actionReceiptMatchesPending
+      ) {
+        const hydrated = applyAuthoritativeSnapshot(state, event.payload, {
+          preservePlayback: false,
+          resultPlayback: false,
+        });
+        return diagnosticState(
+          { ...hydrated, pendingCommand: state.pendingCommand },
+          {
+            kind: "contract",
+            message:
+              "The committed action receipt does not match the exact retained decision.",
+            retryable: true,
+          },
+        );
+      }
+      if (
+        (actionReceipt.kind === "normal" ||
+          actionReceipt.kind === "no_effect") &&
+        (!state.pendingCommand || actionReceiptMatchesPending)
+      ) {
+        const receipt = actionReceipt.receipt;
+        // A committed receipt is backend-authoritative even after the local
+        // command journal has been cleared. No-effect recovery is a timeline
+        // continuation and must never be presented as field gameplay.
         const restoreResult =
-          !receiptIsNoEffectRecovery(receipt) &&
-          receiptCanRestoreResult(receipt);
+          actionReceipt.kind === "normal" &&
+          !resultReceiptWasAcknowledged(state, event.payload.match.id, receipt);
         const next = applyAuthoritativeSnapshot(
           {
             ...state,
@@ -875,13 +1155,47 @@ export function matchSessionReducer(
         };
       }
       if (
-        state.match?.id === event.payload.match.id &&
-        event.payload.latestOperation &&
-        state.pendingCommand &&
-        ["starting", "resuming", "submitting"].includes(state.phase) &&
-        event.payload.match.revision < state.match.revision
+        receiptMatchesCommand(
+          event.payload.latestOperation,
+          state.pendingCommand,
+        )
       ) {
-        return state;
+        const next = applyAuthoritativeSnapshot(state, event.payload, {
+          preservePlayback: false,
+          resultPlayback: false,
+        });
+        return {
+          ...next,
+          pendingCommand: null,
+          retrySafe: false,
+          fieldDraft: null,
+        };
+      }
+      const hydrated = applyAuthoritativeSnapshot(state, event.payload, {
+        preservePlayback: true,
+        resultPlayback: false,
+      });
+      const retryRecoveryPhase = safeRetryAfterHydration(state, event.payload);
+      if (retryRecoveryPhase) {
+        const commandLabel =
+          state.pendingCommand?.operation === "action" ? "action" : "request";
+        const message = `The server did not confirm this ${commandLabel}. You can safely retry the exact input.`;
+        return withPhase(
+          {
+            ...hydrated,
+            pendingCommand: state.pendingCommand,
+            retrySafe: true,
+            recoveryPhase: retryRecoveryPhase,
+            diagnostic: {
+              kind: "network",
+              message,
+              retryable: true,
+              recoveryAction: "RETRY_SAME_REQUEST",
+            },
+            error: message,
+          },
+          "recoverable_error",
+        );
       }
       if (
         state.match?.id === event.payload.match.id &&
@@ -899,61 +1213,41 @@ export function matchSessionReducer(
         ) {
           return validated;
         }
-        return sameRevisionHydrationAgrees(state, event.payload)
-          ? state
-          : diagnosticState(state, {
-              kind: "contract",
-              message:
-                "A same-revision hydration snapshot changed authoritative match state.",
-              retryable: true,
-            });
-      }
-      const hydrated = applyAuthoritativeSnapshot(state, event.payload, {
-        preservePlayback: true,
-        resultPlayback: false,
-      });
-      if (safeRetryAfterActionHydration(state, event.payload)) {
-        return withPhase(
-          {
-            ...hydrated,
-            retrySafe: true,
-            recoveryPhase: "scene_ready",
-            diagnostic: {
-              kind: "network",
-              message:
-                "The server did not confirm this action. You can safely retry the exact input.",
-              retryable: true,
-              recoveryAction: "RETRY_SAME_REQUEST",
-            },
-            error:
-              "The server did not confirm this action. You can safely retry the exact input.",
-          },
-          "recoverable_error",
-        );
+        return diagnosticState(state, {
+          kind: "contract",
+          message:
+            "A same-revision hydration snapshot changed authoritative match state.",
+          retryable: true,
+        });
       }
       if (
-        event.payload.latestOperation &&
-        state.pendingCommand &&
+        state.match?.id === event.payload.match.id &&
+        state.pendingCommand?.operation === "action" &&
         !commandCanRetryAfterHydration(state.pendingCommand, {
           match: event.payload.match,
         })
       ) {
-        return diagnosticState(hydrated, {
-          kind: "stale_command",
-          message:
-            "The match changed before this request could be confirmed. Its input was not resent.",
-          retryable: true,
-        });
+        return diagnosticState(
+          {
+            ...hydrated,
+            pendingCommand: state.pendingCommand,
+            retrySafe: false,
+          },
+          {
+            kind: "stale_command",
+            message:
+              "The match changed before this request could be confirmed. Its input was retained but was not resent.",
+            retryable: true,
+          },
+        );
       }
       return hydrated;
     }
     case "COMMAND_RESOLVED": {
-      if (!responseMatchesPendingCommand(state, event.source)) {
-        return diagnosticState(state, {
-          kind: "illegal_transition",
-          message: `A ${event.source} response requires its matching command to be in flight.`,
-          retryable: true,
-        });
+      if (!responseMatchesPendingCommand(state, event.source, event.command)) {
+        // A response from an unmounted route or replaced request is stale by
+        // identity. Ignoring it preserves the current authoritative session.
+        return state;
       }
       if (responseIsStale(state, event.response)) {
         return diagnosticState(state, {
@@ -978,10 +1272,47 @@ export function matchSessionReducer(
           retryable: true,
         });
       }
+      const actionReceipt =
+        event.source === "action"
+          ? inspectActionReceipt(event.response.latest_operation, payload)
+          : ({ kind: "none" } as const);
+      if (event.source === "action" && actionReceipt.kind === "none") {
+        return diagnosticState(
+          { ...state, retrySafe: true },
+          {
+            kind: "contract",
+            message:
+              "The action response is missing its committed operation receipt. Retry the exact saved request.",
+            retryable: true,
+            recoveryAction: "RETRY_SAME_REQUEST",
+          },
+        );
+      }
+      if (actionReceipt.kind === "invalid") {
+        return diagnosticState(state, {
+          kind: "contract",
+          message: actionReceipt.message,
+          retryable: true,
+        });
+      }
+      if (
+        (actionReceipt.kind === "normal" ||
+          actionReceipt.kind === "no_effect") &&
+        !receiptMatchesCommand(actionReceipt.receipt, event.command)
+      ) {
+        return diagnosticState(state, {
+          kind: "contract",
+          message:
+            "The committed action receipt does not match the exact submitted decision.",
+          retryable: true,
+        });
+      }
       const isNoEffectRecovery = Boolean(
-        event.source === "action" &&
-          state.unsupportedScene &&
-          state.pendingCommand?.actionId === state.unsupportedScene.action_id,
+        actionReceipt.kind === "no_effect" ||
+          (event.source === "action" &&
+            state.unsupportedScene &&
+            state.pendingCommand?.actionId ===
+              state.unsupportedScene.action_id),
       );
       const resultPlayback = event.source === "action" && !isNoEffectRecovery;
       const next = applyAuthoritativeSnapshot(state, payload, {
@@ -1004,9 +1335,10 @@ export function matchSessionReducer(
         decisionResult: resultPlayback
           ? (event.response.decision_result ?? null)
           : null,
-        resultPlayback: resultPlayback
-          ? (event.response.latest_operation ?? null)
-          : null,
+        resultPlayback:
+          resultPlayback && actionReceipt.kind === "normal"
+            ? actionReceipt.receipt
+            : null,
       };
     }
     case "TIMELINE_TICK": {
@@ -1041,13 +1373,22 @@ export function matchSessionReducer(
       return withPhase(state, "scene_ready");
     case "RESULT_ACKNOWLEDGED": {
       if (state.phase !== "result_playback" || !state.match) return state;
+      const acknowledgedResult = resultReceiptIdentity(
+        state.match.id,
+        state.resultPlayback,
+      );
       if (
         state.match.match_status === "FINISHED" &&
         state.legendAvailability?.availability === "UNAVAILABLE" &&
         state.playbackMinute < state.match.current_time
       ) {
         return withPhase(
-          { ...state, decisionResult: null, resultPlayback: null },
+          {
+            ...state,
+            acknowledgedResult,
+            decisionResult: null,
+            resultPlayback: null,
+          },
           "legend_unavailable_simulation",
         );
       }
@@ -1058,13 +1399,39 @@ export function matchSessionReducer(
       );
       if (!phase) return unsupportedStatus(state, state.match.match_status);
       return withPhase(
-        { ...state, decisionResult: null, resultPlayback: null },
+        {
+          ...state,
+          acknowledgedResult,
+          decisionResult: null,
+          resultPlayback: null,
+        },
         phase,
       );
     }
     case "ERROR_RECORDED":
-      return diagnosticState(state, event.diagnostic);
+      return diagnosticState(
+        {
+          ...state,
+          // The API is the only authority that may declare an ambiguous
+          // command safe to replay. Generic transport failures remain
+          // hydration-first and therefore keep retrySafe false.
+          retrySafe: Boolean(
+            state.pendingCommand &&
+              event.diagnostic.recoveryAction === "RETRY_SAME_REQUEST",
+          ),
+        },
+        event.diagnostic,
+      );
     case "ERROR_CLEARED":
+      if (
+        state.phase === "recoverable_error" &&
+        state.pendingCommand &&
+        !state.retrySafe
+      ) {
+        // An ambiguous command must remain locked until hydration reconciles it.
+        // Clearing presentation text must never make the retained POST reusable.
+        return state;
+      }
       if (
         state.phase !== "recoverable_error" &&
         state.phase !== "unsupported_contract"

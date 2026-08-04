@@ -102,11 +102,12 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
 
   await expectLazyRouteFallback(
     page,
-    "/game",
+    "/game/match-fixture-1",
     /\/assets\/GameScene-[^/]+\.js(?:\?.*)?$/,
   );
   await expect(page.getByTestId("game-field")).toBeVisible();
-  await expect(page.locator("canvas")).toBeVisible();
+  await expect(page.getByText("Loading Field")).toBeVisible();
+  await expect(page.locator("canvas")).toHaveCount(0);
   await page.waitForTimeout(3_000);
   const unexpectedDiagnostics = browserDiagnostics.filter(
     (message) => !headlessGpuDiagnostic.test(message),
@@ -213,6 +214,10 @@ test("renders a complete backend player scene without a fatal error", async ({
   response.field_state = structuredClone(fieldState);
 
   await authenticateForContinuation(page);
+  await page.goto(`/game/${response.match.id}`);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
   await page.evaluate(
     ({ matchResponse, myTeam, opponentTeam }) => {
       const setMatchResponse = (
@@ -229,6 +234,15 @@ test("renders a complete backend player scene without a fatal error", async ({
         throw new Error("Match session browser-test bridge is unavailable");
       }
       setMatchResponse(matchResponse, myTeam, opponentTeam);
+      const advance = (
+        globalThis as unknown as {
+          __OVERGOAL_E2E_ADVANCE_TO_SCENE__?: (minute: number) => void;
+        }
+      ).__OVERGOAL_E2E_ADVANCE_TO_SCENE__;
+      if (!advance) {
+        throw new Error("Match scene browser-test bridge is unavailable");
+      }
+      advance((matchResponse as { minute: number }).minute);
     },
     {
       matchResponse: response,

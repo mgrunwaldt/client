@@ -106,6 +106,74 @@ describe("match session store hydration", () => {
     useMatchSessionStore.getState().resetMatchSession();
   });
 
+  it("releases only the hydration loader generation that started it", () => {
+    const first = useMatchSessionStore.getState().beginHydrationLoading();
+    const second = useMatchSessionStore.getState().beginHydrationLoading();
+
+    useMatchSessionStore.getState().finishHydrationLoading(first);
+    expect(useMatchSessionStore.getState().loading).toBe(true);
+
+    useMatchSessionStore.getState().finishHydrationLoading(second);
+    expect(useMatchSessionStore.getState().loading).toBe(false);
+  });
+
+  it("does not let cancelled hydration clear a newer command loader", () => {
+    const hydration = useMatchSessionStore.getState().beginHydrationLoading();
+
+    useMatchSessionStore.getState().setLoading(true);
+    useMatchSessionStore.getState().finishHydrationLoading(hydration);
+
+    expect(useMatchSessionStore.getState().loading).toBe(true);
+  });
+
+  it("retains an abandoned request for hydration without leaving global loading active", async () => {
+    const scene = await readFixture<SceneFixture>("scenes/open-play.json");
+    const teams = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const response = responseForScene(scene, 1);
+    const createdMatch = {
+      ...response.match,
+      match_status: "NOT_STARTED" as const,
+      pending_action: null,
+    };
+    useMatchSessionStore.getState().setCreatedMatch({
+      match: createdMatch,
+      myTeam: teams.my_team,
+      opponentTeam: teams.opponent_team,
+    });
+    const command = createMatchCommand(
+      "start",
+      { match_id: createdMatch.id },
+      { matchId: createdMatch.id, revision: createdMatch.revision },
+    );
+
+    expect(useMatchSessionStore.getState().beginStartCommand(command)).toBe(
+      true,
+    );
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      phase: "starting",
+      loading: true,
+    });
+
+    useMatchSessionStore.getState().requireCommandReconciliation(command);
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "created",
+      pendingCommand: command,
+      retrySafe: false,
+      loading: false,
+      diagnostic: { recoveryAction: "HYDRATE_MATCH" },
+    });
+
+    useMatchSessionStore.getState().setError(null);
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      phase: "recoverable_error",
+      pendingCommand: command,
+      retrySafe: false,
+    });
+  });
+
   it("hydrates all ten canonical playable scenes with a consistent minute", async () => {
     const sceneFiles = [
       "argument-opponent",
@@ -360,17 +428,16 @@ describe("match session store hydration", () => {
       myTeam: teams.my_team,
       opponentTeam: teams.opponent_team,
     });
-    useMatchSessionStore.getState().beginStartCommand(
-      createMatchCommand(
-        "start",
-        { match_id: waiting.match.id },
-        {
-          matchId: waiting.match.id,
-          revision: waiting.match.revision,
-        },
-      ),
+    const startCommand = createMatchCommand(
+      "start",
+      { match_id: waiting.match.id },
+      {
+        matchId: waiting.match.id,
+        revision: waiting.match.revision,
+      },
     );
-    useMatchSessionStore.getState().setStartResponse(waiting);
+    useMatchSessionStore.getState().beginStartCommand(startCommand);
+    useMatchSessionStore.getState().setStartResponse(waiting, startCommand);
     expect(useMatchSessionStore.getState()).toMatchObject({
       pendingAction: { scene_type: "OPEN_PLAY" },
       playbackMinute: 0,
@@ -379,21 +446,69 @@ describe("match session store hydration", () => {
 
     useMatchSessionStore.getState().setPlaybackMinute(waiting.minute);
     useMatchSessionStore.getState().markSceneReady();
-    useMatchSessionStore.getState().beginActionCommand(
-      createMatchCommand(
-        "action",
-        {
-          match_id: waiting.match.id,
-          action_id: waiting.pending_action?.id,
-        },
-        {
-          matchId: waiting.match.id,
-          revision: waiting.match.revision,
-          actionId: waiting.pending_action?.id ?? null,
-        },
-      ),
+    const actionCommand = createMatchCommand(
+      "action",
+      {
+        match_id: waiting.match.id,
+        action_id: waiting.pending_action?.id,
+        match_decision: {},
+      },
+      {
+        matchId: waiting.match.id,
+        revision: waiting.match.revision,
+        actionId: waiting.pending_action?.id ?? null,
+      },
     );
-    useMatchSessionStore.getState().setActionResponse(halftime);
+    useMatchSessionStore.getState().beginActionCommand(actionCommand);
+    useMatchSessionStore.getState().setActionResponse(
+      {
+        ...halftime,
+        decision_result: {
+          description: "The action resolves before half-time.",
+          success: true,
+          outcome_type: "BALL_LOST",
+          immediate_effects: {},
+          pending_settlement_events: [],
+        },
+        latest_operation: {
+          version: 1,
+          operation_id: "receipt-halftime-action",
+          operation: "processMatchAction",
+          status: "COMMITTED",
+          request_revision: actionCommand.revision,
+          committed_revision: halftime.match.revision,
+          action_id: actionCommand.actionId,
+          playback: {
+            version: 1,
+            submitted_action: waiting.pending_action,
+            submitted_field_state: waiting.field_state,
+            last_decision: {
+              id: "decision-halftime-action",
+              match_id: waiting.match.id,
+              sequence: 1,
+              minute: waiting.minute,
+              action: waiting.pending_action!.scene_type,
+              action_team: waiting.pending_action!.action_team,
+              action_id: waiting.pending_action!.id,
+              action_version: waiting.pending_action!.contract_version,
+              decision_version: 1,
+              decision_data: {},
+              field_state_id: waiting.pending_action!.field_state_id,
+              timestamp: 1,
+            },
+            decision_result: {
+              description: "The action resolves before half-time.",
+              success: true,
+              outcome_type: "BALL_LOST",
+              immediate_effects: {},
+              pending_settlement_events: [],
+            },
+            events: halftime.events,
+          },
+        },
+      },
+      actionCommand,
+    );
     expect(useMatchSessionStore.getState()).toMatchObject({
       pendingAction: null,
       fieldState: null,
@@ -425,17 +540,16 @@ describe("match session store hydration", () => {
       myTeam: teams.my_team,
       opponentTeam: teams.opponent_team,
     });
-    useMatchSessionStore.getState().beginStartCommand(
-      createMatchCommand(
-        "start",
-        { match_id: response.match.id },
-        {
-          matchId: response.match.id,
-          revision: response.match.revision,
-        },
-      ),
+    const command = createMatchCommand(
+      "start",
+      { match_id: response.match.id },
+      {
+        matchId: response.match.id,
+        revision: response.match.revision,
+      },
     );
-    useMatchSessionStore.getState().setStartResponse(response);
+    useMatchSessionStore.getState().beginStartCommand(command);
+    useMatchSessionStore.getState().setStartResponse(response, command);
 
     expect(useMatchSessionStore.getState()).toMatchObject({
       pendingAction: { field_state: { id: scene.field_state.id } },
@@ -543,6 +657,51 @@ describe("match session store hydration", () => {
       phase: "recoverable_error",
       loading: false,
       diagnostic: { kind: "illegal_transition" },
+    });
+  });
+
+  it("ignores a delayed action response after the active session is reset", async () => {
+    const scene = await readFixture<SceneFixture>("scenes/open-play.json");
+    const teamFixture = await readFixture<CreateMatchFixture>(
+      "server/create-match-response.json",
+    );
+    const response = responseForScene(scene, 1);
+    const command = createMatchCommand(
+      "action",
+      {
+        match_id: response.match.id,
+        action_id: scene.id,
+        match_decision: { choice: "KICK" },
+      },
+      {
+        matchId: response.match.id,
+        revision: response.match.revision,
+        actionId: scene.id,
+        idempotencyKey: "late-action-after-reset",
+      },
+    );
+
+    useMatchSessionStore.getState().hydrateMatchSession({
+      match: response.match,
+      myTeam: teamFixture.my_team,
+      opponentTeam: teamFixture.opponent_team,
+      timelineEvents: response.events,
+    });
+    useMatchSessionStore.getState().setPlaybackMinute(scene.minute);
+    useMatchSessionStore.getState().markSceneReady();
+    expect(useMatchSessionStore.getState().beginActionCommand(command)).toBe(
+      true,
+    );
+
+    useMatchSessionStore.getState().resetMatchSession();
+    expect(
+      useMatchSessionStore.getState().setActionResponse(response, command),
+    ).toBe(false);
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      phase: "idle",
+      match: null,
+      pendingCommand: null,
+      diagnostic: null,
     });
   });
 

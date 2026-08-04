@@ -212,31 +212,103 @@ describe("match session reducer", () => {
     const recovered = await readFixture<BackendMatchResponse>(
       "server/waiting-open-play-response.json",
     );
+    const committedResponse: BackendMatchResponse = {
+      ...recovered,
+      minute: action.minute + 1,
+      prev_time: action.minute,
+      status: "IN_PROGRESS",
+      pending_action: null,
+      field_state: null,
+      action: null,
+      action_team: null,
+      events: [eventFor(action)],
+      pending_settlement_events: [],
+      unsupported_scene: null,
+      match: {
+        ...recovered.match,
+        id: state.match!.id,
+        current_time: action.minute + 1,
+        prev_time: action.minute,
+        revision: state.match!.revision + 1,
+        match_status: "IN_PROGRESS",
+        pending_action: null,
+      },
+      latest_operation: {
+        version: 1,
+        operation_id: "receipt-recover-future-scene",
+        operation: "processMatchAction",
+        status: "COMMITTED",
+        request_revision: command.revision,
+        committed_revision: state.match!.revision + 1,
+        action_id: action.id,
+        playback: {
+          version: 1,
+          submitted_action: null,
+          submitted_field_state: null,
+          last_decision: {
+            id: "decision-recover-future-scene",
+            match_id: state.match!.id,
+            sequence: 1,
+            minute: action.minute,
+            action: "RANDOM_EVENT",
+            action_team: "NEUTRAL",
+            action_id: action.id,
+            action_version: 1,
+            decision_version: 5,
+            decision_data: {
+              choice: "CONTINUE_WITHOUT_EVENT",
+              unsupported_scene_type: action.scene_type,
+            },
+            field_state_id: action.field_state_id,
+            timestamp: 1,
+          },
+          decision_result: {
+            description: "Unsupported scene skipped without effects.",
+            success: true,
+            outcome_type: "SKIPPED_NO_EFFECT",
+            immediate_effects: {},
+            pending_settlement_events: [],
+            unsupported_scene_recovery: {
+              version: 1,
+              status: "RECOVERED",
+              outcome: "SKIPPED_NO_EFFECT",
+              scene_type: action.scene_type,
+              action_id: action.id,
+              recovered_revision: state.match!.revision + 1,
+            },
+          },
+          events: [eventFor(action)],
+        },
+      },
+    };
+    for (const invalidDecisionShape of [
+      { action_team: "MY_TEAM" },
+      { action_version: 2 },
+      { decision_version: 1 },
+    ] as const) {
+      const invalidResponse = structuredClone(committedResponse);
+      Object.assign(
+        invalidResponse.latest_operation!.playback!.last_decision!,
+        invalidDecisionShape,
+      );
+      const rejected = matchSessionReducer(state, {
+        type: "COMMAND_RESOLVED",
+        source: "action",
+        command,
+        response: invalidResponse,
+      });
+      expect(rejected).toMatchObject({
+        phase: "recoverable_error",
+        pendingCommand: command,
+        diagnostic: { kind: "contract" },
+      });
+    }
+
     state = matchSessionReducer(state, {
       type: "COMMAND_RESOLVED",
       source: "action",
-      response: {
-        ...recovered,
-        minute: action.minute + 1,
-        prev_time: action.minute,
-        status: "IN_PROGRESS",
-        pending_action: null,
-        field_state: null,
-        action: null,
-        action_team: null,
-        events: [eventFor(action)],
-        pending_settlement_events: [],
-        unsupported_scene: null,
-        match: {
-          ...recovered.match,
-          id: state.match!.id,
-          current_time: action.minute + 1,
-          prev_time: action.minute,
-          revision: state.match!.revision + 1,
-          match_status: "IN_PROGRESS",
-          pending_action: null,
-        },
-      },
+      command,
+      response: committedResponse,
     });
 
     expect(state).toMatchObject({
@@ -410,6 +482,7 @@ describe("match session reducer", () => {
     state = matchSessionReducer(state, {
       type: "COMMAND_RESOLVED",
       source: "resume",
+      command,
       response: {
         ...response,
         match: {
@@ -435,16 +508,18 @@ describe("match session reducer", () => {
         opponentTeam: teamFixture.opponent_team,
       },
     });
+    const unsolicitedCommand = createMatchCommand(
+      "start",
+      { match_id: created.match!.id },
+      { matchId: created.match!.id, revision: created.match!.revision },
+    );
     const unsolicited = matchSessionReducer(created, {
       type: "COMMAND_RESOLVED",
       source: "start",
+      command: unsolicitedCommand,
       response,
     });
-    expect(unsolicited).toMatchObject({
-      phase: "recoverable_error",
-      recoveryPhase: "created",
-      diagnostic: { kind: "illegal_transition" },
-    });
+    expect(unsolicited).toBe(created);
   });
 
   it("contains unknown API states in a recoverable diagnostic instead of routing a blank screen", async () => {
@@ -538,6 +613,7 @@ describe("match session reducer", () => {
     const stale = matchSessionReducer(state, {
       type: "COMMAND_RESOLVED",
       source: "action",
+      command,
       response: {
         minute: scene.minute,
         prev_time: scene.minute - 1,
@@ -619,7 +695,7 @@ describe("match session reducer", () => {
     });
   });
 
-  it("returns a cleared command error to the phase that can retry it", async () => {
+  it("does not unlock an ambiguous command by clearing its error", async () => {
     const teamFixture = await teams();
     const scene = await readFixture<BackendPendingAction>(
       "scenes/open-play.json",
@@ -666,15 +742,179 @@ describe("match session reducer", () => {
 
     state = matchSessionReducer(state, { type: "ERROR_CLEARED" });
     expect(state).toMatchObject({
-      phase: "scene_ready",
-      route: "field",
+      phase: "recoverable_error",
+      recoveryPhase: "scene_ready",
+      pendingCommand: command,
+      retrySafe: false,
+      diagnostic: { kind: "network" },
+    });
+  });
+
+  it("allows an exact retry only when the API explicitly marks it safe", () => {
+    const command = createMatchCommand(
+      "start",
+      { match_id: "match-retry-contract" },
+      { matchId: "match-retry-contract", revision: 1 },
+    );
+    const pendingState = {
+      ...createInitialMatchSession(),
+      phase: "starting" as const,
+      pendingCommand: command,
+    };
+
+    const explicitlyRetryable = matchSessionReducer(pendingState, {
+      type: "ERROR_RECORDED",
+      diagnostic: {
+        kind: "network",
+        message: "The server did not commit this command.",
+        retryable: true,
+        recoveryAction: "RETRY_SAME_REQUEST",
+      },
+    });
+    expect(explicitlyRetryable).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "created",
+      pendingCommand: command,
+      retrySafe: true,
+    });
+    expect(
+      matchSessionReducer(explicitlyRetryable, { type: "ERROR_CLEARED" }),
+    ).toMatchObject({
+      phase: "created",
       recoveryPhase: null,
       pendingCommand: command,
       diagnostic: null,
     });
+
+    const ambiguous = matchSessionReducer(pendingState, {
+      type: "ERROR_RECORDED",
+      diagnostic: {
+        kind: "network",
+        message: "The connection was interrupted.",
+        retryable: true,
+        recoveryAction: "HYDRATE_MATCH",
+      },
+    });
+    expect(ambiguous.retrySafe).toBe(false);
   });
 
-  it("does not let same-revision hydration interrupt an in-flight command", async () => {
+  it("moves a detached in-flight command to hydration-first recovery", () => {
+    const command = createMatchCommand(
+      "resume",
+      { match_id: "match-detached" },
+      { matchId: "match-detached", revision: 4 },
+    );
+    const detached = matchSessionReducer(
+      {
+        ...createInitialMatchSession(),
+        phase: "resuming",
+        pendingCommand: command,
+        retrySafe: true,
+      },
+      { type: "COMMAND_RECONCILIATION_REQUIRED", command },
+    );
+
+    expect(detached).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "halftime",
+      pendingCommand: command,
+      retrySafe: false,
+      diagnostic: { recoveryAction: "HYDRATE_MATCH" },
+    });
+  });
+
+  it("submits only the exact retained action from recoverable hydration", async () => {
+    const teamFixture = await teams();
+    const scene = await readFixture<BackendPendingAction>(
+      "scenes/open-play.json",
+    );
+    const match = matchForScene(scene);
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [eventFor(scene)],
+      },
+    });
+    state = matchSessionReducer(state, {
+      type: "TIMELINE_TICK",
+      minute: scene.minute,
+    });
+    state = matchSessionReducer(state, { type: "SCENE_READY" });
+    const command = createMatchCommand(
+      "action",
+      {
+        match_id: match.id,
+        action_id: scene.id,
+        match_decision: { choice: "KICK" },
+      },
+      {
+        matchId: match.id,
+        revision: match.revision,
+        actionId: scene.id,
+        idempotencyKey: "exact-recovery-command",
+      },
+    );
+    state = matchSessionReducer(state, { type: "ACTION_REQUESTED", command });
+    state = matchSessionReducer(state, {
+      type: "ERROR_RECORDED",
+      diagnostic: {
+        kind: "network",
+        message: "The action response was interrupted.",
+        retryable: true,
+      },
+    });
+    state = matchSessionReducer(state, {
+      type: "HYDRATED",
+      payload: {
+        match,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [eventFor(scene)],
+        pendingAction: scene,
+        latestOperation: null,
+      },
+    });
+
+    expect(state).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "scene_ready",
+      retrySafe: true,
+      pendingCommand: command,
+      diagnostic: { recoveryAction: "RETRY_SAME_REQUEST" },
+    });
+
+    const retried = matchSessionReducer(state, {
+      type: "ACTION_REQUESTED",
+      command,
+    });
+    expect(retried).toMatchObject({
+      phase: "submitting",
+      retrySafe: false,
+      pendingCommand: command,
+    });
+
+    const changedCommand = {
+      ...command,
+      payload: {
+        ...command.payload,
+        match_decision: { choice: "KICK", changed: true },
+      },
+    };
+    const rejected = matchSessionReducer(state, {
+      type: "ACTION_REQUESTED",
+      command: changedCommand,
+    });
+    expect(rejected).toMatchObject({
+      phase: "recoverable_error",
+      pendingCommand: command,
+      diagnostic: { kind: "illegal_transition" },
+    });
+  });
+
+  it("turns a same-revision start hydration into an exact safe retry", async () => {
     const teamFixture = await teams();
     const scene = await readFixture<BackendPendingAction>(
       "scenes/open-play.json",
@@ -713,9 +953,149 @@ describe("match session reducer", () => {
       },
     });
 
-    expect(hydrated).toBe(state);
     expect(hydrated).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "created",
+      retrySafe: true,
+      pendingCommand: command,
+      diagnostic: { recoveryAction: "RETRY_SAME_REQUEST" },
+    });
+
+    const retried = matchSessionReducer(hydrated, {
+      type: "START_REQUESTED",
+      command,
+    });
+    expect(retried).toMatchObject({
       phase: "starting",
+      retrySafe: false,
+      pendingCommand: command,
+    });
+  });
+
+  it("turns a same-revision halftime hydration into an exact safe retry", async () => {
+    const teamFixture = await teams();
+    const response = await readFixture<BackendMatchResponse>(
+      "server/waiting-open-play-response.json",
+    );
+    const halftimeMatch: BackendMatch = {
+      ...response.match,
+      match_status: "HALFTIME",
+      current_time: 45,
+      prev_time: 45,
+      pending_action: null,
+    };
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: halftimeMatch,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [],
+      },
+    });
+    const command = createMatchCommand(
+      "resume",
+      { match_id: halftimeMatch.id },
+      {
+        matchId: halftimeMatch.id,
+        revision: halftimeMatch.revision,
+        idempotencyKey: "resume-in-flight",
+      },
+    );
+    state = matchSessionReducer(state, { type: "RESUME_REQUESTED", command });
+
+    const hydrated = matchSessionReducer(state, {
+      type: "HYDRATED",
+      payload: {
+        match: halftimeMatch,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [],
+      },
+    });
+
+    expect(hydrated).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "halftime",
+      retrySafe: true,
+      pendingCommand: command,
+      diagnostic: { recoveryAction: "RETRY_SAME_REQUEST" },
+    });
+
+    const retried = matchSessionReducer(hydrated, {
+      type: "RESUME_REQUESTED",
+      command,
+    });
+    expect(retried).toMatchObject({
+      phase: "resuming",
+      retrySafe: false,
+      pendingCommand: command,
+    });
+  });
+
+  it("turns a same-revision action hydration into an exact safe retry", async () => {
+    const teamFixture = await teams();
+    const scene = await readFixture<BackendPendingAction>(
+      "scenes/open-play.json",
+    );
+    const match = matchForScene(scene);
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [eventFor(scene)],
+        pendingAction: scene,
+      },
+    });
+    state = matchSessionReducer(state, {
+      type: "TIMELINE_TICK",
+      minute: scene.minute,
+    });
+    state = matchSessionReducer(state, { type: "SCENE_READY" });
+    const command = createMatchCommand(
+      "action",
+      {
+        match_id: match.id,
+        action_id: scene.id,
+        match_decision: { choice: "KICK" },
+      },
+      {
+        matchId: match.id,
+        revision: match.revision,
+        actionId: scene.id,
+        idempotencyKey: "action-in-flight",
+      },
+    );
+    state = matchSessionReducer(state, { type: "ACTION_REQUESTED", command });
+
+    const hydrated = matchSessionReducer(state, {
+      type: "HYDRATED",
+      payload: {
+        match,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [eventFor(scene)],
+        pendingAction: scene,
+      },
+    });
+
+    expect(hydrated).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "scene_ready",
+      retrySafe: true,
+      pendingCommand: command,
+      diagnostic: { recoveryAction: "RETRY_SAME_REQUEST" },
+    });
+
+    const retried = matchSessionReducer(hydrated, {
+      type: "ACTION_REQUESTED",
+      command,
+    });
+    expect(retried).toMatchObject({
+      phase: "submitting",
+      retrySafe: false,
       pendingCommand: command,
     });
   });
@@ -881,7 +1261,7 @@ describe("match session reducer", () => {
     });
   });
 
-  it("lets a newer authoritative revision supersede an in-flight action", async () => {
+  it("retains an ambiguous in-flight action when a newer snapshot has no receipt", async () => {
     const teamFixture = await teams();
     const scene = await readFixture<BackendPendingAction>(
       "scenes/open-play.json",
@@ -922,11 +1302,45 @@ describe("match session reducer", () => {
     });
 
     expect(state).toMatchObject({
-      phase: "timeline_playback",
-      pendingCommand: null,
-      diagnostic: null,
+      phase: "recoverable_error",
+      recoveryPhase: "timeline_playback",
+      pendingCommand: command,
+      retrySafe: false,
+      diagnostic: { kind: "stale_command" },
       match: { revision: match.revision + 1 },
     });
+  });
+
+  it("ignores a delayed hydration snapshot from an older revision", async () => {
+    const teamFixture = await teams();
+    const scene = await readFixture<BackendPendingAction>(
+      "scenes/open-play.json",
+    );
+    const match = matchForScene(scene);
+    const current = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: { ...match, revision: match.revision + 2 },
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [eventFor(scene)],
+      },
+    });
+
+    const delayed = matchSessionReducer(current, {
+      type: "HYDRATED",
+      payload: {
+        match: { ...match, revision: match.revision + 1 },
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [],
+        pendingAction: scene,
+        latestOperation: null,
+      },
+    });
+
+    expect(delayed).toBe(current);
+    expect(delayed.match?.revision).toBe(match.revision + 2);
   });
 
   it("rejects inconsistent field authority and invalid advertised choices", async () => {
@@ -1016,6 +1430,7 @@ describe("match session reducer", () => {
     state = matchSessionReducer(state, {
       type: "COMMAND_RESOLVED",
       source: "action",
+      command,
       response: {
         minute: scene.minute,
         prev_time: scene.minute - 1,

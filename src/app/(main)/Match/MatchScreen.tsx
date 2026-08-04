@@ -8,12 +8,20 @@ import { Button } from "../../../components/ui/button";
 import {
   createMatchCommand,
   fetchBackendMatch,
+  type MatchCommand,
   resumeBackendMatch,
 } from "../../../lib/backend-match";
 import {
   hasAuthoritativeMatchIdentity,
   hasAuthoritativeTimelineState,
 } from "../../../match/authoritative-route-state";
+import {
+  beginHydration,
+  createReconnectHydrationGate,
+  isRetryableHydrationFailure,
+  requestReconnectHydration,
+  settleHydration,
+} from "../../../match/reconnect-hydration";
 import { useMatchSessionStore } from "../../../match/session-store";
 import { EventFeed } from "./components/EventFeed";
 import { LiveHeader } from "./components/LiveHeader";
@@ -60,6 +68,7 @@ export default function MatchScreen() {
   const timelineEvents = useMatchSessionStore((state) => state.timelineEvents);
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
+  const retrySafe = useMatchSessionStore((state) => state.retrySafe);
   const legendAvailability = useMatchSessionStore(
     (state) => state.legendAvailability,
   );
@@ -80,7 +89,12 @@ export default function MatchScreen() {
   const hydrateMatchSession = useMatchSessionStore(
     (state) => state.hydrateMatchSession,
   );
-  const setLoading = useMatchSessionStore((state) => state.setLoading);
+  const beginHydrationLoading = useMatchSessionStore(
+    (state) => state.beginHydrationLoading,
+  );
+  const finishHydrationLoading = useMatchSessionStore(
+    (state) => state.finishHydrationLoading,
+  );
   const setError = useMatchSessionStore((state) => state.setError);
   const beginResumeCommand = useMatchSessionStore(
     (state) => state.beginResumeCommand,
@@ -99,7 +113,10 @@ export default function MatchScreen() {
   );
   const fieldTransitionTimeout = useRef<number | null>(null);
   const resumeLock = useRef(false);
-  const reconnectHydrationInFlight = useRef(false);
+  const resumeRequestGeneration = useRef(0);
+  const activeResumeCommand = useRef<MatchCommand | null>(null);
+  const reconnectHydrationGate = useRef(createReconnectHydrationGate());
+  const hydrationRequestGeneration = useRef(0);
   const routeState = {
     routeMatchId: params.matchId,
     match,
@@ -117,19 +134,51 @@ export default function MatchScreen() {
     authoritativeTimelineReady || presentingUnavailableSimulation;
 
   const targetMinute = pendingAction?.minute || match?.current_time || 0;
+  const commandNeedsRouteReconciliation = Boolean(
+    pendingCommand?.matchId === params.matchId &&
+      (["starting", "resuming", "submitting"].includes(phase) ||
+        (phase === "recoverable_error" &&
+          diagnostic?.recoveryAction === "HYDRATE_MATCH")) &&
+      // Reconcile commands inherited by this route, not the resume POST that
+      // this mounted screen is already waiting for.
+      !(phase === "resuming" && resumeLock.current),
+  );
+
+  useEffect(() => {
+    resumeLock.current = false;
+    resumeRequestGeneration.current += 1;
+    return () => {
+      resumeRequestGeneration.current += 1;
+      resumeLock.current = false;
+      const command = activeResumeCommand.current;
+      activeResumeCommand.current = null;
+      if (command) {
+        useMatchSessionStore.getState().requireCommandReconciliation(command);
+      }
+    };
+  }, [params.matchId]);
 
   useEffect(() => {
     const matchId = params.matchId;
-    if (!matchId || (authoritativeMatchIdentity && reloadKey === 0)) {
+    if (
+      !matchId ||
+      (authoritativeMatchIdentity &&
+        reloadKey === 0 &&
+        !commandNeedsRouteReconciliation)
+    ) {
       return;
     }
 
     let cancelled = false;
+    const requestGeneration = ++hydrationRequestGeneration.current;
+    beginHydration(reconnectHydrationGate.current);
+    setError(null);
+    const loadingGeneration = beginHydrationLoading();
 
     const loadMatch = async () => {
+      let succeeded = false;
+      let retryableFailure = true;
       try {
-        setLoading(true);
-        setError(null);
         const response = await fetchBackendMatch(matchId);
         if (cancelled) return;
         const pendingAction =
@@ -153,13 +202,23 @@ export default function MatchScreen() {
           fullTimeHandoff: response.full_time_handoff,
           latestOperation: response.latest_operation,
         });
+        succeeded = true;
       } catch (error) {
+        retryableFailure = isRetryableHydrationFailure(error);
         if (cancelled) return;
         setError(error);
-        setLoading(false);
         hideTransitionLoader();
       } finally {
-        reconnectHydrationInFlight.current = false;
+        if (requestGeneration === hydrationRequestGeneration.current) {
+          const retryQueuedReconnect = settleHydration(
+            reconnectHydrationGate.current,
+            succeeded,
+            retryableFailure,
+          );
+          if (!cancelled && retryQueuedReconnect) {
+            setReloadKey((value) => value + 1);
+          }
+        }
       }
     };
 
@@ -167,22 +226,25 @@ export default function MatchScreen() {
 
     return () => {
       cancelled = true;
+      finishHydrationLoading(loadingGeneration);
     };
   }, [
     authoritativeMatchIdentity,
+    commandNeedsRouteReconciliation,
     hideTransitionLoader,
     hydrateMatchSession,
     params.matchId,
     reloadKey,
     setError,
-    setLoading,
+    beginHydrationLoading,
+    finishHydrationLoading,
   ]);
 
   useEffect(() => {
     const retryAfterReconnect = () => {
-      if (reconnectHydrationInFlight.current) return;
-      reconnectHydrationInFlight.current = true;
-      setReloadKey((value) => value + 1);
+      if (requestReconnectHydration(reconnectHydrationGate.current)) {
+        setReloadKey((value) => value + 1);
+      }
     };
     window.addEventListener("online", retryAfterReconnect);
     return () => window.removeEventListener("online", retryAfterReconnect);
@@ -265,9 +327,14 @@ export default function MatchScreen() {
   ]);
 
   useEffect(() => {
-    if (phase !== "scene_ready" || !match?.id) {
+    if (!match?.id) {
       return;
     }
+    if (phase === "result_playback") {
+      navigate(`/game/${match.id}`, { replace: true });
+      return;
+    }
+    if (phase !== "scene_ready") return;
 
     fieldTransitionTimeout.current = window.setTimeout(() => {
       navigate(`/game/${match.id}`);
@@ -331,15 +398,43 @@ export default function MatchScreen() {
       );
 
     resumeLock.current = true;
+    let requestGeneration: number | null = null;
     try {
       if (!beginResumeCommand(command)) {
         resumeLock.current = false;
         return;
       }
+      activeResumeCommand.current = command;
       setError(null);
+      requestGeneration = ++resumeRequestGeneration.current;
       const response = await resumeBackendMatch(match, command);
-      setResumeResponse(response);
+      if (requestGeneration !== resumeRequestGeneration.current) {
+        if (activeResumeCommand.current === command) {
+          useMatchSessionStore.getState().requireCommandReconciliation(command);
+          activeResumeCommand.current = null;
+        }
+        resumeLock.current = false;
+        return;
+      }
+      if (!setResumeResponse(response, command)) {
+        activeResumeCommand.current = null;
+        resumeLock.current = false;
+        return;
+      }
+      activeResumeCommand.current = null;
+      resumeLock.current = false;
     } catch (error) {
+      if (requestGeneration !== resumeRequestGeneration.current) {
+        if (activeResumeCommand.current) {
+          useMatchSessionStore
+            .getState()
+            .requireCommandReconciliation(activeResumeCommand.current);
+          activeResumeCommand.current = null;
+        }
+        resumeLock.current = false;
+        return;
+      }
+      activeResumeCommand.current = null;
       setError(error);
       resumeLock.current = false;
     }
@@ -366,11 +461,15 @@ export default function MatchScreen() {
           ? "Match unavailable"
           : "Live match unavailable";
     const retryLabel =
-      recoveryAction === "HYDRATE_MATCH"
-        ? "Refresh match state"
-        : recoveryAction === "CHECK_TRANSPORT"
-          ? "Check connection"
-          : "Retry match";
+      recoveryAction === "RETRY_SAME_REQUEST" &&
+      retrySafe &&
+      pendingCommand?.operation === "resume"
+        ? "Retry same request"
+        : recoveryAction === "HYDRATE_MATCH"
+          ? "Refresh match state"
+          : recoveryAction === "CHECK_TRANSPORT"
+            ? "Check connection"
+            : "Retry match";
     return (
       <main className="fixed inset-0 flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.15),transparent_34%),linear-gradient(180deg,#061124,#020816)] px-6 text-white">
         <section
@@ -387,6 +486,14 @@ export default function MatchScreen() {
               onClick={() => {
                 if (recoveryAction === "REAUTHENTICATE") {
                   navigate("/login");
+                  return;
+                }
+                if (
+                  recoveryAction === "RETRY_SAME_REQUEST" &&
+                  retrySafe &&
+                  pendingCommand?.operation === "resume"
+                ) {
+                  void continueSecondHalf();
                   return;
                 }
                 setError(null);
@@ -426,6 +533,7 @@ export default function MatchScreen() {
     <div
       data-testid="timeline-screen"
       data-session-phase={phase}
+      data-session-loading={loading}
       data-playback-minute={playbackMinute}
       className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white"
     >

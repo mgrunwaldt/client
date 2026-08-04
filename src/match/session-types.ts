@@ -16,7 +16,10 @@ import type {
 } from "./api-v1/contract";
 import type { MatchApiResponseMetadata } from "./api-v1/errors";
 import type { MatchRecoveryAction } from "./api-v1/errors";
-import type { MatchFieldDraft } from "./session-recovery";
+import type {
+  MatchFieldDraft,
+  MatchResultReceiptIdentity,
+} from "./session-recovery";
 
 export type EffortLevel = "low" | "medium" | "high";
 export type Playstyle = "defense" | "balanced" | "offensive";
@@ -89,6 +92,7 @@ export interface MatchSessionData {
   pendingCommand: MatchCommand | null;
   retrySafe: boolean;
   fieldDraft: MatchFieldDraft | null;
+  acknowledgedResult: MatchResultReceiptIdentity | null;
   decisionResult: BackendDecisionResult | null;
   resultPlayback: BackendMatchOperationReceipt | null;
   unsupportedScene: BackendUnsupportedSceneRecovery | null;
@@ -126,6 +130,7 @@ export type MatchSessionEvent =
     }
   | { type: "COMMAND_RETAINED"; command: MatchCommand }
   | { type: "COMMAND_CLEARED" }
+  | { type: "COMMAND_RECONCILIATION_REQUIRED"; command: MatchCommand }
   | { type: "FIELD_DRAFT_RETAINED"; draft: MatchFieldDraft }
   | { type: "FIELD_DRAFT_CLEARED" }
   | { type: "START_REQUESTED"; command: MatchCommand }
@@ -134,6 +139,7 @@ export type MatchSessionEvent =
   | { type: "HYDRATED"; payload: HydratedMatchSession }
   | {
       type: "COMMAND_RESOLVED";
+      command: MatchCommand;
       response: BackendMatchResponse;
       source: "start" | "resume" | "action";
     }

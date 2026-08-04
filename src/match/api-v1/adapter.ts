@@ -245,10 +245,24 @@ export async function startBackendMatch(
   );
 }
 
-export function fetchBackendMatch(
+export async function fetchBackendMatch(
   matchId: string,
 ): Promise<BackendMatchSnapshot> {
-  return request(`/match/${matchId}`, BackendMatchSnapshotSchema);
+  const snapshot = await request(
+    `/match/${matchId}`,
+    BackendMatchSnapshotSchema,
+  );
+  if (snapshot.match.id !== matchId) {
+    throw new MatchApiContractError(
+      `The match service returned match ${snapshot.match.id} for requested match ${matchId}.`,
+      {
+        apiVersion: MATCH_API_MAJOR_VERSION,
+        requestId: null,
+        retryAfterSeconds: null,
+      },
+    );
+  }
+  return snapshot;
 }
 
 export async function processBackendMatchAction(

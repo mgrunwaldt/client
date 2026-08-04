@@ -127,8 +127,8 @@ export async function authenticateToHome(page: Page) {
 
 export async function authenticateForContinuation(page: Page) {
   const evidence = await authenticateToHome(page);
-  await page.goto("/game");
-  await expect(page).toHaveURL(/\/game$/u);
+  await page.reload();
+  await expect(page).toHaveURL(/\/$/u);
   await expect.poll(() => evidence.hydrationCalls).toBe(1);
   expect(evidence.challengeCalls).toBe(1);
   expect(evidence.sessionCreationCalls).toBe(1);

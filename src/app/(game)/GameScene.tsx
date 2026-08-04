@@ -11,6 +11,8 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
 import {
+  Component,
+  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -32,6 +34,7 @@ import {
   type BackendMatchResponse,
   createMatchCommand,
   fetchBackendMatch,
+  type MatchCommand,
   processBackendMatchAction,
 } from "../../lib/backend-match";
 import {
@@ -59,9 +62,20 @@ import {
   authoritativeFacingTarget,
 } from "../../match/receiver-control";
 import {
+  beginHydration,
+  createReconnectHydrationGate,
+  isRetryableHydrationFailure,
+  requestReconnectHydration,
+  settleHydration,
+} from "../../match/reconnect-hydration";
+import {
   isDebugResultContinuationEnabled,
   RESULT_HOLD_MS,
 } from "../../match/result-continuation";
+import {
+  actionCommandMatchesDecision,
+  matchCommandsExactly,
+} from "../../match/session-recovery";
 import { useMatchSessionStore } from "../../match/session-store";
 import { BallAimSurface } from "./BallAimSurface";
 import { DribbleControls } from "./DribbleControls";
@@ -99,6 +113,37 @@ const DEFAULT_CAMERA_WINDOW = {
 const DYNAMIC_PLAYER_SCREEN_NDC_Y = -0.6;
 const DRIBBLE_PLAYER_SCREEN_NDC_Y = -0.1;
 const DRIBBLE_VISUAL_FIELD_Y_OFFSET = -14;
+
+type FieldCanvasErrorBoundaryProps = {
+  children: ReactNode;
+  onError: (error: unknown) => void;
+  resetKey: string;
+};
+
+class FieldCanvasErrorBoundary extends Component<
+  FieldCanvasErrorBoundaryProps,
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    this.props.onError(error);
+  }
+
+  componentDidUpdate(previousProps: Readonly<FieldCanvasErrorBoundaryProps>) {
+    if (this.state.failed && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
 
 function fieldToWorld(x: number, y: number): [number, number, number] {
   return [
@@ -740,6 +785,9 @@ export default function GameScene({
     errors: assetErrors,
   } = useProgress();
   const match = useMatchSessionStore((state) => state.match);
+  const authoritativeRouteReady = Boolean(
+    active && routeMatchId && match?.id === routeMatchId,
+  );
   const phase = useMatchSessionStore((state) => state.phase);
   const diagnostic = useMatchSessionStore((state) => state.diagnostic);
   const unsupportedScene = useMatchSessionStore(
@@ -748,9 +796,6 @@ export default function GameScene({
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
   const resultPlayback = useMatchSessionStore((state) => state.resultPlayback);
-  const latestOperation = useMatchSessionStore(
-    (state) => state.latestOperation,
-  );
   const legendAvailability = useMatchSessionStore(
     (state) => state.legendAvailability,
   );
@@ -824,8 +869,116 @@ export default function GameScene({
     createRandomEventSubmissionGate(),
   );
   const assetErrorBaselineRef = useRef<number | null>(null);
-  const fieldRehydrationInFlightRef = useRef(false);
+  const fieldRehydrationGateRef = useRef(createReconnectHydrationGate());
+  const fieldRehydrationGenerationRef = useRef(0);
+  const activeRouteRef = useRef({ active, matchId: routeMatchId });
+  const activeActionCommandRef = useRef<MatchCommand | null>(null);
+  const playedOperationIdRef = useRef<string | null>(null);
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
+
+  useLayoutEffect(() => {
+    activeRouteRef.current = { active, matchId: routeMatchId };
+    return () => {
+      activeRouteRef.current = { active: false, matchId: null };
+    };
+  }, [active, routeMatchId]);
+
+  useLayoutEffect(() => {
+    if (animationFrameRef.current) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (resultTimerRef.current) {
+      window.clearTimeout(resultTimerRef.current);
+      resultTimerRef.current = null;
+    }
+    setReleasedAimDraft(null);
+    setActiveAimDraft(null);
+    setStrikeContact(DEFAULT_STRIKE_CONTACT);
+    setRestoreAimFocus(false);
+    setSubmitError(null);
+    setIsSubmitting(false);
+    setStagedKickResult(null);
+    setResolvedSceneFieldState(null);
+    setAnimatedBallFlightPoint(null);
+    setIsResultAnimating(false);
+    setReadySceneKey("");
+    setDribbleLane(null);
+    kickSubmissionGateRef.current = createKickSubmissionGate();
+    dribbleSubmissionGateRef.current = createDribbleSubmissionGate();
+    randomEventSubmissionGateRef.current = createRandomEventSubmissionGate();
+    fieldRehydrationGateRef.current = createReconnectHydrationGate();
+    fieldRehydrationGenerationRef.current += 1;
+    assetErrorBaselineRef.current = null;
+    playedOperationIdRef.current = null;
+    return () => {
+      const command = activeActionCommandRef.current;
+      activeActionCommandRef.current = null;
+      if (command) {
+        useMatchSessionStore.getState().requireCommandReconciliation(command);
+      }
+    };
+  }, [routeMatchId]);
+
+  const actionRequestIsCurrent = (command: MatchCommand) => {
+    const route = activeRouteRef.current;
+    return Boolean(
+      route.active &&
+        route.matchId === command.matchId &&
+        matchCommandsExactly(
+          useMatchSessionStore.getState().pendingCommand,
+          command,
+        ),
+    );
+  };
+
+  const reconcileAbandonedActionRequest = (command: MatchCommand) => {
+    if (!matchCommandsExactly(activeActionCommandRef.current, command)) return;
+    useMatchSessionStore.getState().requireCommandReconciliation(command);
+    activeActionCommandRef.current = null;
+  };
+
+  const settleActionRequest = (command: MatchCommand) => {
+    if (matchCommandsExactly(activeActionCommandRef.current, command)) {
+      activeActionCommandRef.current = null;
+    }
+  };
+
+  const commandForDecision = (
+    actionId: string,
+    decision: Record<string, unknown>,
+  ): MatchCommand | null => {
+    if (!match || !authoritativeRouteReady) return null;
+    if (pendingCommand) {
+      if (
+        actionCommandMatchesDecision(pendingCommand, {
+          matchId: match.id,
+          revision: match.revision,
+          actionId,
+          decision,
+        })
+      ) {
+        return pendingCommand;
+      }
+      setSubmitError(
+        "A different action input is already awaiting confirmation. Retry the exact saved input.",
+      );
+      return null;
+    }
+    return createMatchCommand(
+      "action",
+      {
+        match_id: match.id,
+        action_id: actionId,
+        match_decision: decision,
+      },
+      {
+        matchId: match.id,
+        revision: match.revision,
+        actionId,
+      },
+    );
+  };
 
   useEffect(() => {
     const playback = resultPlayback?.playback;
@@ -889,6 +1042,10 @@ export default function GameScene({
       return;
     }
     let cancelled = false;
+    const hydrationGeneration = ++fieldRehydrationGenerationRef.current;
+    beginHydration(fieldRehydrationGateRef.current);
+    let succeeded = false;
+    let retryableFailure = true;
     void fetchBackendMatch(routeMatchId)
       .then((response) => {
         if (cancelled) return;
@@ -910,12 +1067,23 @@ export default function GameScene({
           fullTimeHandoff: response.full_time_handoff,
           latestOperation: response.latest_operation,
         });
+        succeeded = true;
       })
       .catch((error: unknown) => {
+        retryableFailure = isRetryableHydrationFailure(error);
         if (!cancelled) setError(error);
       })
       .finally(() => {
-        fieldRehydrationInFlightRef.current = false;
+        if (hydrationGeneration === fieldRehydrationGenerationRef.current) {
+          const retryQueuedReconnect = settleHydration(
+            fieldRehydrationGateRef.current,
+            succeeded,
+            retryableFailure,
+          );
+          if (!cancelled && retryQueuedReconnect) {
+            setRehydrationKey((value) => value + 1);
+          }
+        }
       });
     return () => {
       cancelled = true;
@@ -958,9 +1126,9 @@ export default function GameScene({
   useEffect(() => {
     if (!active || !routeMatchId) return;
     const rehydrateAfterReconnect = () => {
-      if (fieldRehydrationInFlightRef.current) return;
-      fieldRehydrationInFlightRef.current = true;
-      setRehydrationKey((value) => value + 1);
+      if (requestReconnectHydration(fieldRehydrationGateRef.current)) {
+        setRehydrationKey((value) => value + 1);
+      }
     };
     window.addEventListener("online", rehydrateAfterReconnect);
     return () => window.removeEventListener("online", rehydrateAfterReconnect);
@@ -972,21 +1140,19 @@ export default function GameScene({
       !routeMatchId ||
       match?.id !== routeMatchId ||
       phase !== "timeline_playback" ||
-      resultPlayback ||
-      latestOperation?.playback?.decision_result?.outcome_type !==
-        "SKIPPED_NO_EFFECT"
+      pendingAction ||
+      resultPlayback
     ) {
       return;
     }
-    // A durable unsupported-scene receipt has no playable field/result. Its
-    // authoritative continuation belongs to the Timeline, never to a
-    // fabricated kick playback on this persistent field route.
+    // The field route owns only an active scene or result playback. Once the
+    // authoritative session has neither, timeline owns the continuation.
     navigate(`/match/${match.id}`, { replace: true });
   }, [
     active,
-    latestOperation?.playback?.decision_result?.outcome_type,
     match?.id,
     navigate,
+    pendingAction,
     phase,
     resultPlayback,
     routeMatchId,
@@ -1125,8 +1291,13 @@ export default function GameScene({
     opponentPlayers.length,
   ].join(":");
   const isCanvasReady = readySceneKey === renderSceneKey;
-  const canAim =
+  const isFieldInteractionReady =
     isCanvasReady &&
+    !assetsActive &&
+    (assetsTotal === 0 || assetsLoaded >= assetsTotal);
+  const canAim =
+    authoritativeRouteReady &&
+    isFieldInteractionReady &&
     !stagedKickResult &&
     phase === "scene_ready" &&
     pendingAction?.action_team === "MY_TEAM" &&
@@ -1134,7 +1305,8 @@ export default function GameScene({
     pendingAction.available_choices.some((choice) => choice.id === "KICK") &&
     Boolean(kickControlEnvelope);
   const canDribble =
-    isCanvasReady &&
+    authoritativeRouteReady &&
+    isFieldInteractionReady &&
     !stagedKickResult &&
     phase === "scene_ready" &&
     pendingAction?.action_team === "MY_TEAM" &&
@@ -1148,11 +1320,13 @@ export default function GameScene({
       (choice) => choice.id === "SIMULATE_FOUL",
     );
   const canResolveRandomEvent =
-    isCanvasReady &&
+    authoritativeRouteReady &&
+    isFieldInteractionReady &&
     !stagedKickResult &&
     phase === "scene_ready" &&
     Boolean(parsedRandomEvent.event);
   const canRecoverUnsupportedScene =
+    authoritativeRouteReady &&
     phase === "unsupported_recovery" &&
     Boolean(unsupportedScene) &&
     Boolean(match?.id);
@@ -1168,10 +1342,7 @@ export default function GameScene({
           strikeContact,
         )
       : null;
-  const showFieldLoadingOverlay =
-    !isCanvasReady ||
-    assetsActive ||
-    (assetsTotal > 0 && assetsLoaded < assetsTotal);
+  const showFieldLoadingOverlay = !isFieldInteractionReady;
 
   useEffect(() => {
     return () => {
@@ -1216,58 +1387,76 @@ export default function GameScene({
     setIsResultAnimating(false);
   };
 
-  const startBallPlayback = (response: BackendMatchResponse) => {
-    if (animationFrameRef.current) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-    }
+  const startBallPlayback = useCallback(
+    (response: BackendMatchResponse, operationId: string | null = null) => {
+      if (operationId) playedOperationIdRef.current = operationId;
+      if (animationFrameRef.current) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+      }
 
-    const flightPath = response.decision_result?.flight_path;
-    if (Array.isArray(flightPath) && flightPath.length > 1) {
-      const startedAt = performance.now();
-      const durationMs = Math.max(
-        500,
-        flightPath[flightPath.length - 1].t * 1000,
-      );
-      setIsResultAnimating(true);
+      const flightPath = response.decision_result?.flight_path;
+      if (Array.isArray(flightPath) && flightPath.length > 1) {
+        const startedAt = performance.now();
+        const durationMs = Math.max(
+          500,
+          flightPath[flightPath.length - 1].t * 1000,
+        );
+        setIsResultAnimating(true);
 
-      const tick = (now: number) => {
-        const elapsed = now - startedAt;
-        const progressMs = Math.min(durationMs, elapsed);
-        const point = sampleFlightPath(flightPath, progressMs / 1000);
-        if (point) {
-          setAnimatedBallFlightPoint(point);
-        }
+        const tick = (now: number) => {
+          const elapsed = now - startedAt;
+          const progressMs = Math.min(durationMs, elapsed);
+          const point = sampleFlightPath(flightPath, progressMs / 1000);
+          if (point) {
+            setAnimatedBallFlightPoint(point);
+          }
 
-        if (progressMs < durationMs) {
-          animationFrameRef.current = window.requestAnimationFrame(tick);
-        } else {
-          animationFrameRef.current = null;
-          const authoritativeFinalPoint = response.decision_result?.final_point
-            ? {
-                x: response.decision_result.final_point.x,
-                y: response.decision_result.final_point.y,
-                z: response.decision_result.final_point.z,
-              }
-            : point;
-          setAnimatedBallFlightPoint(
-            authoritativeContinuationFieldState(response)
-              ? null
-              : authoritativeFinalPoint,
-          );
-          setIsResultAnimating(false);
-        }
-      };
+          if (progressMs < durationMs) {
+            animationFrameRef.current = window.requestAnimationFrame(tick);
+          } else {
+            animationFrameRef.current = null;
+            const authoritativeFinalPoint = response.decision_result
+              ?.final_point
+              ? {
+                  x: response.decision_result.final_point.x,
+                  y: response.decision_result.final_point.y,
+                  z: response.decision_result.final_point.z,
+                }
+              : point;
+            setAnimatedBallFlightPoint(
+              authoritativeContinuationFieldState(response)
+                ? null
+                : authoritativeFinalPoint,
+            );
+            setIsResultAnimating(false);
+          }
+        };
 
-      animationFrameRef.current = window.requestAnimationFrame(tick);
+        animationFrameRef.current = window.requestAnimationFrame(tick);
+        return;
+      }
+
+      // Canonical kick scenes never fabricate a trajectory when the server omits one.
+      if (authoritativeContinuationFieldState(response)) {
+        setAnimatedBallFlightPoint(null);
+      }
+      setIsResultAnimating(false);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const operationId = resultPlayback?.operation_id ?? null;
+    if (
+      phase !== "result_playback" ||
+      !stagedKickResult ||
+      !operationId ||
+      playedOperationIdRef.current === operationId
+    ) {
       return;
     }
-
-    // Canonical kick scenes never fabricate a trajectory when the server omits one.
-    if (authoritativeContinuationFieldState(response)) {
-      setAnimatedBallFlightPoint(null);
-    }
-    setIsResultAnimating(false);
-  };
+    startBallPlayback(stagedKickResult.response, operationId);
+  }, [phase, resultPlayback, stagedKickResult, startBallPlayback]);
 
   const handleAimRelease = (draft: BallAimDraft) => {
     setRestoreAimFocus(false);
@@ -1329,6 +1518,11 @@ export default function GameScene({
       releasedAimDraft.normalizedPower,
       strikeContact,
     );
+    const command = commandForDecision(pendingAction.id, payload);
+    if (!command) {
+      kickSubmissionGateRef.current.reset(pendingAction.id);
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -1336,36 +1530,29 @@ export default function GameScene({
       setLoading(true);
       setError(null);
 
-      const command =
-        pendingCommand?.operation === "action" &&
-        pendingCommand.matchId === match.id &&
-        pendingCommand.actionId === pendingAction.id
-          ? pendingCommand
-          : createMatchCommand(
-              "action",
-              {
-                match_id: match.id,
-                action_id: pendingAction.id,
-                match_decision: payload,
-              },
-              {
-                matchId: match.id,
-                revision: match.revision ?? null,
-                actionId: pendingAction.id,
-              },
-            );
       if (!beginActionCommand(command)) {
         kickSubmissionGateRef.current.reset(pendingAction.id);
+        setLoading(false);
         return;
       }
+      activeActionCommandRef.current = command;
       const response = await processBackendMatchAction(
         match,
         pendingAction.id,
         payload,
         command,
       );
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
       const submittedFieldState = fieldState;
-      setActionResponse(response);
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
       setReleasedAimDraft(null);
       clearFieldDraft();
       setResolvedSceneFieldState(submittedFieldState);
@@ -1374,13 +1561,21 @@ export default function GameScene({
         sceneType: pendingAction.scene_type,
       });
       setLoading(false);
-      startBallPlayback(response);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
     } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
       kickSubmissionGateRef.current.reset(pendingAction.id);
       const message =
         error instanceof Error ? error.message : "Failed to submit kick.";
       setSubmitError(message);
       setError(error);
+      settleActionRequest(command);
       setLoading(false);
     } finally {
       setIsSubmitting(false);
@@ -1394,34 +1589,26 @@ export default function GameScene({
     if (!dribbleSubmissionGateRef.current.begin(pendingAction.id)) {
       return;
     }
+    const command = commandForDecision(
+      pendingAction.id,
+      decision as unknown as Record<string, unknown>,
+    );
+    if (!command) {
+      dribbleSubmissionGateRef.current.reset(pendingAction.id);
+      return;
+    }
 
     try {
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
       setError(null);
-      const command =
-        pendingCommand?.operation === "action" &&
-        pendingCommand.matchId === match.id &&
-        pendingCommand.actionId === pendingAction.id
-          ? pendingCommand
-          : createMatchCommand(
-              "action",
-              {
-                match_id: match.id,
-                action_id: pendingAction.id,
-                match_decision: decision,
-              },
-              {
-                matchId: match.id,
-                revision: match.revision ?? null,
-                actionId: pendingAction.id,
-              },
-            );
       if (!beginActionCommand(command)) {
         dribbleSubmissionGateRef.current.reset(pendingAction.id);
+        setLoading(false);
         return;
       }
+      activeActionCommandRef.current = command;
       const submittedFieldState = fieldState;
       const response = await processBackendMatchAction(
         match,
@@ -1429,17 +1616,34 @@ export default function GameScene({
         decision,
         command,
       );
-      setActionResponse(response);
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
       setResolvedSceneFieldState(submittedFieldState);
       setStagedKickResult({ response, sceneType: pendingAction.scene_type });
       setLoading(false);
-      startBallPlayback(response);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
     } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
       dribbleSubmissionGateRef.current.reset(pendingAction.id);
       const message =
         error instanceof Error ? error.message : "Failed to submit dribble.";
       setSubmitError(message);
       setError(error);
+      settleActionRequest(command);
       setLoading(false);
     } finally {
       setIsSubmitting(false);
@@ -1464,34 +1668,23 @@ export default function GameScene({
       );
       return;
     }
+    const command = commandForDecision(pendingAction.id, payload);
+    if (!command) {
+      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      return;
+    }
 
     try {
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
       setError(null);
-      const command =
-        pendingCommand?.operation === "action" &&
-        pendingCommand.matchId === match.id &&
-        pendingCommand.actionId === pendingAction.id
-          ? pendingCommand
-          : createMatchCommand(
-              "action",
-              {
-                match_id: match.id,
-                action_id: pendingAction.id,
-                match_decision: payload,
-              },
-              {
-                matchId: match.id,
-                revision: match.revision ?? null,
-                actionId: pendingAction.id,
-              },
-            );
       if (!beginActionCommand(command)) {
         randomEventSubmissionGateRef.current.reset(pendingAction.id);
+        setLoading(false);
         return;
       }
+      activeActionCommandRef.current = command;
       const submittedFieldState = fieldState;
       const response = await processBackendMatchAction(
         match,
@@ -1499,12 +1692,28 @@ export default function GameScene({
         payload,
         command,
       );
-      setActionResponse(response);
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
       setResolvedSceneFieldState(submittedFieldState);
       setStagedKickResult({ response, sceneType: pendingAction.scene_type });
       setLoading(false);
-      startBallPlayback(response);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
     } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
       randomEventSubmissionGateRef.current.reset(pendingAction.id);
       const message =
         error instanceof Error
@@ -1512,6 +1721,7 @@ export default function GameScene({
           : "Failed to submit match event.";
       setSubmitError(message);
       setError(error);
+      settleActionRequest(command);
       setLoading(false);
     } finally {
       setIsSubmitting(false);
@@ -1523,47 +1733,50 @@ export default function GameScene({
     const actionId = unsupportedScene.action_id;
     const choiceId = unsupportedScene.recovery.choice;
     if (!randomEventSubmissionGateRef.current.begin(actionId)) return;
+    const payload = { choice: choiceId };
+    const command = commandForDecision(actionId, payload);
+    if (!command) {
+      randomEventSubmissionGateRef.current.reset(actionId);
+      return;
+    }
 
     try {
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
       setError(null);
-      const payload = { choice: choiceId };
-      const command =
-        pendingCommand?.operation === "action" &&
-        pendingCommand.matchId === match.id &&
-        pendingCommand.actionId === actionId
-          ? pendingCommand
-          : createMatchCommand(
-              "action",
-              {
-                match_id: match.id,
-                action_id: actionId,
-                match_decision: payload,
-              },
-              {
-                matchId: match.id,
-                revision: match.revision ?? null,
-                actionId,
-              },
-            );
       if (!beginActionCommand(command)) {
         randomEventSubmissionGateRef.current.reset(actionId);
+        setLoading(false);
         return;
       }
+      activeActionCommandRef.current = command;
       const response = await processBackendMatchAction(
         match,
         actionId,
         payload,
         command,
       );
-      setActionResponse(response);
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
       setLoading(false);
       navigate(`/match/${match.id}`);
     } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
       randomEventSubmissionGateRef.current.reset(actionId);
       setError(error);
+      settleActionRequest(command);
       setLoading(false);
     } finally {
       setIsSubmitting(false);
@@ -1587,20 +1800,41 @@ export default function GameScene({
     try {
       setError(null);
       if (!beginActionCommand(pendingCommand)) return;
+      activeActionCommandRef.current = pendingCommand;
       setIsSubmitting(true);
+      setLoading(true);
       const response = await processBackendMatchAction(
         match,
         pendingAction.id,
         decision as Record<string, unknown>,
         pendingCommand,
       );
-      setActionResponse(response);
+      if (!actionRequestIsCurrent(pendingCommand)) {
+        reconcileAbandonedActionRequest(pendingCommand);
+        return;
+      }
+      if (!setActionResponse(response, pendingCommand)) {
+        settleActionRequest(pendingCommand);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(pendingCommand);
       clearFieldDraft();
       setResolvedSceneFieldState(fieldState);
       setStagedKickResult({ response, sceneType: pendingAction.scene_type });
-      startBallPlayback(response);
+      setLoading(false);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
     } catch (error) {
+      if (!actionRequestIsCurrent(pendingCommand)) {
+        reconcileAbandonedActionRequest(pendingCommand);
+        return;
+      }
       setError(error);
+      settleActionRequest(pendingCommand);
+      setLoading(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -1619,7 +1853,15 @@ export default function GameScene({
   const autoContinueResult = useEffectEvent(handleNextAction);
 
   useEffect(() => {
-    if (!stagedKickResult || isResultAnimating || debugResultContinuation) {
+    if (
+      !authoritativeRouteReady ||
+      !stagedKickResult ||
+      isResultAnimating ||
+      phase === "recoverable_error" ||
+      phase === "unsupported_contract" ||
+      !isFieldInteractionReady ||
+      debugResultContinuation
+    ) {
       return;
     }
     resultTimerRef.current = window.setTimeout(
@@ -1632,17 +1874,60 @@ export default function GameScene({
         resultTimerRef.current = null;
       }
     };
-  }, [debugResultContinuation, isResultAnimating, stagedKickResult]);
+  }, [
+    authoritativeRouteReady,
+    debugResultContinuation,
+    isFieldInteractionReady,
+    isResultAnimating,
+    phase,
+    stagedKickResult,
+  ]);
 
   const resultDescription =
     stagedKickResult?.response.decision_result?.description ||
     stagedKickResult?.response.events?.[0]?.description ||
     "Action resolved.";
   const resultMinute = stagedKickResult?.response.prev_time;
+  const handleFieldCanvasError = useCallback(() => {
+    setError(
+      new Error(
+        "Unable to load match asset required for this field. Refresh to retry.",
+      ),
+    );
+  }, [setError]);
+  if (active && routeMatchId && !authoritativeRouteReady) {
+    return (
+      <div
+        data-testid="game-field"
+        data-session-phase="hydrating"
+        data-interaction-phase="blocked"
+        data-render-ready="false"
+        className="fixed inset-0 z-40 overflow-hidden bg-[#0a4739]"
+      >
+        <FieldBackdrop />
+        <FieldLoadingOverlay visible progress={assetsProgress} />
+      </div>
+    );
+  }
+  const hasBlockingSessionError =
+    phase === "recoverable_error" || phase === "unsupported_contract";
+  const interactionPhase = hasBlockingSessionError
+    ? "blocked"
+    : stagedKickResult
+      ? "result_playback"
+      : phase === "submitting" || isSubmitting
+        ? "submitting"
+        : releasedAimDraft
+          ? "contact_selection"
+          : activeAimDraft
+            ? "aiming"
+            : "idle";
 
   return (
     <div
       data-testid="game-field"
+      data-session-phase={phase}
+      data-interaction-phase={interactionPhase}
       data-player-count={myPlayers.length + opponentPlayers.length}
       data-player-roles={[...myPlayers, ...opponentPlayers]
         .map((player) => player.role)
@@ -1687,6 +1972,7 @@ export default function GameScene({
       }
       data-result-minute={stagedKickResult?.response.prev_time ?? ""}
       data-continuation-minute={stagedKickResult?.response.minute ?? ""}
+      data-result-animating={isResultAnimating ? "true" : "false"}
       data-penalty-nonparticipant-count={penaltyNonparticipantCount ?? ""}
       data-render-ready={isCanvasReady ? "true" : "false"}
       data-kick-contract-supported={kickControlEnvelope ? "true" : "false"}
@@ -1730,122 +2016,127 @@ export default function GameScene({
         </div>
       )}
 
-      <Canvas
-        gl={{
-          antialias: true,
-          alpha: true,
-          powerPreference: "high-performance",
-        }}
-        dpr={[1, 2]}
-        style={{ touchAction: "none", background: "transparent" }}
-        onCreated={({ gl }) => {
-          gl.setClearColor(0x000000, 0);
-        }}
+      <FieldCanvasErrorBoundary
+        onError={handleFieldCanvasError}
+        resetKey={`${routeMatchId ?? "no-match"}:${rehydrationKey}`}
       >
-        <OrthographicCamera
-          makeDefault
-          position={DEFAULT_CAMERA_POSITION}
-          rotation={DEFAULT_CAMERA_ROTATION}
-          zoom={DEFAULT_CAMERA_ZOOM}
-          near={0.1}
-          far={1000}
-        />
-        <FieldCameraController
-          legendPlayer={legendPlayer}
-          legendWorldPosition={legendWorldPosition}
-          cameraLocked={Boolean(stagedKickResult)}
-          framingKey={pendingAction?.id ?? "no-action"}
-          targetNdcY={
-            isDribbleScene
-              ? DRIBBLE_PLAYER_SCREEN_NDC_Y
-              : DYNAMIC_PLAYER_SCREEN_NDC_Y
-          }
-        />
+        <Canvas
+          gl={{
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance",
+          }}
+          dpr={[1, 2]}
+          style={{ touchAction: "none", background: "transparent" }}
+          onCreated={({ gl }) => {
+            gl.setClearColor(0x000000, 0);
+          }}
+        >
+          <OrthographicCamera
+            makeDefault
+            position={DEFAULT_CAMERA_POSITION}
+            rotation={DEFAULT_CAMERA_ROTATION}
+            zoom={DEFAULT_CAMERA_ZOOM}
+            near={0.1}
+            far={1000}
+          />
+          <FieldCameraController
+            legendPlayer={legendPlayer}
+            legendWorldPosition={legendWorldPosition}
+            cameraLocked={Boolean(stagedKickResult)}
+            framingKey={pendingAction?.id ?? "no-action"}
+            targetNdcY={
+              isDribbleScene
+                ? DRIBBLE_PLAYER_SCREEN_NDC_Y
+                : DYNAMIC_PLAYER_SCREEN_NDC_Y
+            }
+          />
 
-        <Suspense fallback={null}>
-          <Physics gravity={[0, -30, 0]} colliders={"ball"}>
-            <Sky sunPosition={[10, 10, 0]} />
-            <ContactShadows
-              frames={1}
-              scale={10}
-              position={[0, -2, 0]}
-              blur={4}
-              opacity={0.2}
-            />
-            <Stadium position={[0, 0, 0]} scale={10} rotation={[0, 0, 0]} />
+          <Suspense fallback={null}>
+            <Physics gravity={[0, -30, 0]} colliders={"ball"}>
+              <Sky sunPosition={[10, 10, 0]} />
+              <ContactShadows
+                frames={1}
+                scale={10}
+                position={[0, -2, 0]}
+                blur={4}
+                opacity={0.2}
+              />
+              <Stadium position={[0, 0, 0]} scale={10} rotation={[0, 0, 0]} />
 
-            <Ball
-              position={[ballX, ballY, ballZ]}
-              interactive={false}
-              renderOnly={true}
-              aimEnabled={Boolean(canAim && !releasedAimDraft)}
-              aimDraft={activeAimDraft}
-              kickControlEnvelope={kickControlEnvelope}
-              onAimChange={setActiveAimDraft}
-              onAimRelease={handleAimRelease}
-            />
-            {canAim && !releasedAimDraft && (
-              <BallAimSurface
+              <Ball
                 position={[ballX, ballY, ballZ]}
-                maximumPower={kickControlEnvelope?.maximum_power ?? 0}
-                focusOnMount={restoreAimFocus}
+                interactive={false}
+                renderOnly={true}
+                aimEnabled={Boolean(canAim && !releasedAimDraft)}
+                aimDraft={activeAimDraft}
+                kickControlEnvelope={kickControlEnvelope}
                 onAimChange={setActiveAimDraft}
                 onAimRelease={handleAimRelease}
               />
-            )}
+              {canAim && !releasedAimDraft && (
+                <BallAimSurface
+                  position={[ballX, ballY, ballZ]}
+                  maximumPower={kickControlEnvelope?.maximum_power ?? 0}
+                  focusOnMount={restoreAimFocus}
+                  onAimChange={setActiveAimDraft}
+                  onAimRelease={handleAimRelease}
+                />
+              )}
 
-            {myPlayers.map((player) => (
-              <BackendPlayerModel
-                key={player.id}
-                player={player}
-                isTeammate={true}
-                ballFieldPosition={ballFieldPosition}
-                stagedDecisionResult={stagedDecisionResult}
-                isResultAnimating={isResultAnimating}
-                legendPlayerId={displayFieldState?.legend_player_id ?? null}
-                screenAnchorTestId={
-                  isDribbleScene &&
-                  player.id === displayFieldState?.legend_player_id
-                    ? "legend-player-anchor"
-                    : null
-                }
-                showPlayerLabel={showLegendPlayerLabel}
-                visualFieldXOffset={
-                  isDribbleScene &&
-                  player.id === displayFieldState?.legend_player_id
-                    ? dribbleVisualFieldXOffset
-                    : 0
-                }
-                visualFieldYOffset={dribbleVisualFieldYOffset}
+              {myPlayers.map((player) => (
+                <BackendPlayerModel
+                  key={player.id}
+                  player={player}
+                  isTeammate={true}
+                  ballFieldPosition={ballFieldPosition}
+                  stagedDecisionResult={stagedDecisionResult}
+                  isResultAnimating={isResultAnimating}
+                  legendPlayerId={displayFieldState?.legend_player_id ?? null}
+                  screenAnchorTestId={
+                    isDribbleScene &&
+                    player.id === displayFieldState?.legend_player_id
+                      ? "legend-player-anchor"
+                      : null
+                  }
+                  showPlayerLabel={showLegendPlayerLabel}
+                  visualFieldXOffset={
+                    isDribbleScene &&
+                    player.id === displayFieldState?.legend_player_id
+                      ? dribbleVisualFieldXOffset
+                      : 0
+                  }
+                  visualFieldYOffset={dribbleVisualFieldYOffset}
+                />
+              ))}
+              {opponentPlayers.map((player) => (
+                <BackendPlayerModel
+                  key={player.id}
+                  player={player}
+                  isTeammate={false}
+                  ballFieldPosition={ballFieldPosition}
+                  stagedDecisionResult={stagedDecisionResult}
+                  isResultAnimating={isResultAnimating}
+                  legendPlayerId={displayFieldState?.legend_player_id ?? null}
+                  screenAnchorTestId={
+                    isDribbleScene && player.id === dribbleDefenderId
+                      ? "dribble-defender-anchor"
+                      : null
+                  }
+                  showPlayerLabel={showLegendPlayerLabel}
+                  visualFieldYOffset={dribbleVisualFieldYOffset}
+                />
+              ))}
+              <Preload all />
+              <FieldRenderReadiness
+                key={renderSceneKey}
+                sceneKey={renderSceneKey}
+                onReadinessChange={handleRenderReadiness}
               />
-            ))}
-            {opponentPlayers.map((player) => (
-              <BackendPlayerModel
-                key={player.id}
-                player={player}
-                isTeammate={false}
-                ballFieldPosition={ballFieldPosition}
-                stagedDecisionResult={stagedDecisionResult}
-                isResultAnimating={isResultAnimating}
-                legendPlayerId={displayFieldState?.legend_player_id ?? null}
-                screenAnchorTestId={
-                  isDribbleScene && player.id === dribbleDefenderId
-                    ? "dribble-defender-anchor"
-                    : null
-                }
-                showPlayerLabel={showLegendPlayerLabel}
-                visualFieldYOffset={dribbleVisualFieldYOffset}
-              />
-            ))}
-            <Preload all />
-            <FieldRenderReadiness
-              key={renderSceneKey}
-              sceneKey={renderSceneKey}
-              onReadinessChange={handleRenderReadiness}
-            />
-          </Physics>
-        </Suspense>
-      </Canvas>
+            </Physics>
+          </Suspense>
+        </Canvas>
+      </FieldCanvasErrorBoundary>
       <FieldLoadingOverlay
         visible={showFieldLoadingOverlay}
         progress={assetsProgress}
@@ -1902,78 +2193,80 @@ export default function GameScene({
           onContinue={handleUnsupportedSceneRecovery}
         />
       )}
-      {(phase === "recoverable_error" || phase === "unsupported_contract") &&
-        !stagedKickResult && (
-          <div
-            data-testid="scene-contract-error"
-            role="alert"
-            className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
-          >
-            <p className="font-orbitron text-[10px] font-black tracking-[0.28em] text-pink-200 uppercase">
-              Recoverable Match Error
-            </p>
-            <p className="mt-3 text-base leading-6 text-cyan-50">
-              {diagnostic?.message ||
-                "The live match scene could not be rendered safely."}
-            </p>
-            <div className="mt-5 flex gap-3">
-              {diagnostic?.recoveryAction !== "STOP" && (
+      {hasBlockingSessionError && (
+        <div
+          data-testid="scene-contract-error"
+          role="alert"
+          className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
+        >
+          <p className="font-orbitron text-[10px] font-black tracking-[0.28em] text-pink-200 uppercase">
+            Recoverable Match Error
+          </p>
+          <p className="mt-3 text-base leading-6 text-cyan-50">
+            {diagnostic?.message ||
+              "The live match scene could not be rendered safely."}
+          </p>
+          <div className="mt-5 flex gap-3">
+            {diagnostic?.recoveryAction !== "STOP" && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (diagnostic?.recoveryAction === "REAUTHENTICATE") {
+                    navigate("/login");
+                    return;
+                  }
+                  setRehydrationKey((value) => value + 1);
+                }}
+                className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
+              >
+                {diagnostic?.recoveryAction === "REAUTHENTICATE"
+                  ? "Sign in again"
+                  : diagnostic?.recoveryAction === "HYDRATE_MATCH"
+                    ? "Refresh match state"
+                    : diagnostic?.recoveryAction === "CHECK_TRANSPORT"
+                      ? "Check connection"
+                      : "Refresh"}
+              </button>
+            )}
+            {retrySafe &&
+              diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
+              pendingCommand?.operation === "action" && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (diagnostic?.recoveryAction === "REAUTHENTICATE") {
-                      navigate("/login");
-                      return;
-                    }
-                    setRehydrationKey((value) => value + 1);
-                  }}
+                  onClick={retryPendingAction}
                   className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
                 >
-                  {diagnostic?.recoveryAction === "REAUTHENTICATE"
-                    ? "Sign in again"
-                    : diagnostic?.recoveryAction === "HYDRATE_MATCH"
-                      ? "Refresh match state"
-                      : diagnostic?.recoveryAction === "CHECK_TRANSPORT"
-                        ? "Check connection"
-                        : "Refresh"}
+                  Retry exact action
                 </button>
               )}
-              {retrySafe &&
-                diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
-                pendingCommand?.operation === "action" && (
-                  <button
-                    type="button"
-                    onClick={retryPendingAction}
-                    className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
-                  >
-                    Retry exact action
-                  </button>
-                )}
-              {match?.id && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/match/${match.id}`)}
-                  className="rounded-xl border border-white/18 px-4 py-2 text-xs font-bold tracking-[0.12em] text-white/82 uppercase"
-                >
-                  Timeline
-                </button>
-              )}
-            </div>
+            {match?.id && (
+              <button
+                type="button"
+                onClick={() => navigate(`/match/${match.id}`)}
+                className="rounded-xl border border-white/18 px-4 py-2 text-xs font-bold tracking-[0.12em] text-white/82 uppercase"
+              >
+                Timeline
+              </button>
+            )}
           </div>
-        )}
-      {releasedAimDraft && kickControlEnvelope && (
-        <KickContactDialog
-          envelope={kickControlEnvelope}
-          contact={strikeContact}
-          submittedPower={displayedKickDecision?.kick_input.power ?? 0}
-          submitError={submitError}
-          isSubmitting={isSubmitting}
-          onContactChange={handleStrikeContactChange}
-          onClose={closeContactDialog}
-          onSubmit={handleKick}
-        />
+        </div>
       )}
-      {stagedKickResult && (
+      {releasedAimDraft &&
+        kickControlEnvelope &&
+        phase !== "recoverable_error" &&
+        phase !== "unsupported_contract" && (
+          <KickContactDialog
+            envelope={kickControlEnvelope}
+            contact={strikeContact}
+            submittedPower={displayedKickDecision?.kick_input.power ?? 0}
+            submitError={submitError}
+            isSubmitting={isSubmitting}
+            onContactChange={handleStrikeContactChange}
+            onClose={closeContactDialog}
+            onSubmit={handleKick}
+          />
+        )}
+      {stagedKickResult && !hasBlockingSessionError && (
         <div
           data-testid="kick-result"
           data-outcome-type={

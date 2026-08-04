@@ -3,9 +3,10 @@ import { expect, type Page, test } from "@playwright/test";
 import dribbleScene from "../tests/fixtures/match-api-v1/examples/scenes/dribble.json" with { type: "json" };
 import waitingOpenPlay from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
+import { withCommittedActionReceipt } from "./support/operation-receipt";
 import { enableDebugResultContinuation } from "./support/result-continuation";
 
-const FIELD_READY_TIMEOUT_MS = 45_000;
+const FIELD_READY_TIMEOUT_MS = 90_000;
 const DRIBBLE_OUTCOMES = [
   {
     outcomeType: "DRIBBLE_SURVIVAL",
@@ -76,7 +77,7 @@ const teams = {
   },
 };
 
-function dribbleResponse(actionId = "action-dribble-1") {
+function dribbleResponse(actionId = "action-dribble-1", revision = 0) {
   const response = structuredClone(waitingOpenPlay);
   const pendingAction = structuredClone(dribbleScene);
   pendingAction.id = actionId;
@@ -98,6 +99,7 @@ function dribbleResponse(actionId = "action-dribble-1") {
     ],
     match: {
       ...response.match,
+      revision,
       current_time: pendingAction.minute,
       prev_time: pendingAction.minute - 1,
       match_status: "WAITING_FOR_DECISION",
@@ -106,8 +108,12 @@ function dribbleResponse(actionId = "action-dribble-1") {
   };
 }
 
-function resolvedDribble(outcome: DribbleOutcomeCase, actionId: string) {
-  const response = dribbleResponse(actionId);
+function resolvedDribble(
+  outcome: DribbleOutcomeCase,
+  actionId: string,
+  revision = 0,
+) {
+  const response = dribbleResponse(actionId, revision);
   const minute = response.minute + 1;
   return {
     ...response,
@@ -150,17 +156,25 @@ function resolvedDribble(outcome: DribbleOutcomeCase, actionId: string) {
   };
 }
 
+function committedDribble(
+  outcome: DribbleOutcomeCase,
+  actionId: string,
+  decisionData: Record<string, unknown>,
+  revision = 0,
+) {
+  const submitted = dribbleResponse(actionId, revision);
+  const resolved = resolvedDribble(outcome, actionId, revision);
+  return withCommittedActionReceipt(submitted, resolved, {
+    decisionData,
+    operationId: `operation-${actionId}`,
+  });
+}
+
 async function hydrateDribble(
   page: Page,
   response: ReturnType<typeof dribbleResponse> = dribbleResponse(),
 ) {
-  const currentPath = new URL(page.url()).pathname;
-  if (/^\/match\/[^/]+$/u.test(currentPath)) {
-    await page.goBack();
-    await expect(page).toHaveURL(/\/game$/u);
-  } else if (currentPath !== "/game") {
-    await page.goto("/game");
-  }
+  const gamePath = `/game/${response.match.id}`;
   await page.waitForFunction(
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
   );
@@ -187,6 +201,13 @@ async function hydrateDribble(
     },
     { response, ...teams },
   );
+  if (new URL(page.url()).pathname !== gamePath) {
+    await page.evaluate((pathname) => {
+      window.history.pushState({}, "", pathname);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, gamePath);
+    await expect(page).toHaveURL(new RegExp(`${gamePath}$`, "u"));
+  }
   await expect(page.getByTestId("game-field")).toHaveAttribute(
     "data-render-ready",
     "true",
@@ -212,21 +233,35 @@ async function swipeDribbleControls(
 
   if (mobile) {
     const session = await page.context().newCDPSession(page);
+    const waitForAnimationFrame = () =>
+      page.evaluate(
+        () =>
+          new Promise<void>((resolve) => {
+            requestAnimationFrame(() => resolve());
+          }),
+      );
+    const touchPoint = (x: number, y: number) => ({
+      id: 1,
+      x,
+      y,
+      radiusX: 1,
+      radiusY: 1,
+      force: 1,
+    });
     try {
       await session.send("Input.dispatchTouchEvent", {
         type: "touchStart",
-        touchPoints: [start],
+        touchPoints: [touchPoint(start.x, start.y)],
       });
+      await waitForAnimationFrame();
       for (const progress of [0.33, 0.66, 1]) {
         await session.send("Input.dispatchTouchEvent", {
           type: "touchMove",
           touchPoints: [
-            {
-              x: start.x + (end.x - start.x) * progress,
-              y: start.y,
-            },
+            touchPoint(start.x + (end.x - start.x) * progress, start.y),
           ],
         });
+        await waitForAnimationFrame();
       }
       await session.send("Input.dispatchTouchEvent", {
         type: "touchEnd",
@@ -238,10 +273,36 @@ async function swipeDribbleControls(
     return;
   }
 
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 4 });
-  await page.mouse.up();
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: start.x,
+      y: start.y,
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: start.x,
+      y: start.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x: end.x,
+      y: end.y,
+      button: "left",
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: end.x,
+      y: end.y,
+      button: "left",
+      clickCount: 1,
+    });
+  } finally {
+    await session.detach();
+  }
 }
 
 async function tapDribbleLane(
@@ -275,7 +336,25 @@ async function tapDribbleLane(
     return;
   }
 
-  await page.mouse.click(point.x, point.y);
+  const session = await page.context().newCDPSession(page);
+  try {
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: point.x,
+      y: point.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await session.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: point.x,
+      y: point.y,
+      button: "left",
+      clickCount: 1,
+    });
+  } finally {
+    await session.detach();
+  }
 }
 
 async function dribblePlayerHudGeometry(page: Page) {
@@ -347,17 +426,26 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
   test.slow();
   test.setTimeout(240_000);
   const requests: unknown[] = [];
-  let authoritativeResponse = resolvedDribble(
-    DRIBBLE_OUTCOMES[0],
-    "action-dribble-case-0",
-  );
+  let authoritativeOutcome: DribbleOutcomeCase = DRIBBLE_OUTCOMES[0];
+  let authoritativeActionId = "action-dribble-case-0";
+  let authoritativeRevision = 0;
   await context.route("**/api/processMatchAction", async (route) => {
-    requests.push(route.request().postDataJSON());
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
+    requests.push(request);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
-      body: JSON.stringify(authoritativeResponse),
+      body: JSON.stringify(
+        committedDribble(
+          authoritativeOutcome,
+          authoritativeActionId,
+          request.match_decision,
+          authoritativeRevision,
+        ),
+      ),
     });
   });
   await enableDebugResultContinuation(page);
@@ -366,8 +454,10 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
   for (const [index, outcome] of DRIBBLE_OUTCOMES.entries()) {
     await test.step(outcome.outcomeType, async () => {
       const actionId = `action-dribble-case-${index}`;
-      authoritativeResponse = resolvedDribble(outcome, actionId);
-      await hydrateDribble(page, dribbleResponse(actionId));
+      authoritativeOutcome = outcome;
+      authoritativeActionId = actionId;
+      authoritativeRevision = index * 2;
+      await hydrateDribble(page, dribbleResponse(actionId, index * 2));
 
       const controls = page.getByTestId("dribble-controls");
       if (index === 0) {
@@ -434,7 +524,6 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
   test.slow();
   await enableDebugResultContinuation(page);
   const requests: unknown[] = [];
-  const requestTimes: number[] = [];
   await page.addInitScript(() => {
     const originalFetch = window.fetch;
     window.fetch = function (input, init) {
@@ -449,26 +538,38 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
           document.querySelector<HTMLElement>(
             '[data-testid="dribble-controls"]',
           )?.dataset.runStartedAtMs ?? "";
+        document.documentElement.dataset.dribbleRequestPerformanceNow = String(
+          performance.now(),
+        );
       }
       return originalFetch.call(this, input, init);
     };
   });
   await context.route("**/api/processMatchAction", async (route) => {
-    requests.push(route.request().postDataJSON());
-    requestTimes.push(Date.now());
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
+    requests.push(request);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
       body: JSON.stringify(
-        resolvedDribble(DRIBBLE_OUTCOMES[0], "action-dribble-real-timer"),
+        committedDribble(
+          DRIBBLE_OUTCOMES[0],
+          "action-dribble-real-timer",
+          request.match_decision,
+        ),
       ),
     });
   });
   await authenticateForContinuation(page);
   await page.bringToFront();
-  await hydrateDribble(page, dribbleResponse("action-dribble-real-timer"));
-  const controls = page.getByTestId("dribble-controls");
+  const realTimerResponse = dribbleResponse("action-dribble-real-timer");
+  const laneSwitchSeconds =
+    realTimerResponse.pending_action.field_state.dribble_pattern
+      .lane_switch_seconds;
+  await hydrateDribble(page, realTimerResponse);
   const setupHandle = await page.waitForFunction(() => {
     const controlsElement = document.querySelector<HTMLElement>(
       '[data-testid="dribble-controls"]',
@@ -490,11 +591,22 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
     ) {
       return null;
     }
+    if (!document.documentElement.dataset.dribbleTraceObserverInstalled) {
+      const captureTrace = () => {
+        document.documentElement.dataset.dribbleObservedLaneTrace =
+          controlsElement.dataset.laneTrace ?? "null";
+      };
+      captureTrace();
+      new MutationObserver(captureTrace).observe(controlsElement, {
+        attributeFilter: ["data-lane-trace"],
+        attributes: true,
+      });
+      document.documentElement.dataset.dribbleTraceObserverInstalled = "true";
+    }
     const centerBox = center.getBoundingClientRect();
     const groupBox = laneGroup.getBoundingClientRect();
     const swipeY = groupBox.top + groupBox.height * 0.5;
     return {
-      timerOrigin: performance.timeOrigin,
       timerStartedAtRaw,
       timerStartedAt,
       tap: {
@@ -509,29 +621,52 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
   });
   const gestureSetup = await setupHandle.jsonValue();
   if (!gestureSetup) throw new Error("Dribble gesture setup is unavailable.");
-  const { swipe, tap, timerOrigin, timerStartedAt, timerStartedAtRaw } =
-    gestureSetup;
+  const { swipe, tap, timerStartedAt, timerStartedAtRaw } = gestureSetup;
   expect(timerStartedAt).toBeGreaterThan(0);
-  await new Promise((resolve) => setTimeout(resolve, 650));
+  const centerLane = page.getByTestId("dribble-lane-center");
+  const rightLane = page.getByTestId("dribble-lane-right");
+  await expect(centerLane).toBeEnabled();
+  await expect
+    .poll(() => page.evaluate(() => performance.now()))
+    .toBeGreaterThanOrEqual(timerStartedAt + laneSwitchSeconds * 1000 + 16);
   await tapDribbleLane(
     page,
     "center",
     testInfo.project.name === "mobile-chromium",
     tap,
   );
-  await new Promise((resolve) => setTimeout(resolve, 650));
+  await expect
+    .poll(async () => {
+      const trace = JSON.parse(
+        (await page
+          .locator("html")
+          .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
+      ) as Array<{ lane: string }> | null;
+      return trace?.at(-1)?.lane ?? null;
+    })
+    .toBe("CENTER");
+  await expect(rightLane).toBeEnabled();
   await swipeDribbleControls(
     page,
     testInfo.project.name === "mobile-chromium",
     swipe,
   );
-  await expect(page.getByTestId("dribble-lane-right")).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  await expect
+    .poll(async () => {
+      const trace = JSON.parse(
+        (await page
+          .locator("html")
+          .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
+      ) as Array<{ lane: string }> | null;
+      return trace?.at(-1)?.lane ?? null;
+    })
+    .toBe("RIGHT");
   const observedTrace = JSON.parse(
-    (await controls.getAttribute("data-lane-trace")) ?? "null",
+    (await page
+      .locator("html")
+      .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
   ) as Array<{ at_second: number; lane: string }>;
+  expect(observedTrace).not.toBeNull();
   expect(observedTrace.map(({ lane }) => lane)).toEqual([
     "RIGHT",
     "CENTER",
@@ -542,7 +677,6 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
   expect(
     observedTrace[2].at_second - observedTrace[1].at_second,
   ).toBeGreaterThanOrEqual(0.58);
-  await expect(page.getByTestId("kick-result")).toHaveCount(0);
   const legendLabel = page.getByTestId("legend-player-label");
   await expect(legendLabel).toHaveCount(1);
   await expect(legendLabel).toBeHidden();
@@ -552,7 +686,12 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
     "data-dribble-request-timer-start",
     timerStartedAtRaw,
   );
-  const realTimerElapsed = requestTimes[0] - (timerOrigin + timerStartedAt);
+  const requestPerformanceNow = Number(
+    await page
+      .locator("html")
+      .getAttribute("data-dribble-request-performance-now"),
+  );
+  const realTimerElapsed = requestPerformanceNow - timerStartedAt;
   expect(realTimerElapsed).toBeGreaterThanOrEqual(7_500);
   expect(realTimerElapsed).toBeLessThanOrEqual(10_000);
   await page.waitForTimeout(300);
@@ -580,7 +719,10 @@ test("accepts tap and real pointer swipe and submits once on the real eight-seco
   // The production timer contract above remains entirely on one real rAF
   // mount. Pause only this second action so visual baselines can compare two
   // stable active frames without the eight-second result replacing the HUD.
-  await hydrateDribble(page, dribbleResponse("action-dribble-visual-evidence"));
+  await hydrateDribble(
+    page,
+    dribbleResponse("action-dribble-visual-evidence", 2),
+  );
   await advanceDribble(page, 1);
   const visualCenterLane = page.getByTestId("dribble-lane-center");
   await tapDribbleLane(

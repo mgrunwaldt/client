@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import {
   BrowserRouter,
   matchPath,
+  Navigate,
   Route,
   Routes,
   useLocation,
@@ -19,6 +20,7 @@ import {
   claim,
   connectionTest,
   game,
+  legacyGame,
   login,
   main,
   market,
@@ -118,6 +120,28 @@ function PersistentGameSceneHost() {
   );
 }
 
+function LegacyGameRedirect() {
+  const match = useMatchSessionStore((state) => state.match);
+  const phase = useMatchSessionStore((state) => state.phase);
+  const hasField = useMatchSessionStore((state) =>
+    Boolean(state.pendingAction?.field_state ?? state.fieldState),
+  );
+  if (!match) return <Navigate to={main} replace />;
+  if (phase === "created" || phase === "starting") {
+    return <Navigate to={`/pre-match/${match.id}`} replace />;
+  }
+  if (phase === "finished") {
+    return <Navigate to={`/match-result/${match.id}`} replace />;
+  }
+  if (
+    hasField &&
+    ["scene_ready", "submitting", "result_playback"].includes(phase)
+  ) {
+    return <Navigate to={`/game/${match.id}`} replace />;
+  }
+  return <Navigate to={`/match/${match.id}`} replace />;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -136,6 +160,7 @@ function App() {
               path={game}
               element={<div className="h-dvh w-full bg-black" />}
             />
+            <Route path={legacyGame} element={<LegacyGameRedirect />} />
             <Route path={main} element={<HomePage />} />
             <Route path={preMatchNonMatch} element={<PreNonMatchScreen />} />
             <Route path={preMatch} element={<PreMatchScreen />} />

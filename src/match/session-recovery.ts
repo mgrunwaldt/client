@@ -20,6 +20,13 @@ export interface MatchRecoveryJournal {
   version: 1;
   pendingCommand: MatchCommand | null;
   fieldDraft: MatchFieldDraft | null;
+  acknowledgedResult: MatchResultReceiptIdentity | null;
+}
+
+export interface MatchResultReceiptIdentity {
+  matchId: string;
+  committedRevision: number;
+  actionId: string;
 }
 
 const STORAGE_KEY = "overgoal.match-recovery.v1";
@@ -97,6 +104,28 @@ function isJsonValue(value: unknown, depth = 0): boolean {
     return false;
   }
   return Object.values(value).every((entry) => isJsonValue(entry, depth + 1));
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((entry, index) => jsonValuesEqual(entry, right[index]))
+    );
+  }
+  if (!isRecord(left) || !isRecord(right)) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && jsonValuesEqual(left[key], right[key]),
+    )
+  );
 }
 
 function isPayloadForMatch(value: unknown, matchId: string) {
@@ -216,14 +245,36 @@ function validDraft(value: unknown): value is MatchFieldDraft {
   );
 }
 
+function validResultReceiptIdentity(
+  value: unknown,
+): value is MatchResultReceiptIdentity {
+  return Boolean(
+    isRecord(value) &&
+      isIdentifier(value.matchId) &&
+      isNonNegativeRevision(value.committedRevision) &&
+      isIdentifier(value.actionId),
+  );
+}
+
 export function parseMatchRecoveryJournal(
   raw: string | null,
 ): MatchRecoveryJournal {
-  if (!raw) return { version: 1, pendingCommand: null, fieldDraft: null };
+  if (!raw)
+    return {
+      version: 1,
+      pendingCommand: null,
+      fieldDraft: null,
+      acknowledgedResult: null,
+    };
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!isRecord(parsed) || parsed.version !== 1) {
-      return { version: 1, pendingCommand: null, fieldDraft: null };
+      return {
+        version: 1,
+        pendingCommand: null,
+        fieldDraft: null,
+        acknowledgedResult: null,
+      };
     }
     return {
       version: 1,
@@ -233,9 +284,17 @@ export function parseMatchRecoveryJournal(
       fieldDraft: validDraft(parsed.fieldDraft)
         ? structuredClone(parsed.fieldDraft)
         : null,
+      acknowledgedResult: validResultReceiptIdentity(parsed.acknowledgedResult)
+        ? structuredClone(parsed.acknowledgedResult)
+        : null,
     };
   } catch {
-    return { version: 1, pendingCommand: null, fieldDraft: null };
+    return {
+      version: 1,
+      pendingCommand: null,
+      fieldDraft: null,
+      acknowledgedResult: null,
+    };
   }
 }
 
@@ -246,7 +305,11 @@ export function readMatchRecoveryJournal(): MatchRecoveryJournal {
 export function writeMatchRecoveryJournal(journal: MatchRecoveryJournal) {
   const target = storage();
   if (!target) return;
-  if (!journal.pendingCommand && !journal.fieldDraft) {
+  if (
+    !journal.pendingCommand &&
+    !journal.fieldDraft &&
+    !journal.acknowledgedResult
+  ) {
     target.removeItem(STORAGE_KEY);
     return;
   }
@@ -262,6 +325,47 @@ export function commandCanRetryAfterHydration(
       command.matchId === snapshot.match.id &&
       command.revision === snapshot.match.revision,
   );
+}
+
+export function matchCommandsExactly(
+  left: MatchCommand | null,
+  right: MatchCommand | null,
+) {
+  return Boolean(
+    left &&
+      right &&
+      left.operation === right.operation &&
+      left.idempotencyKey === right.idempotencyKey &&
+      left.matchId === right.matchId &&
+      left.revision === right.revision &&
+      left.actionId === right.actionId &&
+      jsonValuesEqual(left.payload, right.payload),
+  );
+}
+
+export function actionCommandMatchesDecision(
+  command: MatchCommand | null,
+  expected: {
+    matchId: string;
+    revision: number;
+    actionId: string;
+    decision: Record<string, unknown>;
+  },
+) {
+  if (
+    !command ||
+    command.operation !== "action" ||
+    command.matchId !== expected.matchId ||
+    command.revision !== expected.revision ||
+    command.actionId !== expected.actionId
+  ) {
+    return false;
+  }
+  return jsonValuesEqual(command.payload, {
+    match_id: expected.matchId,
+    action_id: expected.actionId,
+    match_decision: expected.decision,
+  });
 }
 
 export function fieldDraftMatchesSnapshot(

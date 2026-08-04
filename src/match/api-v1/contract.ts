@@ -382,9 +382,25 @@ export interface BackendOperationPlayback {
   version: 1;
   submitted_action: BackendPendingAction | null;
   submitted_field_state: BackendFieldState | null;
-  last_decision: Record<string, unknown> | null;
+  last_decision: BackendLastDecision | null;
   decision_result: BackendDecisionResult | null;
   events: BackendTimelineEvent[];
+}
+
+export interface BackendLastDecision {
+  id: string;
+  match_id: string;
+  sequence: number;
+  minute: number;
+  action: string;
+  action_team: BackendActionTeam;
+  action_id: string;
+  action_version: number;
+  decision_version: number;
+  decision_data: Record<string, unknown>;
+  field_state_id: string;
+  timestamp: number;
+  [key: string]: unknown;
 }
 
 export interface BackendMatchOperationReceipt {
@@ -1051,12 +1067,29 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
     }
   });
 
+const BackendLastDecisionSchema: z.ZodType<BackendLastDecision> = z
+  .object({
+    id: identifier,
+    match_id: identifier,
+    sequence: z.number().int().min(1),
+    minute: z.number().int().min(1).max(89),
+    action: z.string().trim().min(1),
+    action_team: actionTeam,
+    action_id: identifier,
+    action_version: z.number().int().min(1),
+    decision_version: z.number().int().min(1).max(5),
+    decision_data: z.record(z.string(), z.unknown()),
+    field_state_id: identifier,
+    timestamp: z.number().finite().min(0),
+  })
+  .passthrough();
+
 const BackendOperationPlaybackSchema: z.ZodType<BackendOperationPlayback> = z
   .object({
     version: z.literal(1),
     submitted_action: BackendPendingActionSchema.nullable(),
     submitted_field_state: BackendFieldStateSchema.nullable(),
-    last_decision: z.record(z.string(), z.unknown()).nullable(),
+    last_decision: BackendLastDecisionSchema.nullable(),
     decision_result: BackendDecisionResultSchema.nullable(),
     events: z.array(BackendTimelineEventSchema),
   })

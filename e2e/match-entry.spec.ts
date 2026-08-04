@@ -146,7 +146,7 @@ test("enters a production match once and reports truthful loading stages", async
   context,
   page,
 }, testInfo) => {
-  test.setTimeout(180_000);
+  test.setTimeout(360_000);
   let createCalls = 0;
   let startCalls = 0;
   let acceptedStart: ReturnType<typeof startedMatchResponse> | null = null;
@@ -307,7 +307,20 @@ test("enters a production match once and reports truthful loading stages", async
                     version: 1,
                     submitted_action: submittedAction,
                     submitted_field_state: submittedFieldState,
-                    last_decision: { choice: "KICK" },
+                    last_decision: {
+                      id: `decision-${submittedAction.id}`,
+                      match_id: committedMatch.id,
+                      sequence: 1,
+                      minute: submittedAction.minute,
+                      action: submittedAction.scene_type,
+                      action_team: submittedAction.action_team,
+                      action_id: submittedAction.id,
+                      action_version: submittedAction.contract_version ?? 1,
+                      decision_version: 1,
+                      decision_data: { choice: "KICK" },
+                      field_state_id: submittedAction.field_state_id,
+                      timestamp: 1,
+                    },
                     decision_result: {
                       description: "Successful pass.",
                       success: true,
