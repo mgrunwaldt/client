@@ -467,10 +467,13 @@ test("uses the full-color V1 mobile and desktop event treatment", async ({
   test.slow();
   await authenticateForContinuation(page);
   await hydrateScene(page, randomEventResponse(jumper, "action-jumper-visual"));
-  await expect(page.getByTestId("random-event-scene")).toHaveScreenshot(
-    "random-event-v1.png",
-    { animations: "disabled" },
-  );
+  await expect(page.getByTestId("random-event-scene")).toBeVisible();
+  // The event is a fixed, full-viewport overlay. Capturing the page preserves
+  // the same visual contract without Playwright trying to scroll a fixed
+  // locator while the WebGL field beneath it completes layout on Linux.
+  await expect(page).toHaveScreenshot("random-event-v1.png", {
+    animations: "disabled",
+  });
 });
 
 test("submits a valid future fourth choice and auto-continues in production mode", async ({
