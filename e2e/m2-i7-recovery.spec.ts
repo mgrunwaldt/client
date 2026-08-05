@@ -636,6 +636,51 @@ test("redirects the legacy game route instead of rendering an identity-free fiel
   await expect(page.getByTestId("game-field")).toHaveCount(0);
 });
 
+test("shows and recovers an initial direct-field hydration failure without inventing state", async ({
+  context,
+  page,
+}) => {
+  test.slow();
+  const matchId = "m2-i7-direct-field-recovery";
+  const response = openPlayResponse(matchId);
+  let hydrationRequests = 0;
+  await context.route(`**/api/match/${matchId}`, (route) => {
+    hydrationRequests += 1;
+    if (hydrationRequests === 1) {
+      return route.abort("internetdisconnected");
+    }
+    return route.fulfill({
+      status: 200,
+      headers: apiHeaders,
+      contentType: "application/json",
+      body: JSON.stringify(snapshotFromResponse(response)),
+    });
+  });
+
+  await authenticateForContinuation(page);
+  await page.goto(`/game/${matchId}`);
+
+  const field = page.getByTestId("game-field");
+  const recovery = page.getByTestId("scene-contract-error");
+  await expect(field).toHaveAttribute(
+    "data-session-phase",
+    "recoverable_error",
+  );
+  await expect(field).toHaveAttribute("data-interaction-phase", "blocked");
+  await expect(recovery).toBeVisible();
+  await expect(recovery).toContainText(/fetch|network|failed/i);
+  await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
+  await expect(page.getByTestId("ball-aim-target")).toHaveCount(0);
+  await recovery.getByRole("button", { name: "Refresh", exact: true }).click();
+
+  await expect.poll(() => hydrationRequests).toBe(2);
+  await expect(page.getByTestId("ball-aim-target")).toBeVisible({
+    timeout: 45_000,
+  });
+  await expectFieldPhase(page, "scene_ready", "idle");
+  await expect(recovery).toHaveCount(0);
+});
+
 test("rehydrates a pre-match that has not started without issuing a start command", async ({
   context,
   page,

@@ -1906,22 +1906,84 @@ export default function GameScene({
       ),
     );
   }, [setError]);
+  const hasBlockingSessionError =
+    phase === "recoverable_error" || phase === "unsupported_contract";
+  const blockingSessionError = hasBlockingSessionError ? (
+    <div
+      data-testid="scene-contract-error"
+      role="alert"
+      className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
+    >
+      <p className="font-orbitron text-[10px] font-black tracking-[0.28em] text-pink-200 uppercase">
+        Recoverable Match Error
+      </p>
+      <p className="mt-3 text-base leading-6 text-cyan-50">
+        {diagnostic?.message ||
+          "The live match scene could not be rendered safely."}
+      </p>
+      <div className="mt-5 flex gap-3">
+        {diagnostic?.recoveryAction !== "STOP" && (
+          <button
+            type="button"
+            onClick={() => {
+              if (diagnostic?.recoveryAction === "REAUTHENTICATE") {
+                navigate("/login");
+                return;
+              }
+              setRehydrationKey((value) => value + 1);
+            }}
+            className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
+          >
+            {diagnostic?.recoveryAction === "REAUTHENTICATE"
+              ? "Sign in again"
+              : diagnostic?.recoveryAction === "HYDRATE_MATCH"
+                ? "Refresh match state"
+                : diagnostic?.recoveryAction === "CHECK_TRANSPORT"
+                  ? "Check connection"
+                  : "Refresh"}
+          </button>
+        )}
+        {retrySafe &&
+          diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
+          pendingCommand?.operation === "action" && (
+            <button
+              type="button"
+              onClick={retryPendingAction}
+              className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
+            >
+              Retry exact action
+            </button>
+          )}
+        {match?.id && (
+          <button
+            type="button"
+            onClick={() => navigate(`/match/${match.id}`)}
+            className="rounded-xl border border-white/18 px-4 py-2 text-xs font-bold tracking-[0.12em] text-white/82 uppercase"
+          >
+            Timeline
+          </button>
+        )}
+      </div>
+    </div>
+  ) : null;
   if (active && routeMatchId && !authoritativeRouteReady) {
     return (
       <div
         data-testid="game-field"
-        data-session-phase="hydrating"
+        data-session-phase={hasBlockingSessionError ? phase : "hydrating"}
         data-interaction-phase="blocked"
         data-render-ready="false"
         className="fixed inset-0 z-40 overflow-hidden bg-[#0a4739]"
       >
         <FieldBackdrop />
-        <FieldLoadingOverlay visible progress={assetsProgress} />
+        <FieldLoadingOverlay
+          visible={!hasBlockingSessionError}
+          progress={assetsProgress}
+        />
+        {blockingSessionError}
       </div>
     );
   }
-  const hasBlockingSessionError =
-    phase === "recoverable_error" || phase === "unsupported_contract";
   const interactionPhase = hasBlockingSessionError
     ? "blocked"
     : stagedKickResult
@@ -2206,64 +2268,7 @@ export default function GameScene({
           onContinue={handleUnsupportedSceneRecovery}
         />
       )}
-      {hasBlockingSessionError && (
-        <div
-          data-testid="scene-contract-error"
-          role="alert"
-          className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
-        >
-          <p className="font-orbitron text-[10px] font-black tracking-[0.28em] text-pink-200 uppercase">
-            Recoverable Match Error
-          </p>
-          <p className="mt-3 text-base leading-6 text-cyan-50">
-            {diagnostic?.message ||
-              "The live match scene could not be rendered safely."}
-          </p>
-          <div className="mt-5 flex gap-3">
-            {diagnostic?.recoveryAction !== "STOP" && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (diagnostic?.recoveryAction === "REAUTHENTICATE") {
-                    navigate("/login");
-                    return;
-                  }
-                  setRehydrationKey((value) => value + 1);
-                }}
-                className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
-              >
-                {diagnostic?.recoveryAction === "REAUTHENTICATE"
-                  ? "Sign in again"
-                  : diagnostic?.recoveryAction === "HYDRATE_MATCH"
-                    ? "Refresh match state"
-                    : diagnostic?.recoveryAction === "CHECK_TRANSPORT"
-                      ? "Check connection"
-                      : "Refresh"}
-              </button>
-            )}
-            {retrySafe &&
-              diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
-              pendingCommand?.operation === "action" && (
-                <button
-                  type="button"
-                  onClick={retryPendingAction}
-                  className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
-                >
-                  Retry exact action
-                </button>
-              )}
-            {match?.id && (
-              <button
-                type="button"
-                onClick={() => navigate(`/match/${match.id}`)}
-                className="rounded-xl border border-white/18 px-4 py-2 text-xs font-bold tracking-[0.12em] text-white/82 uppercase"
-              >
-                Timeline
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {blockingSessionError}
       {releasedAimDraft &&
         kickControlEnvelope &&
         phase !== "recoverable_error" &&
