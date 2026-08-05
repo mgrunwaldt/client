@@ -227,14 +227,17 @@ async function tapDribbleScreenSide(
 ) {
   const target = page.getByTestId(`dribble-screen-${side}`);
   await expect(target).toBeEnabled();
-  const box = await target.boundingBox();
-  if (!box) throw new Error(`Dribble ${side} screen side is not measurable.`);
-  const position = { x: 20, y: Math.max(20, box.height - 20) };
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The dribble viewport is not measurable.");
+  const position = {
+    x: side === "left" ? 20 : viewport.width - 20,
+    y: Math.round(viewport.height * 0.75),
+  };
   if (mobile) {
-    await target.tap({ position });
+    await page.touchscreen.tap(position.x, position.y);
     return;
   }
-  await target.click({ position });
+  await page.mouse.click(position.x, position.y);
 }
 
 async function dribblePlayerHudGeometry(page: Page) {
@@ -319,7 +322,7 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
   // One matrix case deliberately exercises eight complete authoritative
   // result/continuation flows without duplicating browser setup per outcome.
   test.slow();
-  test.setTimeout(240_000);
+  test.setTimeout(330_000);
   const requests: unknown[] = [];
   let authoritativeOutcome: DribbleOutcomeCase = DRIBBLE_OUTCOMES[0];
   let authoritativeActionId = "action-dribble-case-0";

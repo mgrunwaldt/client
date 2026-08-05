@@ -448,13 +448,23 @@ test("enters a production match once and reports truthful loading stages", async
   await page.close();
 
   const refreshedTimelinePage = await context.newPage();
-  await refreshedTimelinePage.clock.install();
   await refreshedTimelinePage.goto("/match/match-entry-e2e");
   await refreshedTimelinePage.bringToFront();
   await expect(
     refreshedTimelinePage.getByText("LIVE", { exact: true }).first(),
   ).toBeVisible();
-  await refreshedTimelinePage.clock.runFor(20_000);
+  await refreshedTimelinePage.waitForFunction(
+    () => "__OVERGOAL_E2E_ADVANCE_TO_SCENE__" in globalThis,
+  );
+  await refreshedTimelinePage.evaluate((sceneMinute) => {
+    const advance = (
+      globalThis as typeof globalThis & {
+        __OVERGOAL_E2E_ADVANCE_TO_SCENE__?: (minute: number) => void;
+      }
+    ).__OVERGOAL_E2E_ADVANCE_TO_SCENE__;
+    if (!advance) throw new Error("Timeline test bridge is unavailable");
+    advance(sceneMinute);
+  }, acceptedStart!.pending_action!.minute);
   await expect(refreshedTimelinePage).toHaveURL(/\/game\/match-entry-e2e$/u, {
     timeout: 15_000,
   });

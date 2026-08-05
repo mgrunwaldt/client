@@ -159,7 +159,11 @@ export function BallAimSurface({
   };
 
   return (
-    <Html position={position} center>
+    <Html
+      position={position}
+      center
+      style={{ pointerEvents: enabled ? "auto" : "none" }}
+    >
       <button
         ref={targetRef}
         type="button"
