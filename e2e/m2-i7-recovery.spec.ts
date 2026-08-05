@@ -897,14 +897,59 @@ test("hydrates the exact contact draft and reconciles one ambiguous kick receipt
     timeout: 45_000,
   });
   await expectFieldPhase(page, "recoverable_error", "blocked");
+  await page.evaluate(() => {
+    const state = globalThis as typeof globalThis & {
+      __OVERGOAL_E2E_RESULT_ANIMATION_OBSERVER__?: MutationObserver;
+      __OVERGOAL_E2E_SAW_RESULT_ANIMATION__?: boolean;
+    };
+    const recordAnimation = () => {
+      if (
+        document
+          .querySelector('[data-testid="game-field"]')
+          ?.getAttribute("data-result-animating") === "true"
+      ) {
+        state.__OVERGOAL_E2E_SAW_RESULT_ANIMATION__ = true;
+      }
+    };
+    state.__OVERGOAL_E2E_SAW_RESULT_ANIMATION__ = false;
+    state.__OVERGOAL_E2E_RESULT_ANIMATION_OBSERVER__?.disconnect();
+    state.__OVERGOAL_E2E_RESULT_ANIMATION_OBSERVER__ = new MutationObserver(
+      recordAnimation,
+    );
+    state.__OVERGOAL_E2E_RESULT_ANIMATION_OBSERVER__.observe(
+      document.documentElement,
+      {
+        attributeFilter: ["data-result-animating"],
+        attributes: true,
+        subtree: true,
+      },
+    );
+    recordAnimation();
+  });
   await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByTestId("kick-result")).toBeVisible({
     timeout: 45_000,
   });
-  await expect(page.getByTestId("game-field")).toHaveAttribute(
-    "data-result-animating",
-    "true",
-  );
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean(
+          (
+            globalThis as typeof globalThis & {
+              __OVERGOAL_E2E_SAW_RESULT_ANIMATION__?: boolean;
+            }
+          ).__OVERGOAL_E2E_SAW_RESULT_ANIMATION__,
+        ),
+      ),
+    )
+    .toBe(true);
+  await page.evaluate(() => {
+    const state = globalThis as typeof globalThis & {
+      __OVERGOAL_E2E_RESULT_ANIMATION_OBSERVER__?: MutationObserver;
+    };
+    state.__OVERGOAL_E2E_RESULT_ANIMATION_OBSERVER__?.disconnect();
+    delete state.__OVERGOAL_E2E_RESULT_ANIMATION_OBSERVER__;
+  });
   await expectFieldPhase(page, "result_playback", "result_playback");
   await expect(page.getByTestId("kick-result")).toContainText(
     "Successful pass.",
