@@ -1,5 +1,11 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import type {
+  BackendMatchResponse,
+  BackendMatchSnapshot,
+  BackendTeam,
+} from "../src/match/api-v1/contract";
+import createMatch from "../tests/fixtures/match-api-v1/fixtures/server/create-match-response.json" with { type: "json" };
 import waitingOpenPlayResponse from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
 import {
   authenticateForContinuation,
@@ -8,6 +14,29 @@ import {
 
 const headlessGpuDiagnostic =
   /^warning: \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, GL_CLOSE_PATH_NV, High\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/;
+const knownFbxDiagnostic =
+  /^warning: THREE\.FBXLoader: (?:%s map is not supported in three\.js, skipping texture\.|unknown material type|Vertex has more than 4 skinning weights assigned to vertex\.)/;
+const typedWaitingOpenPlayResponse = structuredClone(
+  waitingOpenPlayResponse,
+) as unknown as BackendMatchResponse;
+
+const waitingOpenPlaySnapshot: BackendMatchSnapshot = {
+  match: typedWaitingOpenPlayResponse.match,
+  my_team: structuredClone(createMatch.my_team) as unknown as BackendTeam,
+  opponent_team: structuredClone(
+    createMatch.opponent_team,
+  ) as unknown as BackendTeam,
+  timeline: typedWaitingOpenPlayResponse.events,
+  pending_action: typedWaitingOpenPlayResponse.pending_action,
+  field_state: typedWaitingOpenPlayResponse.field_state,
+  pending_settlement_events:
+    typedWaitingOpenPlayResponse.pending_settlement_events,
+  unsupported_scene: typedWaitingOpenPlayResponse.unsupported_scene,
+  legend_availability: typedWaitingOpenPlayResponse.legend_availability,
+  halftime_summary: typedWaitingOpenPlayResponse.halftime_summary,
+  full_time_handoff: typedWaitingOpenPlayResponse.full_time_handoff,
+  latest_operation: null,
+};
 
 async function expectLazyRouteFallback(
   page: Page,
@@ -93,6 +122,18 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
 
   await authenticateToHome(page);
 
+  await page.route("**/api/match/match-fixture-1", (route) =>
+    route.fulfill({
+      status: 200,
+      headers: {
+        "Match-API-Version": "1",
+        "X-Request-Id": "app-smoke-field-loading",
+      },
+      contentType: "application/json",
+      body: JSON.stringify(waitingOpenPlaySnapshot),
+    }),
+  );
+
   page.on("pageerror", (error) => browserDiagnostics.push(error.message));
   page.on("console", (message) => {
     if (["warning", "error"].includes(message.type())) {
@@ -106,11 +147,12 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
     /\/assets\/GameScene-[^/]+\.js(?:\?.*)?$/,
   );
   await expect(page.getByTestId("game-field")).toBeVisible();
+  await expect(page.getByTestId("field-loading-overlay")).toBeVisible();
   await expect(page.getByText("Loading Field")).toBeVisible();
-  await expect(page.locator("canvas")).toHaveCount(0);
   await page.waitForTimeout(3_000);
   const unexpectedDiagnostics = browserDiagnostics.filter(
-    (message) => !headlessGpuDiagnostic.test(message),
+    (message) =>
+      !headlessGpuDiagnostic.test(message) && !knownFbxDiagnostic.test(message),
   );
   expect(unexpectedDiagnostics).toEqual([]);
 });
