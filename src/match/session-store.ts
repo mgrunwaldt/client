@@ -113,6 +113,14 @@ function initialSessionState() {
   };
 }
 
+function pendingActionFromResponse(response: BackendMatchResponse) {
+  return response.pending_action &&
+    !response.pending_action.field_state &&
+    response.field_state
+    ? { ...response.pending_action, field_state: response.field_state }
+    : response.pending_action;
+}
+
 function persistRecoveryJournal(state: MatchSessionData) {
   writeMatchRecoveryJournal({
     version: 1,
@@ -367,7 +375,7 @@ if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
         myTeam,
         opponentTeam,
         timelineEvents: response.events,
-        pendingAction: response.pending_action,
+        pendingAction: pendingActionFromResponse(response),
         unsupportedScene: response.unsupported_scene,
         legendAvailability: response.legend_availability,
         halftimeSummary: response.halftime_summary,

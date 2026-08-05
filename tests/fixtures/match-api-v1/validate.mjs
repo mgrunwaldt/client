@@ -220,10 +220,12 @@ function assertLifecycle(value, file) {
   if (status === 'FINISHED' && minute !== 90 && !isAdministrative) {
     throw new Error(`${file}: regulation FINISHED must be minute 90`);
   }
-  if (status === 'FINISHED' && !terminalHandoff && value.match?.engine_version === 'match-engine/5') {
+  if (status === 'FINISHED' && !terminalHandoff
+      && ['match-engine/5', 'match-engine/6'].includes(value.match?.engine_version)) {
     throw new Error(`${file}: current-engine FINISHED requires full_time_handoff`);
   }
-  if (status === 'HALFTIME' && !value.halftime_summary && value.match?.engine_version === 'match-engine/5') {
+  if (status === 'HALFTIME' && !value.halftime_summary
+      && ['match-engine/5', 'match-engine/6'].includes(value.match?.engine_version)) {
     throw new Error(`${file}: current-engine HALFTIME requires halftime_summary`);
   }
   if (status === 'WAITING_FOR_DECISION' && !value.pending_action) throw new Error(`${file}: waiting response requires pending_action`);

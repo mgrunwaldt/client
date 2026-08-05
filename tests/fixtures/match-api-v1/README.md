@@ -69,3 +69,12 @@ outside canonical engine state, so replay hashes and frozen engine history remai
 Unsupported scene contract versions fail closed into the same explicit recovery path as unknown
 scenes. Typed terminal, stale, intent-version, authentication,
 transport, and transient error recovery is executable in OpenAPI, AJV, Redocly, and live tests.
+
+M2-I8 advances live matches to `match-engine/6` and freezes engine/5. Every
+current field state carries the exact normalized/metric coordinate contract,
+stable team/player identity, attacking target, and a normalized sequence camera
+window. `FlightPoint` locks x/y/z/t semantics, and reconnect playback validates
+the full submitted field state. Current field/player/context schemas are closed,
+while historical v1-v5 reads retain their legacy schemas. Normalized free-kick y
+is clamped before metre derivation, and possession-chain receiver targets remain
+stable into the next-minute field state. The API prescribes no viewport pixels.

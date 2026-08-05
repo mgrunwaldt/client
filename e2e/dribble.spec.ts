@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { BackendMatchResponseSchema } from "../src/match/api-v1/contract";
 import dribbleScene from "../tests/fixtures/match-api-v1/examples/scenes/dribble.json" with { type: "json" };
 import waitingOpenPlay from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
@@ -168,6 +169,16 @@ function committedDribble(
     decisionData,
     operationId: `operation-${actionId}`,
   });
+}
+
+function validMatchResponse(value: unknown) {
+  const parsed = BackendMatchResponseSchema.safeParse(value);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid dribble fixture response: ${JSON.stringify(parsed.error.issues)}`,
+    );
+  }
+  return parsed.data;
 }
 
 async function hydrateDribble(
@@ -351,11 +362,13 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
       body: JSON.stringify(
-        committedDribble(
-          authoritativeOutcome,
-          authoritativeActionId,
-          request.match_decision,
-          authoritativeRevision,
+        validMatchResponse(
+          committedDribble(
+            authoritativeOutcome,
+            authoritativeActionId,
+            request.match_decision,
+            authoritativeRevision,
+          ),
         ),
       ),
     });
@@ -436,10 +449,12 @@ test("accepts left and right screen-side taps and submits once", async ({
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
       body: JSON.stringify(
-        committedDribble(
-          DRIBBLE_OUTCOMES[0],
-          "action-dribble-screen-taps",
-          request.match_decision,
+        validMatchResponse(
+          committedDribble(
+            DRIBBLE_OUTCOMES[0],
+            "action-dribble-screen-taps",
+            request.match_decision,
+          ),
         ),
       ),
     });

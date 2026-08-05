@@ -441,7 +441,7 @@ describe("backend match client", () => {
     });
   });
 
-  it("rejects pre-match responses without a complete authoritative Legend", async () => {
+  it("requires Legend data when creating a match but accepts replay snapshots", async () => {
     const create = await readFixture<Record<string, unknown>>(
       "server/create-match-response.json",
     );
@@ -480,8 +480,10 @@ describe("backend match client", () => {
         player_profile: defaultLegendProfile(),
       }),
     ).rejects.toBeInstanceOf(MatchApiContractError);
-    await expect(fetchBackendMatch("match-fixture-1")).rejects.toBeInstanceOf(
-      MatchApiContractError,
+    await expect(fetchBackendMatch("match-fixture-1")).resolves.toEqual(
+      expect.objectContaining({
+        match: expect.objectContaining({ match_status: "NOT_STARTED" }),
+      }),
     );
   });
 

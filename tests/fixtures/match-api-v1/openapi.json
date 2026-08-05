@@ -674,7 +674,139 @@
         "description": "Canonical match seed serialized as an opaque string to avoid numeric precision loss. M1 must persist it and derive all authoritative randomness from it."
       },
       "Rating": { "type": "number", "minimum": 0, "maximum": 100 },
-      "Coordinate": { "type": "number", "minimum": 0, "maximum": 100 },
+      "Coordinate": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+        "description": "Authoritative normalized pitch coordinate in the field-coordinate-system/1 axes."
+      },
+      "FieldCoordinateSystem": {
+        "type": "object",
+        "description": "One canonical system for pitch geometry, players, ball ground projection, labels, collision overlays, and every x/y/z flight point.",
+        "required": ["version", "x", "y", "z", "attacking_direction", "world_transform", "anchors"],
+        "properties": {
+          "version": { "const": "field-coordinate-system/1" },
+          "x": {
+            "type": "object",
+            "required": ["unit", "minimum", "maximum", "direction"],
+            "properties": {
+              "unit": { "const": "PERCENT_OF_PITCH_WIDTH" },
+              "minimum": { "const": 0 },
+              "maximum": { "const": 100 },
+              "direction": { "const": "LEFT_TO_RIGHT" }
+            },
+            "additionalProperties": false
+          },
+          "y": {
+            "type": "object",
+            "required": ["unit", "minimum", "maximum", "direction"],
+            "properties": {
+              "unit": { "const": "PERCENT_OF_PITCH_LENGTH" },
+              "minimum": { "const": 0 },
+              "maximum": { "const": 100 },
+              "direction": { "const": "OPPONENT_GOAL_TO_OWN_GOAL" }
+            },
+            "additionalProperties": false
+          },
+          "z": {
+            "type": "object",
+            "required": ["unit", "origin", "direction"],
+            "properties": {
+              "unit": { "const": "METRE" },
+              "origin": { "const": "PITCH_PLANE" },
+              "direction": { "const": "UP" }
+            },
+            "additionalProperties": false
+          },
+          "attacking_direction": { "const": "NEGATIVE_Y" },
+          "world_transform": {
+            "type": "object",
+            "required": ["version", "unit", "world_x", "world_y", "world_z"],
+            "properties": {
+              "version": { "const": "pitch-world-affine/1" },
+              "unit": { "const": "METRE" },
+              "world_x": { "$ref": "#/components/schemas/WorldAxisTransformX" },
+              "world_y": { "$ref": "#/components/schemas/WorldAxisTransformY" },
+              "world_z": { "$ref": "#/components/schemas/WorldAxisTransformZ" }
+            },
+            "additionalProperties": false
+          },
+          "anchors": {
+            "type": "object",
+            "required": ["player_xy", "ball_xy", "ball_z", "label_xy"],
+            "properties": {
+              "player_xy": { "const": "FEET_MIDPOINT" },
+              "ball_xy": { "const": "GROUND_PROJECTION" },
+              "ball_z": { "const": "BALL_CENTER" },
+              "label_xy": { "const": "PLAYER_FEET_MIDPOINT" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "WorldAxisTransformX": {
+        "type": "object",
+        "required": ["source_axis", "source_origin", "metres_per_unit"],
+        "properties": { "source_axis": { "const": "x" }, "source_origin": { "const": 50 }, "metres_per_unit": { "const": 0.68 } },
+        "additionalProperties": false
+      },
+      "WorldAxisTransformY": {
+        "type": "object",
+        "required": ["source_axis", "source_origin", "metres_per_unit"],
+        "properties": { "source_axis": { "const": "z" }, "source_origin": { "const": 0 }, "metres_per_unit": { "const": 1 } },
+        "additionalProperties": false
+      },
+      "WorldAxisTransformZ": {
+        "type": "object",
+        "required": ["source_axis", "source_origin", "metres_per_unit"],
+        "properties": { "source_axis": { "const": "y" }, "source_origin": { "const": 50 }, "metres_per_unit": { "const": 1.05 } },
+        "additionalProperties": false
+      },
+      "FieldSequence": {
+        "type": "object",
+        "description": "Backend-authored anchor and normalized crop locked for the submitted field-state input/playback/result sequence. It contains no viewport pixels.",
+        "required": ["version", "sequence_id", "anchor_player_id", "attacking_target", "camera"],
+        "properties": {
+          "version": { "const": 1 },
+          "sequence_id": { "$ref": "#/components/schemas/Identifier" },
+          "anchor_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "attacking_target": {
+            "type": "object",
+            "required": ["type", "x", "y", "goalkeeper_player_id"],
+            "properties": {
+              "type": { "const": "OPPONENT_GOAL_CENTER" },
+              "x": { "const": 50 },
+              "y": { "const": 0 },
+              "goalkeeper_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] }
+            },
+            "additionalProperties": false
+          },
+          "camera": {
+            "type": "object",
+            "required": ["policy_version", "projection", "locked", "mode", "view_window"],
+            "properties": {
+              "policy_version": { "const": "attacking-top-down/1" },
+              "projection": { "const": "ORTHOGRAPHIC_TOP_DOWN" },
+              "locked": { "const": true },
+              "mode": { "type": "string", "enum": ["FIXED_ATTACKING_THIRD", "CORNER_ATTACKING_THIRD", "FOLLOW_LEGEND"] },
+              "view_window": {
+                "type": "object",
+                "required": ["left", "top", "width", "height"],
+                "properties": {
+                  "left": { "type": "number", "minimum": -50, "maximum": 50 },
+                  "top": { "type": "number", "minimum": -40, "maximum": 60 },
+                  "width": { "const": 100 },
+                  "height": { "const": 50 }
+                },
+                "additionalProperties": false
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
       "MatchStatus": {
         "type": "string",
         "enum": ["NOT_STARTED", "IN_PROGRESS", "WAITING_FOR_DECISION", "WAITING_FOR_RECOVERY", "HALFTIME", "FINISHED"]
@@ -816,8 +948,8 @@
           "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
           "engine_version": {
             "type": "string",
-            "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5"],
-            "description": "match-engine/5 supports live mutation. Persisted match-engine/1 through match-engine/4 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
+            "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5", "match-engine/6"],
+            "description": "match-engine/6 supports live mutation. Persisted match-engine/1 through match-engine/5 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
             "x-overgoal-m1-required": true
           },
           "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
@@ -848,11 +980,107 @@
         },
         "additionalProperties": true
       },
+      "CurrentMatchContext": {
+        "type": "object",
+        "description": "Closed match-engine/6 field context. MatchContext remains the historical engine v1-v5 read schema.",
+        "required": [
+          "seed", "distance_to_goal", "side_of_pitch", "pressure", "attack_phase",
+          "numerical_advantage", "quality_band", "previous_outcome", "carrier_player_id"
+        ],
+        "properties": {
+          "seed": { "type": "number" },
+          "distance_to_goal": { "type": "number", "minimum": 0, "maximum": 100 },
+          "side_of_pitch": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
+          "pressure": { "$ref": "#/components/schemas/Rating" },
+          "attack_phase": { "type": "string", "enum": ["SETTLED", "TRANSITION", "HALF_SPACE"] },
+          "numerical_advantage": { "type": "integer", "minimum": -2, "maximum": 2 },
+          "quality_band": { "type": "string", "enum": ["SAFE", "PROGRESSIVE", "RISKY"] },
+          "previous_outcome": { "type": ["string", "null"] },
+          "carrier_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "possession_state": { "type": "string", "enum": ["PASS_RECEIVED", "PENALTY_REBOUND"] },
+          "ball_x": { "$ref": "#/components/schemas/Coordinate" },
+          "ball_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": ["possession_state"],
+              "properties": { "possession_state": { "const": "PASS_RECEIVED" } }
+            },
+            "then": {
+              "required": [
+                "ball_x", "ball_y", "facing_target_x", "facing_target_y",
+                "facing_target_player_id", "carry_offset_m"
+              ],
+              "properties": {
+                "ball_x": { "$ref": "#/components/schemas/Coordinate" },
+                "ball_y": { "$ref": "#/components/schemas/Coordinate" },
+                "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+                "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+                "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+                "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 }
+              }
+            }
+          }
+        ],
+        "additionalProperties": false
+      },
+      "CurrentMatchMetadata": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MatchMetadata" },
+          {
+            "type": "object",
+            "properties": {
+              "possession_chain": { "$ref": "#/components/schemas/CurrentMatchContext" }
+            }
+          }
+        ],
+        "description": "Engine/6 match metadata with a closed possession-chain context when present."
+      },
+      "LegacyMatch": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Match" },
+          {
+            "type": "object",
+            "required": ["engine_version"],
+            "properties": {
+              "engine_version": {
+                "type": "string",
+                "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5"]
+              }
+            }
+          }
+        ],
+        "description": "Persisted read/replay match metadata for frozen engines 1 through 5."
+      },
+      "CurrentMatch": {
+        "allOf": [
+          { "$ref": "#/components/schemas/Match" },
+          {
+            "type": "object",
+            "required": ["engine_version"],
+            "properties": {
+              "engine_version": { "type": "string", "const": "match-engine/6" },
+              "pending_action": {
+                "oneOf": [{ "$ref": "#/components/schemas/CurrentPendingAction" }, { "type": "null" }]
+              },
+              "match_metadata": { "$ref": "#/components/schemas/CurrentMatchMetadata" }
+            }
+          }
+        ],
+        "description": "Live engine/6 match metadata with every embedded authoritative context on the closed current contract."
+      },
       "FieldPlayer": {
         "type": "object",
         "required": ["id", "role", "x", "y"],
         "properties": {
           "id": { "$ref": "#/components/schemas/Identifier" },
+          "team_id": { "$ref": "#/components/schemas/Identifier", "description": "Stable team identity; engine/6 supplies it for every field player." },
+          "team_side": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM"], "description": "Authoritative side, independent of role or display label." },
           "role": { "type": "string", "minLength": 1 },
           "x": { "$ref": "#/components/schemas/Coordinate" },
           "y": { "$ref": "#/components/schemas/Coordinate" },
@@ -862,7 +1090,7 @@
           "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
           "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
           "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 },
-          "collision_shape": { "$ref": "#/components/schemas/CollisionShape" }
+          "collision_shape": { "$ref": "#/components/schemas/CollisionShape", "description": "Authoritative metric body/receive geometry used by contact resolution." }
         },
         "additionalProperties": true
       },
@@ -870,9 +1098,9 @@
         "type": "object",
         "required": ["radius_m", "height_m", "receive_radius_m"],
         "properties": {
-          "radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9 },
-          "height_m": { "type": "number", "minimum": 1.7, "maximum": 2.44 },
-          "receive_radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9 }
+          "radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9, "description": "Horizontal interception radius in metres before adding ball radius." },
+          "height_m": { "type": "number", "minimum": 1.7, "maximum": 2.44, "description": "Inclusive authoritative contact reach in metres; standard players and walls use exactly 2.0 m." },
+          "receive_radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9, "description": "Forgiving teammate receive radius in metres before adding ball radius." }
         },
         "additionalProperties": false
       },
@@ -1017,9 +1245,66 @@
           "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 },
           "context": { "$ref": "#/components/schemas/MatchContext" },
           "dribble_pattern": { "$ref": "#/components/schemas/DribblePattern" },
-          "geometry": { "$ref": "#/components/schemas/FieldGeometry" }
+          "geometry": { "$ref": "#/components/schemas/FieldGeometry" },
+          "coordinate_system": { "$ref": "#/components/schemas/FieldCoordinateSystem" },
+          "sequence": { "$ref": "#/components/schemas/FieldSequence" }
         },
         "additionalProperties": true
+      },
+      "CurrentFieldPlayer": {
+        "type": "object",
+        "required": ["id", "team_id", "team_side", "role", "x", "y", "collision_shape"],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "team_id": { "$ref": "#/components/schemas/Identifier" },
+          "team_side": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM"] },
+          "side": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM"], "description": "Decision-contact compatibility alias; team_side remains the canonical field ownership key." },
+          "role": { "type": "string", "minLength": 1 },
+          "x": { "$ref": "#/components/schemas/Coordinate" },
+          "y": { "$ref": "#/components/schemas/Coordinate" },
+          "is_legend": { "type": "boolean" },
+          "has_ball": { "type": "boolean" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 },
+          "collision_shape": { "$ref": "#/components/schemas/CollisionShape" }
+        },
+        "additionalProperties": false
+      },
+      "CurrentFieldState": {
+        "type": "object",
+        "description": "Closed match-engine/6 field payload. FieldState remains the historical read schema for engines 1 through 5.",
+        "required": [
+          "id", "action_sequence", "match_id", "minute", "action_type", "scene_family",
+          "my_team_positions", "opponent_positions", "legend_player_id", "carrier_player_id",
+          "distance_to_goal", "ball_x", "ball_y", "context", "coordinate_system", "sequence"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Identifier" },
+          "action_sequence": { "type": "integer", "minimum": 1 },
+          "match_id": { "$ref": "#/components/schemas/Identifier" },
+          "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
+          "action_type": { "$ref": "#/components/schemas/PlayableSceneType" },
+          "scene_family": { "type": "string", "enum": ["OPEN_PLAY", "DRIBBLE", "FREE_KICK", "CORNER", "PENALTY", "RANDOM_EVENT"] },
+          "my_team_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/CurrentFieldPlayer" } },
+          "opponent_positions": { "type": "array", "minItems": 1, "items": { "$ref": "#/components/schemas/CurrentFieldPlayer" } },
+          "legend_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "carrier_player_id": { "$ref": "#/components/schemas/Identifier" },
+          "distance_to_goal": { "type": "number", "minimum": 0, "maximum": 100 },
+          "ball_x": { "$ref": "#/components/schemas/Coordinate" },
+          "ball_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_x": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_y": { "$ref": "#/components/schemas/Coordinate" },
+          "facing_target_player_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "carry_offset_m": { "type": "number", "minimum": 0, "maximum": 2 },
+          "context": { "$ref": "#/components/schemas/CurrentMatchContext" },
+          "dribble_pattern": { "$ref": "#/components/schemas/DribblePattern" },
+          "geometry": { "$ref": "#/components/schemas/FieldGeometry" },
+          "coordinate_system": { "$ref": "#/components/schemas/FieldCoordinateSystem" },
+          "sequence": { "$ref": "#/components/schemas/FieldSequence" }
+        },
+        "additionalProperties": false
       },
       "InputSchemaHint": {
         "type": "object",
@@ -1141,6 +1426,28 @@
         ],
         "discriminator": { "propertyName": "scene_type" }
       },
+      "CurrentPendingActionBase": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PendingActionBase" },
+          {
+            "type": "object",
+            "required": ["action_sequence", "context"],
+            "properties": {
+              "action_sequence": { "type": "integer", "minimum": 1 },
+              "context": { "$ref": "#/components/schemas/CurrentMatchContext" },
+              "field_state": { "$ref": "#/components/schemas/CurrentFieldState" }
+            }
+          }
+        ],
+        "description": "Engine/6 submitted-action payload with closed current context and embedded state."
+      },
+      "CurrentPendingAction": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PendingAction" },
+          { "$ref": "#/components/schemas/CurrentPendingActionBase" }
+        ],
+        "description": "Engine/6 pending action. Scene choice rules remain shared while authoritative context/state are current and strict."
+      },
       "TimelineEvent": {
         "type": "object",
         "required": [
@@ -1167,11 +1474,32 @@
       },
       "FlightPoint": {
         "type": "object",
+        "description": "Sampled authoritative ball-center point. x/y use the submitted field state's normalized axes, z is metres above the pitch, and t is seconds from contact.",
         "required": ["x", "y", "z", "t"],
         "properties": {
-          "x": { "type": "number" }, "y": { "type": "number" }, "z": { "type": "number" }, "t": { "type": "number", "minimum": 0 }
+          "x": { "type": "number", "description": "Normalized pitch x; may pass slightly outside 0..100 until the full ball crosses a boundary." },
+          "y": { "type": "number", "description": "Normalized pitch y; may pass slightly outside 0..100 until the full ball crosses a boundary or goal line." },
+          "z": { "type": "number", "minimum": 0.11, "description": "Ball-center height in metres, including the 0.11 m resting radius." },
+          "t": { "type": "number", "minimum": 0, "maximum": 6, "description": "Seconds from authoritative ball contact." }
         },
         "additionalProperties": false
+      },
+      "FlightPath": {
+        "type": "array",
+        "minItems": 2,
+        "prefixItems": [
+          {
+            "allOf": [
+              { "$ref": "#/components/schemas/FlightPoint" },
+              {
+                "type": "object",
+                "required": ["t"],
+                "properties": { "t": { "const": 0 } }
+              }
+            ]
+          }
+        ],
+        "items": { "$ref": "#/components/schemas/FlightPoint" }
       },
       "PendingSettlementEvent": {
         "type": "object",
@@ -1380,7 +1708,7 @@
           "follow_up_context": { "$ref": "#/components/schemas/MatchContext" },
           "follow_up_bound_reached": { "type": "boolean" },
           "follow_up_limit": { "type": "integer", "const": 8 },
-          "flight_path": { "type": "array", "items": { "$ref": "#/components/schemas/FlightPoint" } },
+          "flight_path": { "$ref": "#/components/schemas/FlightPath" },
           "flight_outcome": { "type": "string" },
           "final_point": { "$ref": "#/components/schemas/FlightPoint" },
           "receiver": { "$ref": "#/components/schemas/FieldPlayer" },
@@ -1395,6 +1723,12 @@
           "simulation_resolution": { "$ref": "#/components/schemas/SimulationResolution" },
           "resulting_attack_position": { "$ref": "#/components/schemas/DribbleAttackPosition" },
           "unsupported_scene_recovery": { "$ref": "#/components/schemas/UnsupportedSceneRecoveryResult" }
+        },
+        "dependentRequired": {
+          "flight_path": ["flight_outcome", "final_point"],
+          "flight_outcome": ["flight_path", "final_point"],
+          "final_point": ["flight_path", "flight_outcome"],
+          "automatic_follow_up": ["flight_path", "flight_outcome", "final_point"]
         },
         "allOf": [
           {
@@ -1436,6 +1770,21 @@
           }
         ],
         "additionalProperties": true
+      },
+      "CurrentDecisionResult": {
+        "allOf": [
+          { "$ref": "#/components/schemas/DecisionResult" },
+          {
+            "type": "object",
+            "properties": {
+              "follow_up_context": { "$ref": "#/components/schemas/CurrentMatchContext" },
+              "receiver": { "$ref": "#/components/schemas/CurrentFieldPlayer" },
+              "interceptor": { "$ref": "#/components/schemas/CurrentFieldPlayer" },
+              "kick_resolution": { "$ref": "#/components/schemas/CurrentKickResolution" }
+            }
+          }
+        ],
+        "description": "Engine/6 decision result with strict authoritative player and follow-up context payloads."
       },
       "DribbleEncounter": {
         "type": "object",
@@ -1589,25 +1938,16 @@
         },
         "additionalProperties": false
       },
-      "MatchOperationPlayback": {
+      "LegacyMatchOperationPlayback": {
         "type": "object",
+        "description": "Historical operation playback for frozen engines 1 through 5.",
         "required": ["version", "submitted_action", "submitted_field_state", "last_decision", "decision_result", "events"],
         "properties": {
           "version": { "type": "integer", "const": 1 },
           "submitted_action": { "oneOf": [{ "$ref": "#/components/schemas/PendingActionBase" }, { "type": "null" }] },
           "submitted_field_state": {
             "oneOf": [
-              {
-                "type": "object",
-                "required": ["id", "match_id", "minute", "action_sequence"],
-                "properties": {
-                  "id": { "$ref": "#/components/schemas/Identifier" },
-                  "match_id": { "$ref": "#/components/schemas/Identifier" },
-                  "minute": { "type": "integer", "minimum": 1, "maximum": 89 },
-                  "action_sequence": { "type": "integer", "minimum": 1 }
-                },
-                "additionalProperties": true
-              },
+              { "$ref": "#/components/schemas/FieldState" },
               { "type": "null" }
             ]
           },
@@ -1617,8 +1957,23 @@
         },
         "additionalProperties": false
       },
-      "MatchOperationReceipt": {
+      "CurrentMatchOperationPlayback": {
         "type": "object",
+        "description": "Engine/6 operation playback. Every duplicated authoritative state/context path uses a closed current schema.",
+        "required": ["version", "submitted_action", "submitted_field_state", "last_decision", "decision_result", "events"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "submitted_action": { "oneOf": [{ "$ref": "#/components/schemas/CurrentPendingActionBase" }, { "type": "null" }] },
+          "submitted_field_state": { "oneOf": [{ "$ref": "#/components/schemas/CurrentFieldState" }, { "type": "null" }] },
+          "last_decision": { "$ref": "#/components/schemas/LastDecision" },
+          "decision_result": { "$ref": "#/components/schemas/CurrentDecisionResult" },
+          "events": { "type": "array", "items": { "$ref": "#/components/schemas/TimelineEvent" } }
+        },
+        "additionalProperties": false
+      },
+      "LegacyMatchOperationReceipt": {
+        "type": "object",
+        "description": "Historical operation receipt selected by a containing engine/1-5 response.",
         "required": ["version", "operation_id", "operation", "status", "request_revision", "committed_revision", "action_id", "playback"],
         "properties": {
           "version": { "type": "integer", "const": 1 },
@@ -1628,11 +1983,35 @@
           "request_revision": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
           "committed_revision": { "type": "integer", "minimum": 0 },
           "action_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
-          "playback": { "oneOf": [{ "$ref": "#/components/schemas/MatchOperationPlayback" }, { "type": "null" }] }
+          "playback": { "oneOf": [{ "$ref": "#/components/schemas/LegacyMatchOperationPlayback" }, { "type": "null" }] }
         },
         "additionalProperties": false
       },
-      "MatchProgressResponse": {
+      "CurrentMatchOperationReceipt": {
+        "type": "object",
+        "description": "Engine/6 operation receipt selected by a containing current response.",
+        "required": ["version", "operation_id", "operation", "status", "request_revision", "committed_revision", "action_id", "playback"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "operation_id": { "$ref": "#/components/schemas/Identifier" },
+          "operation": { "type": "string", "enum": ["createMatch", "startMatch", "resumeMatch", "abandonMatch", "processMatchAction"] },
+          "status": { "type": "string", "const": "COMMITTED" },
+          "request_revision": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
+          "committed_revision": { "type": "integer", "minimum": 0 },
+          "action_id": { "oneOf": [{ "$ref": "#/components/schemas/Identifier" }, { "type": "null" }] },
+          "playback": { "oneOf": [{ "$ref": "#/components/schemas/CurrentMatchOperationPlayback" }, { "type": "null" }] }
+        },
+        "additionalProperties": false
+      },
+      "MatchOperationPlayback": {
+        "$ref": "#/components/schemas/LegacyMatchOperationPlayback",
+        "description": "Historical standalone playback schema. Current responses select CurrentMatchOperationPlayback through engine_version."
+      },
+      "MatchOperationReceipt": {
+        "$ref": "#/components/schemas/LegacyMatchOperationReceipt",
+        "description": "Historical standalone receipt schema. Current responses select CurrentMatchOperationReceipt through engine_version."
+      },
+      "MatchProgressResponseBase": {
         "type": "object",
         "required": ["minute", "status", "prev_time", "pending_action", "field_state", "action", "action_team", "events", "pending_settlement_events", "unsupported_scene", "legend_availability", "halftime_summary", "full_time_handoff", "match"],
         "properties": {
@@ -1656,6 +2035,40 @@
           "latest_operation": { "$ref": "#/components/schemas/MatchOperationReceipt" }
         },
         "additionalProperties": true
+      },
+      "LegacyMatchProgressResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MatchProgressResponseBase" },
+          {
+            "type": "object",
+            "properties": {
+              "match": { "$ref": "#/components/schemas/LegacyMatch" },
+              "latest_operation": { "$ref": "#/components/schemas/LegacyMatchOperationReceipt" }
+            }
+          }
+        ]
+      },
+      "CurrentMatchProgressResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MatchProgressResponseBase" },
+          {
+            "type": "object",
+            "properties": {
+              "match": { "$ref": "#/components/schemas/CurrentMatch" },
+              "pending_action": { "oneOf": [{ "$ref": "#/components/schemas/CurrentPendingAction" }, { "type": "null" }] },
+              "field_state": { "oneOf": [{ "$ref": "#/components/schemas/CurrentFieldState" }, { "type": "null" }] },
+              "decision_result": { "$ref": "#/components/schemas/CurrentDecisionResult" },
+              "latest_operation": { "$ref": "#/components/schemas/CurrentMatchOperationReceipt" }
+            }
+          }
+        ]
+      },
+      "MatchProgressResponse": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/LegacyMatchProgressResponse" },
+          { "$ref": "#/components/schemas/CurrentMatchProgressResponse" }
+        ],
+        "description": "Version-selected progress graph. Engine/6 cannot fall through the legacy field/context alternatives."
       },
       "CreateMatchRequest": {
         "type": "object",
@@ -1781,6 +2194,7 @@
       },
       "KickContact": {
         "type": "object",
+        "description": "First authoritative ball contact. PLAYER/GOALKEEPER player_id identifies the exact field player whose declared collision shape admitted contact at at.z.",
         "required": ["type", "at"],
         "properties": {
           "type": { "type": "string", "enum": ["PLAYER", "GOALKEEPER", "POST", "CROSSBAR"] },
@@ -1788,6 +2202,18 @@
           "at": { "$ref": "#/components/schemas/FlightPoint" },
           "speed_mps": { "type": "number", "minimum": 0 }
         },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "enum": ["PLAYER", "GOALKEEPER"] } }, "required": ["type"] },
+            "then": {
+              "required": ["player_id", "speed_mps"],
+              "properties": {
+                "player_id": { "$ref": "#/components/schemas/Identifier" },
+                "speed_mps": { "type": "number", "minimum": 0 }
+              }
+            }
+          }
+        ],
         "additionalProperties": false
       },
       "ReceiverControl": {
@@ -1822,7 +2248,7 @@
           "type": { "const": "TEAMMATE_SHOT" },
           "actor_player_id": { "$ref": "#/components/schemas/Identifier" },
           "opportunity": { "$ref": "#/components/schemas/AutomaticShotOpportunity" },
-          "flight_path": { "type": "array", "minItems": 2, "items": { "$ref": "#/components/schemas/FlightPoint" } },
+          "flight_path": { "$ref": "#/components/schemas/FlightPath" },
           "flight_outcome": { "type": "string", "minLength": 1 },
           "final_point": { "$ref": "#/components/schemas/FlightPoint" },
           "contact": { "oneOf": [{ "$ref": "#/components/schemas/KickContact" }, { "type": "null" }] },
@@ -1870,6 +2296,50 @@
           }
         },
         "additionalProperties": false
+      },
+      "CurrentKickResolution": {
+        "allOf": [
+          { "$ref": "#/components/schemas/KickResolution" },
+          {
+            "type": "object",
+            "properties": {
+              "follow_up": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["type", "scene_type", "context"],
+                    "properties": {
+                      "type": { "const": "SCENE" },
+                      "scene_type": { "$ref": "#/components/schemas/PlayableSceneType" },
+                      "context": { "$ref": "#/components/schemas/CurrentMatchContext" }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": ["type", "actor_player_id"],
+                    "properties": {
+                      "type": { "const": "AUTOMATIC_SHOT" },
+                      "actor_player_id": { "$ref": "#/components/schemas/Identifier" }
+                    },
+                    "additionalProperties": false
+                  },
+                  {
+                    "type": "object",
+                    "required": ["type", "carrier_player_id"],
+                    "properties": {
+                      "type": { "const": "TIMELINE" },
+                      "carrier_player_id": { "$ref": "#/components/schemas/Identifier" }
+                    },
+                    "additionalProperties": false
+                  },
+                  { "type": "null" }
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Engine/6 kick resolution with a closed scene follow-up context."
       },
       "KickFoul": {
         "type": "object",
@@ -1965,7 +2435,7 @@
         },
         "additionalProperties": false
       },
-      "MatchSnapshotResponse": {
+      "MatchSnapshotResponseBase": {
         "type": "object",
         "required": ["match", "my_team", "opponent_team", "timeline", "pending_action", "field_state", "pending_settlement_events", "unsupported_scene", "legend_availability", "halftime_summary", "full_time_handoff", "latest_operation"],
         "properties": {
@@ -1983,6 +2453,39 @@
           "latest_operation": { "oneOf": [{ "$ref": "#/components/schemas/MatchOperationReceipt" }, { "type": "null" }] }
         },
         "additionalProperties": false
+      },
+      "LegacyMatchSnapshotResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MatchSnapshotResponseBase" },
+          {
+            "type": "object",
+            "properties": {
+              "match": { "$ref": "#/components/schemas/LegacyMatch" },
+              "latest_operation": { "oneOf": [{ "$ref": "#/components/schemas/LegacyMatchOperationReceipt" }, { "type": "null" }] }
+            }
+          }
+        ]
+      },
+      "CurrentMatchSnapshotResponse": {
+        "allOf": [
+          { "$ref": "#/components/schemas/MatchSnapshotResponseBase" },
+          {
+            "type": "object",
+            "properties": {
+              "match": { "$ref": "#/components/schemas/CurrentMatch" },
+              "pending_action": { "oneOf": [{ "$ref": "#/components/schemas/CurrentPendingAction" }, { "type": "null" }] },
+              "field_state": { "oneOf": [{ "$ref": "#/components/schemas/CurrentFieldState" }, { "type": "null" }] },
+              "latest_operation": { "oneOf": [{ "$ref": "#/components/schemas/CurrentMatchOperationReceipt" }, { "type": "null" }] }
+            }
+          }
+        ]
+      },
+      "MatchSnapshotResponse": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/LegacyMatchSnapshotResponse" },
+          { "$ref": "#/components/schemas/CurrentMatchSnapshotResponse" }
+        ],
+        "description": "Version-selected snapshot graph. Engine/6 cannot validate through permissive historical state/context schemas."
       },
       "TimelineResponse": {
         "type": "object",

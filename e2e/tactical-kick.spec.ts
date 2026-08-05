@@ -8,11 +8,18 @@ import {
 import sharp from "sharp";
 
 import {
+  automaticKickResponse,
+  automaticShotExpectation,
   controlledKickResponse,
+  controlledKickScene,
   controlledResultExpectation,
 } from "../tests/fixtures/tactical-kick-scenes/controlled-result";
 import cornerScene from "../tests/fixtures/tactical-kick-scenes/corner.json" with { type: "json" };
 import freeKickScene from "../tests/fixtures/tactical-kick-scenes/free-kick.json" with { type: "json" };
+import lobAboveResponse from "../tests/fixtures/tactical-kick-scenes/lob-above-response.json" with { type: "json" };
+import lobAboveScene from "../tests/fixtures/tactical-kick-scenes/lob-above-scene.json" with { type: "json" };
+import lobBelowResponse from "../tests/fixtures/tactical-kick-scenes/lob-below-response.json" with { type: "json" };
+import lobBelowScene from "../tests/fixtures/tactical-kick-scenes/lob-below-scene.json" with { type: "json" };
 import openPlayScene from "../tests/fixtures/tactical-kick-scenes/open-play.json" with { type: "json" };
 import penaltyScene from "../tests/fixtures/tactical-kick-scenes/penalty.json" with { type: "json" };
 import { authenticateForContinuation } from "./support/auth";
@@ -41,7 +48,7 @@ const sceneExpectations: Record<
   }
 > = {
   OPEN_PLAY: {
-    ballPosition: ["50", "8"],
+    ballPosition: ["50", "26.67"],
     description: "Your Legend receives the ball in open play.",
     maximumPower: "0.94",
     title: "Open Play",
@@ -51,7 +58,7 @@ const sceneExpectations: Record<
     opponentRoles: "CAM,GK,LAM,LB,LCB,LDM,RAM,RB,RCB,RDM,ST",
   },
   FREE_KICK: {
-    ballPosition: ["50", "19.05"],
+    ballPosition: ["50", "20.95"],
     description: "Your Legend wins a dangerous free kick.",
     maximumPower: "0.94",
     title: "Free Kick",
@@ -99,6 +106,10 @@ const teams = {
     intensity: 70,
   },
 };
+
+function angularDistance(left: number, right: number) {
+  return Math.abs(Math.atan2(Math.sin(left - right), Math.cos(left - right)));
+}
 
 function canonicalScene(sceneType: TacticalSceneType) {
   return structuredClone(tacticalScenes[sceneType]);
@@ -245,7 +256,12 @@ async function previewAimArrow(
     x: bounds.x + bounds.width / 2,
     y: bounds.y + bounds.height / 2,
   };
-  const end = { x: start.x + offset.x, y: start.y + offset.y };
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("The tactical viewport is not measurable.");
+  const end = {
+    x: Math.max(8, Math.min(start.x + offset.x, viewport.width - 8)),
+    y: Math.max(8, Math.min(start.y + offset.y, viewport.height - 8)),
+  };
 
   const mobile = testInfo.project.name === "mobile-chromium";
   const touchSession = mobile ? await page.context().newCDPSession(page) : null;
@@ -254,10 +270,19 @@ async function previewAimArrow(
       type: "touchStart",
       touchPoints: [start],
     });
-    await touchSession.send("Input.dispatchTouchEvent", {
-      type: "touchMove",
-      touchPoints: [end],
-    });
+    for (let step = 1; step <= 6; step += 1) {
+      const progress = step / 6;
+      await touchSession.send("Input.dispatchTouchEvent", {
+        type: "touchMove",
+        touchPoints: [
+          {
+            x: start.x + (end.x - start.x) * progress,
+            y: start.y + (end.y - start.y) * progress,
+          },
+        ],
+      });
+      await page.waitForTimeout(16);
+    }
   } else {
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
@@ -279,8 +304,6 @@ async function previewAimArrow(
       { maxDiffPixelRatio: 0.002 },
     );
   }
-  const viewport = page.viewportSize();
-  if (!viewport) throw new Error("The tactical viewport is not measurable.");
   const clipWidth = Math.min(360, viewport.width);
   const clipHeight = Math.min(320, viewport.height);
   const clipX = Math.max(
@@ -320,6 +343,7 @@ async function previewAimArrow(
   }
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.getByRole("button", { name: "Close" }).click();
+  await expect(target).toBeFocused();
 }
 
 async function captureTacticalEvidence(
@@ -509,6 +533,7 @@ test("renders each canonical tactical scene with preloaded field assets", async 
   page,
 }, testInfo) => {
   test.setTimeout(240_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   const sceneTypes = ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"] as const;
   const matrixMatchId = "match-canonical-matrix";
   await authenticateForContinuation(page);
@@ -537,10 +562,14 @@ test("renders each canonical tactical scene with preloaded field assets", async 
         );
       }
       await waitForRenderableTacticalScene(page, sceneType);
-      await captureTacticalEvidence(
+      const screenshot = await captureTacticalEvidence(
         page,
         testInfo,
         `tactical-${sceneType.toLowerCase()}`,
+      );
+      expect(screenshot).toMatchSnapshot(
+        `tactical-${sceneType.toLowerCase()}.png`,
+        { maxDiffPixelRatio: 0.002 },
       );
     });
   }
@@ -653,6 +682,7 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
   page,
 }, testInfo) => {
   test.slow();
+  await enableDebugResultContinuation(page);
   const submittedRequests: unknown[] = [];
   const authoritativeResultMinute =
     canonicalScene("OPEN_PLAY").pending_action.minute;
@@ -739,6 +769,7 @@ test("submits one canonical reverse-drag kick and plays the authoritative result
   expect(JSON.stringify(submittedRequests[0])).not.toMatch(
     /seed|selection_quality|intent_hint|target|curve|lift/u,
   );
+  await page.getByTestId("next-action").click();
   await expect(page).toHaveURL(/\/match\/match-open_play$/u);
 });
 
@@ -747,6 +778,7 @@ test("plays authoritative teammate control and its later continuation field stat
   page,
 }, testInfo) => {
   test.slow();
+  await enableDebugResultContinuation(page);
   const response = controlledKickResponse();
   const expectation = controlledResultExpectation;
   await context.route("**/api/processMatchAction", async (route) => {
@@ -758,7 +790,7 @@ test("plays authoritative teammate control and its later continuation field stat
       contentType: "application/json",
       headers: { "Match-API-Version": "1" },
       body: JSON.stringify(
-        withCommittedActionReceipt(canonicalScene("OPEN_PLAY"), response, {
+        withCommittedActionReceipt(controlledKickScene(), response, {
           decisionData: request.match_decision,
         }),
       ),
@@ -769,9 +801,42 @@ test("plays authoritative teammate control and its later continuation field stat
   await page.waitForFunction(
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
   );
-  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+  await hydrateScene(page, controlledKickScene());
   const target = page.getByTestId("ball-aim-target");
   await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  const legendAnchor = page.getByTestId("legend-player-anchor");
+  await expect(legendAnchor).toBeAttached();
+  const cameraAnchor = page.getByTestId("field-camera-anchor");
+  await expect(cameraAnchor).toBeAttached();
+  const receiverProbe = page.locator(
+    `[data-testid="player-render-probe"][data-player-id="${expectation.receiverId}"]`,
+  );
+  await expect(receiverProbe).toBeAttached();
+  await page.evaluate((receiverId) => {
+    const probe = document.querySelector<HTMLElement>(
+      `[data-testid="player-render-probe"][data-player-id="${receiverId}"]`,
+    );
+    if (!probe) throw new Error("Receiver render probe is unavailable");
+    const samples: number[] = [];
+    const record = () => {
+      const value = Number(probe.dataset.rotationY);
+      if (!Number.isFinite(value) || samples.at(-1) === value) return;
+      samples.push(value);
+    };
+    record();
+    const observer = new MutationObserver(record);
+    observer.observe(probe, {
+      attributes: true,
+      attributeFilter: ["data-rotation-y"],
+    });
+    Object.assign(globalThis, {
+      __OVERGOAL_E2E_RECEIVER_ROTATION_OBSERVER__: observer,
+      __OVERGOAL_E2E_RECEIVER_ROTATION_SAMPLES__: samples,
+    });
+  }, expectation.receiverId);
+  const anchorBeforeKick = await cameraAnchor.boundingBox();
+  if (!anchorBeforeKick)
+    throw new Error("Legend camera anchor is not measurable");
   await reverseDragFromBall(
     page,
     target,
@@ -797,12 +862,20 @@ test("plays authoritative teammate control and its later continuation field stat
   const result = page.getByTestId("kick-result");
   const field = page.getByTestId("game-field");
   await expect(result).toBeVisible();
+  const anchorDuringPlayback = await cameraAnchor.boundingBox();
+  if (!anchorDuringPlayback)
+    throw new Error("Legend camera anchor disappeared during playback");
+  expect(Math.abs(anchorDuringPlayback.x - anchorBeforeKick.x)).toBeLessThan(1);
+  expect(Math.abs(anchorDuringPlayback.y - anchorBeforeKick.y)).toBeLessThan(1);
+  await expect(field).toHaveAttribute("data-result-animating", "false", {
+    timeout: FIELD_READY_TIMEOUT_MS,
+  });
   const expectedRenderedState = {
     resultMinute: String(expectation.actionMinute),
     continuationMinute: String(expectation.continuationMinute),
     receiverId: expectation.receiverId,
-    receiverX: String(expectation.receiverPosition.x),
-    receiverY: String(expectation.receiverPosition.y),
+    receiverX: String(expectation.resultReceiverPosition.x),
+    receiverY: String(expectation.resultReceiverPosition.y),
     controlCarrierId: expectation.receiverId,
     carrierId: expectation.receiverId,
     carrierX: String(expectation.receiverPosition.x),
@@ -818,7 +891,7 @@ test("plays authoritative teammate control and its later continuation field stat
     carrierCarryOffset: String(expectation.carryOffsetM),
     ballX: String(expectation.ballPosition.x),
     ballY: String(expectation.ballPosition.y),
-    legendPlayerId: canonicalScene("OPEN_PLAY").field_state.legend_player_id,
+    legendPlayerId: controlledKickScene().field_state.legend_player_id,
     resultCopy: expect.stringContaining(
       `${expectation.actionMinute}' · OPEN_PLAY`,
     ),
@@ -830,6 +903,47 @@ test("plays authoritative teammate control and its later continuation field stat
       page.locator("body").getAttribute("data-kick-result-resolved-seen"),
     )
     .toBe("true");
+  const anchorAfterPlayback = await cameraAnchor.boundingBox();
+  if (!anchorAfterPlayback)
+    throw new Error("Legend camera anchor disappeared after playback");
+  expect(Math.abs(anchorAfterPlayback.x - anchorBeforeKick.x)).toBeLessThan(1);
+  expect(Math.abs(anchorAfterPlayback.y - anchorBeforeKick.y)).toBeLessThan(1);
+  const rotationEvidence = await page.evaluate(() => {
+    const state = globalThis as typeof globalThis & {
+      __OVERGOAL_E2E_RECEIVER_ROTATION_OBSERVER__?: MutationObserver;
+      __OVERGOAL_E2E_RECEIVER_ROTATION_SAMPLES__?: number[];
+    };
+    state.__OVERGOAL_E2E_RECEIVER_ROTATION_OBSERVER__?.disconnect();
+    return state.__OVERGOAL_E2E_RECEIVER_ROTATION_SAMPLES__ ?? [];
+  });
+  const targetRotation = Number(
+    await receiverProbe.getAttribute("data-target-rotation-y"),
+  );
+  expect(rotationEvidence.length).toBeGreaterThanOrEqual(3);
+  expect(angularDistance(rotationEvidence[0], targetRotation)).toBeGreaterThan(
+    0.05,
+  );
+  expect(
+    rotationEvidence
+      .slice(1, -1)
+      .some((sample) => angularDistance(sample, targetRotation) > 0.01),
+  ).toBe(true);
+  expect(
+    angularDistance(rotationEvidence.at(-1) ?? Number.NaN, targetRotation),
+  ).toBeLessThan(0.03);
+
+  const receiverScreenPosition = await receiverProbe.boundingBox();
+  const ballProbe = page.getByTestId("ball-render-probe");
+  const ballScreenPosition = await ballProbe.boundingBox();
+  if (!receiverScreenPosition || !ballScreenPosition) {
+    throw new Error("Receiver carry render probes are not measurable");
+  }
+  expect(ballScreenPosition.y).toBeLessThan(receiverScreenPosition.y);
+  const carryDeltaM = Math.hypot(
+    (expectation.ballPosition.x - expectation.receiverPosition.x) * 0.68,
+    (expectation.ballPosition.y - expectation.receiverPosition.y) * 1.05,
+  );
+  expect(carryDeltaM).toBeCloseTo(expectation.carryOffsetM, 6);
   expect(expectation.continuationMinute).toBeGreaterThan(
     expectation.actionMinute,
   );
@@ -838,7 +952,130 @@ test("plays authoritative teammate control and its later continuation field stat
   expect(renderedState.bodyCopy).not.toContain("Waiting for field state.");
   expect(renderedState.bodyCopy).not.toContain("No backend field state");
 
-  await expect(page).toHaveURL(/\/match\/match-open_play$/u);
+  await page.getByTestId("next-action").click();
+  await expect(page).toHaveURL(/\/match\/match-controlled-pass$/u);
+});
+
+test("plays the incoming pass and automatic teammate shot as one authoritative sequence", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.slow();
+  await enableDebugResultContinuation(page);
+  const response = automaticKickResponse();
+  await context.route("**/api/processMatchAction", async (route) => {
+    const request = route.request().postDataJSON() as {
+      match_decision: Record<string, unknown>;
+    };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(
+        withCommittedActionReceipt(controlledKickScene(), response, {
+          decisionData: request.match_decision,
+        }),
+      ),
+    });
+  });
+
+  await authenticateForContinuation(page);
+  await page.waitForFunction(
+    () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
+  );
+  await hydrateScene(page, controlledKickScene());
+  await page.evaluate(() => {
+    const samples: Array<{ x: number; y: number; z: number }> = [];
+    let active = true;
+    let animationFrame = 0;
+    const record = () => {
+      const point = (
+        globalThis as typeof globalThis & {
+          __OVERGOAL_E2E_READ_LIVE_BALL__?: () => {
+            x: number;
+            y: number;
+            z: number;
+          } | null;
+        }
+      ).__OVERGOAL_E2E_READ_LIVE_BALL__?.();
+      const previous = samples[samples.length - 1];
+      if (
+        point &&
+        (!previous ||
+          previous.x !== point.x ||
+          previous.y !== point.y ||
+          previous.z !== point.z)
+      ) {
+        samples.push({ ...point });
+      }
+      if (active) animationFrame = requestAnimationFrame(record);
+    };
+    record();
+    Object.assign(globalThis, {
+      __OVERGOAL_E2E_AUTOMATIC_FLIGHT_SAMPLES__: samples,
+      __OVERGOAL_E2E_AUTOMATIC_FLIGHT_STOP__: () => {
+        active = false;
+        cancelAnimationFrame(animationFrame);
+      },
+    });
+  });
+
+  const target = page.getByTestId("ball-aim-target");
+  await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+  await reverseDragFromBall(
+    page,
+    target,
+    testInfo.project.name === "mobile-chromium",
+  );
+  await page.getByTestId("kick-submit").click();
+  const field = page.getByTestId("game-field");
+  await expect(field).toHaveAttribute("data-result-animating", "true", {
+    timeout: 20_000,
+  });
+  await expect(field).toHaveAttribute("data-result-animating", "false", {
+    timeout: 20_000,
+  });
+  const samples = await page.evaluate(() => {
+    const state = globalThis as typeof globalThis & {
+      __OVERGOAL_E2E_AUTOMATIC_FLIGHT_SAMPLES__?: Array<{
+        x: number;
+        y: number;
+        z: number;
+      }>;
+      __OVERGOAL_E2E_AUTOMATIC_FLIGHT_STOP__?: () => void;
+    };
+    state.__OVERGOAL_E2E_AUTOMATIC_FLIGHT_STOP__?.();
+    return state.__OVERGOAL_E2E_AUTOMATIC_FLIGHT_SAMPLES__ ?? [];
+  });
+  const distanceTo = (
+    point: { x: number; y: number },
+    targetPoint: { x: number; y: number },
+  ) =>
+    Math.hypot(
+      (point.x - targetPoint.x) * 0.68,
+      (point.y - targetPoint.y) * 1.05,
+    );
+  const receiveIndex = samples.findIndex(
+    (point) => distanceTo(point, automaticShotExpectation.receivePoint) < 0.65,
+  );
+  const shotFinalIndex = samples.findIndex(
+    (point, index) =>
+      index > receiveIndex &&
+      distanceTo(point, automaticShotExpectation.shotFinalPoint) < 0.65,
+  );
+  expect(receiveIndex, JSON.stringify(samples)).toBeGreaterThan(0);
+  expect(shotFinalIndex, JSON.stringify(samples)).toBeGreaterThan(receiveIndex);
+  await expect(page.getByTestId("kick-result")).toHaveAttribute(
+    "data-outcome-type",
+    "AUTOMATIC_TEAMMATE_MISSED",
+  );
+  await expect
+    .poll(async () =>
+      Number(
+        await page.getByTestId("ball-render-probe").getAttribute("data-ball-y"),
+      ),
+    )
+    .toBeCloseTo(automaticShotExpectation.shotFinalPoint.y, 6);
 });
 
 test("fails safely when teammate control is missing its authoritative contract", async ({
@@ -865,7 +1102,7 @@ test("fails safely when teammate control is missing its authoritative contract",
       headers: { "Match-API-Version": "1" },
       body: JSON.stringify({
         ...withCommittedActionReceipt(
-          canonicalScene("OPEN_PLAY"),
+          controlledKickScene(),
           malformedResponse,
           { decisionData: request.match_decision },
         ),
@@ -877,7 +1114,8 @@ test("fails safely when teammate control is missing its authoritative contract",
   await page.waitForFunction(
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
   );
-  await hydrateScene(page, canonicalScene("OPEN_PLAY"));
+  const controlledScene = controlledKickScene();
+  await hydrateScene(page, controlledScene);
   const target = page.getByTestId("ball-aim-target");
   await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
   await reverseDragFromBall(
@@ -895,7 +1133,7 @@ test("fails safely when teammate control is missing its authoritative contract",
   await expect(page.getByTestId("kick-result")).toHaveCount(0);
   await expect(page.getByTestId("game-field")).toHaveAttribute(
     "data-ball-y",
-    sceneExpectations.OPEN_PLAY.ballPosition[1],
+    String(controlledScene.field_state.ball_y),
   );
 });
 
@@ -903,6 +1141,7 @@ test("captures continuous tactical arrow visuals at short, maximum, diagonal, an
   page,
 }, testInfo) => {
   test.setTimeout(180_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await authenticateForContinuation(page);
   await hydrateScene(page, canonicalScene("FREE_KICK"));
   await waitForRenderableTacticalScene(page, "FREE_KICK");
@@ -963,6 +1202,243 @@ test("captures the rendered authoritative tactical result", async ({
   await expect(page.getByTestId("kick-result")).toBeVisible();
   await expect(page.getByText("39' · PENALTY", { exact: true })).toBeVisible();
   await captureTacticalEvidence(page, testInfo, "kick-result-playback", false);
+});
+
+test("renders authoritative player contact below 2 m and clearance above 2 m", async ({
+  context,
+  page,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  await enableDebugResultContinuation(page);
+  const cases = [
+    {
+      name: "below-reach",
+      scene: lobBelowScene,
+      response: lobBelowResponse,
+      clearsReach: false,
+    },
+    {
+      name: "above-reach",
+      scene: lobAboveScene,
+      response: lobAboveResponse,
+      clearsReach: true,
+    },
+  ] as const;
+  const responses = new Map(
+    cases.map((entry) => [entry.scene.match.id, entry] as const),
+  );
+  await context.route("**/api/processMatchAction", async (route) => {
+    const request = route.request().postDataJSON() as {
+      match_id: string;
+      match_decision: Record<string, unknown>;
+    };
+    const entry = responses.get(request.match_id);
+    if (!entry) throw new Error(`Unexpected lob match ${request.match_id}`);
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      headers: { "Match-API-Version": "1" },
+      body: JSON.stringify(
+        withCommittedActionReceipt(entry.scene, entry.response, {
+          decisionData: request.match_decision,
+        }),
+      ),
+    });
+  });
+
+  await authenticateForContinuation(page);
+  for (const entry of cases) {
+    await test.step(entry.name, async () => {
+      await hydrateScene(page, structuredClone(entry.scene));
+      const target = page.getByTestId("ball-aim-target");
+      await expect(target).toBeVisible({ timeout: FIELD_READY_TIMEOUT_MS });
+      const defenderId = "team_2_RB_2";
+      await expect(
+        page.locator(
+          `[data-testid="player-reach-probe"][data-player-id="${defenderId}"]`,
+        ),
+      ).toBeAttached();
+      await page.evaluate((playerId) => {
+        const samples: Array<{
+          animating: string | undefined;
+          ballFieldX: number;
+          ballFieldY: number;
+          ballZ: number;
+          rootBallY: number;
+          rootBallZ: number;
+        }> = [];
+        let best:
+          | {
+              ballFieldX: number;
+              ballFieldY: number;
+              ballZ: number;
+              distanceM: number;
+            }
+          | undefined;
+        let active = true;
+        let animationFrame = 0;
+        const record = () => {
+          const reach = document.querySelector<HTMLElement>(
+            `[data-testid="player-reach-probe"][data-player-id="${playerId}"]`,
+          );
+          const field = document.querySelector<HTMLElement>(
+            '[data-testid="game-field"]',
+          );
+          const liveBall = (
+            globalThis as typeof globalThis & {
+              __OVERGOAL_E2E_READ_LIVE_BALL__?: () => {
+                x: number;
+                y: number;
+                z: number;
+              } | null;
+            }
+          ).__OVERGOAL_E2E_READ_LIVE_BALL__?.();
+          if (liveBall && reach) {
+            const ballFieldX = liveBall.x;
+            const ballFieldY = liveBall.y;
+            const ballZ = liveBall.z;
+            const playerX = Number(reach.dataset.playerX);
+            const playerY = Number(reach.dataset.playerY);
+            const sample = {
+              animating: field?.dataset.resultAnimating,
+              ballFieldX,
+              ballFieldY,
+              ballZ,
+              rootBallY: Number(field?.dataset.ballY),
+              rootBallZ: Number(field?.dataset.ballZ),
+            };
+            const previous = samples.at(-1);
+            if (
+              !previous ||
+              previous.animating !== sample.animating ||
+              previous.ballFieldX !== sample.ballFieldX ||
+              previous.ballFieldY !== sample.ballFieldY ||
+              previous.ballZ !== sample.ballZ ||
+              previous.rootBallY !== sample.rootBallY ||
+              previous.rootBallZ !== sample.rootBallZ
+            ) {
+              samples.push(sample);
+              Object.assign(globalThis, {
+                __OVERGOAL_E2E_LOB_SAMPLES__: samples,
+              });
+            }
+            const segmentStart =
+              previous?.animating === "true" && sample.animating === "true"
+                ? previous
+                : sample;
+            const startX = (segmentStart.ballFieldX - playerX) * 0.68;
+            const startY = (segmentStart.ballFieldY - playerY) * 1.05;
+            const deltaX = (sample.ballFieldX - segmentStart.ballFieldX) * 0.68;
+            const deltaY = (sample.ballFieldY - segmentStart.ballFieldY) * 1.05;
+            const segmentLengthSquared = deltaX * deltaX + deltaY * deltaY;
+            const alpha =
+              segmentLengthSquared > 0
+                ? Math.max(
+                    0,
+                    Math.min(
+                      1,
+                      -(startX * deltaX + startY * deltaY) /
+                        segmentLengthSquared,
+                    ),
+                  )
+                : 0;
+            const closestX = startX + deltaX * alpha;
+            const closestY = startY + deltaY * alpha;
+            const distanceM = Math.hypot(closestX, closestY);
+            if (
+              Number.isFinite(distanceM) &&
+              distanceM < (best?.distanceM ?? 99)
+            ) {
+              best = {
+                ballFieldX:
+                  segmentStart.ballFieldX +
+                  (sample.ballFieldX - segmentStart.ballFieldX) * alpha,
+                ballFieldY:
+                  segmentStart.ballFieldY +
+                  (sample.ballFieldY - segmentStart.ballFieldY) * alpha,
+                ballZ:
+                  segmentStart.ballZ +
+                  (sample.ballZ - segmentStart.ballZ) * alpha,
+                distanceM,
+              };
+              Object.assign(globalThis, { __OVERGOAL_E2E_LOB_FRAME__: best });
+            }
+          }
+          if (active) animationFrame = requestAnimationFrame(record);
+        };
+        record();
+        Object.assign(globalThis, {
+          __OVERGOAL_E2E_LOB_FRAME_STOP__: () => {
+            active = false;
+            cancelAnimationFrame(animationFrame);
+          },
+        });
+      }, defenderId);
+
+      await reverseDragFromBall(
+        page,
+        target,
+        testInfo.project.name === "mobile-chromium",
+      );
+      await page.getByTestId("kick-submit").click();
+      const field = page.getByTestId("game-field");
+      await expect(field).toHaveAttribute("data-result-animating", "true", {
+        timeout: 20_000,
+      });
+      await expect(field).toHaveAttribute("data-result-animating", "false", {
+        timeout: 20_000,
+      });
+      await page.waitForTimeout(100);
+      const frame = await page.evaluate(() => {
+        const state = globalThis as typeof globalThis & {
+          __OVERGOAL_E2E_LOB_FRAME__?: {
+            ballFieldX: number;
+            ballFieldY: number;
+            ballZ: number;
+            distanceM: number;
+          };
+          __OVERGOAL_E2E_LOB_SAMPLES__?: Array<{
+            animating: string | undefined;
+            ballFieldX: number;
+            ballFieldY: number;
+            ballZ: number;
+            rootBallY: number;
+            rootBallZ: number;
+          }>;
+          __OVERGOAL_E2E_LOB_FRAME_STOP__?: () => void;
+        };
+        state.__OVERGOAL_E2E_LOB_FRAME_STOP__?.();
+        return {
+          frame: state.__OVERGOAL_E2E_LOB_FRAME__,
+          samples: state.__OVERGOAL_E2E_LOB_SAMPLES__ ?? [],
+        };
+      });
+      expect(frame.frame).toBeDefined();
+      expect(
+        frame.frame?.distanceM,
+        JSON.stringify(frame.samples),
+      ).toBeLessThan(0.65);
+      const decisionResult = entry.response.decision_result as {
+        flight_outcome: string;
+        interceptor?: { id: string } | null;
+      };
+      if (entry.clearsReach) {
+        expect(frame.frame?.ballZ).toBeGreaterThan(2);
+        expect(decisionResult.interceptor ?? null).toBeNull();
+        expect(decisionResult.flight_outcome).toBe("GOAL");
+      } else {
+        expect(frame.frame?.ballZ).toBeLessThan(2);
+        expect(decisionResult.interceptor?.id).toBe(defenderId);
+        expect(decisionResult.flight_outcome).toBe("DEFENDER_INTERCEPT");
+      }
+      await captureTacticalEvidence(
+        page,
+        testInfo,
+        `kick-${entry.name}-result`,
+        false,
+      );
+    });
+  }
 });
 
 test("automatically continues an authoritative tactical result after its hold", async ({

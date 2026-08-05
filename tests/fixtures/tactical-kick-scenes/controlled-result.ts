@@ -1,165 +1,103 @@
-import openPlayScene from "./open-play.json" with { type: "json" };
+import type { BackendMatchResponse } from "../../../src/match/api-v1/contract";
+import controlledPassResponse from "./controlled-pass-response.json" with { type: "json" };
+import controlledPassScene from "./controlled-pass-scene.json" with { type: "json" };
+
+const decisionResult = controlledPassResponse.decision_result;
+const receiver = decisionResult.receiver;
+const receiverControl = decisionResult.receiver_control;
+
+if (!receiver || !receiverControl) {
+  throw new Error("Controlled engine/6 pass fixture is incomplete");
+}
+const carrier = controlledPassResponse.field_state.my_team_positions.find(
+  (player) => player.id === receiverControl.carrier_player_id,
+);
+if (!carrier) {
+  throw new Error("Controlled engine/6 continuation carrier is missing");
+}
 
 export const controlledResultExpectation = {
-  actionMinute: 12,
-  continuationMinute: 15,
-  receiverId: "team_1_RCM_7",
-  receiverPosition: { x: 63.25, y: 41.75 },
+  actionMinute: controlledPassResponse.prev_time,
+  continuationMinute: controlledPassResponse.minute,
+  receiverId: receiver.id,
+  resultReceiverPosition: { x: receiver.x, y: receiver.y },
+  receiverPosition: { x: carrier.x, y: carrier.y },
   facingTarget: {
-    x: 50.256623494345696,
-    y: 5.182164659127596,
-    playerId: "team_2_GK_1",
+    x: receiverControl.facing_target_x,
+    y: receiverControl.facing_target_y,
+    playerId: receiverControl.facing_target_player_id,
   },
-  carryOffsetM: 0.65,
-  ballPosition: { x: 63.03563779098956, y: 41.14639522804265 },
+  carryOffsetM: receiverControl.carry_offset_m,
+  ballPosition: {
+    x: controlledPassResponse.field_state.ball_x,
+    y: controlledPassResponse.field_state.ball_y,
+  },
 } as const;
 
+export function controlledKickScene() {
+  return structuredClone(controlledPassScene);
+}
+
 export function controlledKickResponse() {
-  const response = structuredClone(openPlayScene);
-  const expectation = controlledResultExpectation;
-  const originalAction = response.pending_action;
-  const originalField = response.field_state;
-  const receiver = originalField.my_team_positions.find(
-    (player) => player.id === expectation.receiverId,
-  );
-  if (!receiver)
-    throw new Error("Controlled result receiver fixture is missing");
+  return structuredClone(controlledPassResponse);
+}
 
-  const receiverControl = {
-    carrier_player_id: expectation.receiverId,
-    facing_target_x: expectation.facingTarget.x,
-    facing_target_y: expectation.facingTarget.y,
-    facing_target_player_id: expectation.facingTarget.playerId,
-    carry_offset_m: expectation.carryOffsetM,
-  };
-  const continuationField = {
-    ...originalField,
-    id: "field-controlled-continuation",
-    minute: expectation.continuationMinute,
-    distance_to_goal: 43.75,
-    carrier_player_id: expectation.receiverId,
-    ball_x: expectation.ballPosition.x,
-    ball_y: expectation.ballPosition.y,
-    facing_target_x: expectation.facingTarget.x,
-    facing_target_y: expectation.facingTarget.y,
-    facing_target_player_id: expectation.facingTarget.playerId,
-    carry_offset_m: expectation.carryOffsetM,
-    context: {
-      ...originalField.context,
-      carrier_player_id: expectation.receiverId,
-      previous_outcome: "KICK_TO_OPEN_PLAY",
-    },
-    my_team_positions: originalField.my_team_positions.map((player) => {
-      if (player.id === originalField.legend_player_id) {
-        return { ...player, has_ball: false };
-      }
-      if (player.id !== expectation.receiverId) return player;
-      return {
-        ...player,
-        ...expectation.receiverPosition,
-        is_legend: false,
-        has_ball: true,
-        facing_target_x: expectation.facingTarget.x,
-        facing_target_y: expectation.facingTarget.y,
-        facing_target_player_id: expectation.facingTarget.playerId,
-        carry_offset_m: expectation.carryOffsetM,
-      };
-    }),
-  };
-  const continuationAction = {
-    ...originalAction,
-    id: "action-controlled-continuation",
-    action_sequence: 2,
-    minute: expectation.continuationMinute,
-    source: "POSSESSION_CHAIN",
-    title: "Open Play",
-    description: "Your teammate controls the pass and keeps possession.",
-    field_state_id: continuationField.id,
-    context: { ...continuationField.context },
-    origin: {
-      previous_action_id: originalAction.id,
-      previous_outcome: "KICK_TO_OPEN_PLAY",
-    },
-    field_state: continuationField,
-  };
+export const automaticShotExpectation = {
+  receiverId: receiver.id,
+  receivePoint: {
+    x: decisionResult.final_point.x,
+    y: decisionResult.final_point.y,
+  },
+  shotFinalPoint: { x: 50, y: -0.2, z: 0.11 },
+} as const;
 
-  return {
-    ...response,
-    minute: expectation.continuationMinute,
-    prev_time: expectation.actionMinute,
-    status: "WAITING_FOR_DECISION",
-    pending_action: continuationAction,
-    field_state: continuationField,
-    pending_settlement_events: [],
-    unsupported_scene: null,
-    legend_availability: {
-      version: 1 as const,
-      status: "AVAILABLE" as const,
-      availability: "AVAILABLE" as const,
-      participation: "PARTICIPATING" as const,
-      interactive_controls: true,
-      unavailable_since_minute: null,
+export function automaticKickResponse() {
+  const response = structuredClone(
+    controlledPassResponse,
+  ) as unknown as BackendMatchResponse;
+  const automaticFollowUp = {
+    type: "TEAMMATE_SHOT" as const,
+    actor_player_id: receiver.id,
+    opportunity: {
+      eligible: true as const,
+      score: 84,
+      distance_to_goal_m: 11,
+      nearest_defender_m: 3,
+      lane_blocked: false as const,
+      scene_pressure: 62,
+      receive_speed_mps: 8,
     },
-    halftime_summary: null,
-    full_time_handoff: null,
-    action: "OPEN_PLAY",
-    action_team: "MY_TEAM",
-    events: [
-      {
-        match_id: response.match.id,
-        event_id: 1,
-        action: "OPEN_PLAY",
-        minute: expectation.actionMinute,
-        team: "MY_TEAM",
-        description: "Successful pass. Your team keeps the ball alive.",
-        my_team_score: response.match.my_team_score,
-        opponent_team_score: response.match.opponent_team_score,
-        my_team_scored: false,
-        opponent_team_scored: false,
-        player_participates: true,
-      },
+    flight_path: [
+      { ...decisionResult.final_point, t: 0 },
+      { x: 50, y: 8, z: 1.4, t: 0.35 },
+      { x: 50, y: -0.2, z: 0.11, t: 0.7 },
     ],
-    match: {
-      ...response.match,
-      current_time: expectation.continuationMinute,
-      prev_time: expectation.actionMinute,
-      revision: response.match.revision + 1,
-      event_counter: 1,
-      match_status: "WAITING_FOR_DECISION",
-      pending_action: continuationAction,
-    },
-    decision_result: {
-      description: "Successful pass. Your team keeps the ball alive.",
-      success: true,
-      outcome_type: "KICK_TO_OPEN_PLAY",
-      flight_outcome: "TEAMMATE_CONTROL",
-      flight_path: [
-        { x: originalField.ball_x, y: originalField.ball_y, z: 0.11, t: 0 },
-        { x: 58.4, y: 25.2, z: 1.85, t: 0.2 },
-        {
-          x: expectation.receiverPosition.x,
-          y: expectation.receiverPosition.y,
-          z: 0.11,
-          t: 0.4,
-        },
-      ],
-      final_point: {
-        x: expectation.receiverPosition.x,
-        y: expectation.receiverPosition.y,
-        z: 0.11,
-        t: 0.4,
-      },
-      receiver: {
-        ...receiver,
-        ...expectation.receiverPosition,
-        is_legend: false,
-        has_ball: true,
-      },
-      receiver_control: receiverControl,
-      possession_follow_up: {
-        type: "TIMELINE",
-        ...receiverControl,
-      },
-    },
+    flight_outcome: "OUT",
+    final_point: { x: 50, y: -0.2, z: 0.11, t: 0.7 },
+    contact: null,
+    frame_contacts: [],
   };
+  response.status = "IN_PROGRESS";
+  response.action = null;
+  response.action_team = null;
+  response.pending_action = null;
+  response.field_state = null;
+  response.match.match_status = "IN_PROGRESS";
+  response.match.pending_action = null;
+  response.decision_result = {
+    ...response.decision_result,
+    description:
+      "The pass creates a shooting chance, but the automatic finish does not score.",
+    success: false,
+    loose_possession: true,
+    outcome_type: "AUTOMATIC_TEAMMATE_MISSED",
+    automatic_follow_up: automaticFollowUp,
+  };
+  delete response.decision_result.possession_follow_up;
+  (
+    response.decision_result.kick_resolution as Record<string, unknown>
+  ).follow_up = {
+    type: "AUTOMATIC_SHOT",
+  };
+  return response;
 }

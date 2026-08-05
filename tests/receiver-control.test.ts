@@ -52,7 +52,6 @@ describe("authoritative receiver control", () => {
     expect(carrier).toMatchObject({
       id: expectation.receiverId,
       ...expectation.receiverPosition,
-      is_legend: false,
       has_ball: true,
       facing_target_x: expectation.facingTarget.x,
       facing_target_y: expectation.facingTarget.y,
@@ -64,6 +63,7 @@ describe("authoritative receiver control", () => {
       ball_x: expectation.ballPosition.x,
       ball_y: expectation.ballPosition.y,
     });
+    expect(fieldState?.legend_player_id).not.toBe(expectation.receiverId);
     expect(authoritativeFacingTarget(carrier!, control)).toEqual({
       x: expectation.facingTarget.x,
       y: expectation.facingTarget.y,

@@ -8,6 +8,8 @@ import { JSX, useMemo } from "react";
 import * as THREE from "three";
 import { GLTF } from "three-stdlib";
 
+import { STADIUM_REGISTRATION } from "../../../match/stadium-registration";
+
 type GLTFResult = GLTF & {
   nodes: {
     Stadiump1: THREE.Mesh;
@@ -68,7 +70,10 @@ export default function Stadium(props: JSX.IntrinsicElements["group"]) {
 
   return (
     <group {...props} dispose={null}>
-      <group position={[0, 11.163, 0]}>
+      <group
+        position={STADIUM_REGISTRATION.position}
+        scale={STADIUM_REGISTRATION.scale}
+      >
         <mesh
           castShadow
           receiveShadow
@@ -98,6 +103,7 @@ export default function Stadium(props: JSX.IntrinsicElements["group"]) {
           receiveShadow
           geometry={nodes.GoalNet.geometry}
           material={netMaterial}
+          scale={STADIUM_REGISTRATION.goalMeshScale}
         >
           <Outlines thickness={0.5} color="black" angle={0} />
         </mesh>

@@ -13,6 +13,7 @@ import { Physics } from "@react-three/rapier";
 import {
   Component,
   type ReactNode,
+  type RefObject,
   Suspense,
   useCallback,
   useEffect,
@@ -37,6 +38,7 @@ import {
   type MatchCommand,
   processBackendMatchAction,
 } from "../../lib/backend-match";
+import { BALL_MODEL_REGISTRATION } from "../../match/ball-registration";
 import {
   createDribbleSubmissionGate,
   DRIBBLE_LANES,
@@ -45,11 +47,26 @@ import {
   parseDribblePattern,
 } from "../../match/dribble-input";
 import {
+  createFieldCameraPose,
+  type FieldCameraPose,
+} from "../../match/field-camera";
+import {
+  createFieldTransform,
+  type FieldViewWindow,
+  fixedAttackingView,
+  followLegendView,
+} from "../../match/field-transform";
+import {
   buildCanonicalKickDecision,
   createKickSubmissionGate,
   isCanonicalKickScene,
   parseKickControlEnvelope,
 } from "../../match/kick-input";
+import {
+  advancePlayerRotation,
+  rotationTowardsFieldTarget,
+} from "../../match/player-orientation";
+import { PLAYER_MODEL_REGISTRATION } from "../../match/player-registration";
 import {
   createRandomEventDecision,
   createRandomEventSubmissionGate,
@@ -77,6 +94,10 @@ import {
   matchCommandsExactly,
 } from "../../match/session-recovery";
 import { useMatchSessionStore } from "../../match/session-store";
+import {
+  authoritativeTrajectoryPlayback,
+  completeAuthoritativeFlightPath,
+} from "../../match/trajectory-playback";
 import { BallAimSurface } from "./BallAimSurface";
 import { DribbleControls } from "./DribbleControls";
 import { KickContactDialog } from "./KickContactDialog";
@@ -91,28 +112,23 @@ import {
   observeRenderFrame,
 } from "./render-readiness";
 
-const FIELD_Y = 111;
-const BALL_Y = 111.25;
-const LATERAL_SCALE = 0.72;
-const LENGTH_SCALE = 2.8;
-const PLAYER_RENDER_Z_OFFSET = -13.5;
-const VISIBLE_FIELD_CENTER_Y = 28.5;
-const STADIUM_Z_CALIBRATION = -10;
-const OPPONENT_NEAR_BALL_DISTANCE = 10;
-const PLAYER_TRAJECTORY_TRACK_DISTANCE = 10;
+const FIELD_SURFACE_Y = 0;
+const DEFAULT_BALL_RADIUS_M = BALL_MODEL_REGISTRATION.radiusM;
+const OPPONENT_NEAR_BALL_DISTANCE_M = 7;
+const PLAYER_TRAJECTORY_TRACK_DISTANCE_M = 7;
 const PLAYER_TRACK_TURN_SPEED = 9;
 const DEFAULT_STRIKE_CONTACT = { x: 0.45, y: -0.15 };
-const DEFAULT_CAMERA_POSITION: [number, number, number] = [0, 358, 234];
-const DEFAULT_CAMERA_ROTATION: [number, number, number] = [-0.7, 0, 0];
-const DEFAULT_CAMERA_ZOOM = 8;
 const DEFAULT_CAMERA_WINDOW = {
   maxFieldY: 30,
   minFieldX: 25,
   maxFieldX: 75,
 };
-const DYNAMIC_PLAYER_SCREEN_NDC_Y = -0.6;
-const DRIBBLE_PLAYER_SCREEN_NDC_Y = -0.1;
-const DRIBBLE_VISUAL_FIELD_Y_OFFSET = -14;
+const E2E_RENDER_PROBES =
+  import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true";
+const WORLD_FIELD_TRANSFORM = createFieldTransform({
+  viewport: { width: 1, height: 1 },
+  view: fixedAttackingView(),
+});
 
 type FieldCanvasErrorBoundaryProps = {
   children: ReactNode;
@@ -145,20 +161,17 @@ class FieldCanvasErrorBoundary extends Component<
   }
 }
 
-function fieldToWorld(x: number, y: number): [number, number, number] {
-  return [
-    (x - 50) * LATERAL_SCALE,
-    FIELD_Y,
-    (y - VISIBLE_FIELD_CENTER_Y) * LENGTH_SCALE + STADIUM_Z_CALIBRATION,
-  ];
+function fieldToWorld(x: number, y: number, z = 0): [number, number, number] {
+  const world = WORLD_FIELD_TRANSFORM.fieldToWorld({ x, y, z });
+  return [world.x, world.y, world.z];
 }
 
-function distanceInField(
+function distanceInFieldMeters(
   a: { x: number; y: number },
   b: { x: number; y: number },
 ) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
+  const dx = (a.x - b.x) * 0.68;
+  const dy = (a.y - b.y) * 1.05;
   return Math.hypot(dx, dy);
 }
 
@@ -190,7 +203,7 @@ function minDistanceToFlightPath(
 ) {
   let best = Number.POSITIVE_INFINITY;
   path.forEach((point) => {
-    best = Math.min(best, distanceInField(player, point));
+    best = Math.min(best, distanceInFieldMeters(player, point));
   });
   return best;
 }
@@ -212,169 +225,34 @@ function shouldUseDefaultCamera(player: BackendFieldPlayer | null) {
   );
 }
 
-function projectPointAtCameraZ(
-  camera: THREE.OrthographicCamera,
-  point: THREE.Vector3,
-  x: number,
-  z: number,
-) {
-  camera.position.set(x, DEFAULT_CAMERA_POSITION[1], z);
-  camera.rotation.set(...DEFAULT_CAMERA_ROTATION);
-  camera.zoom = DEFAULT_CAMERA_ZOOM;
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld();
-  return point.clone().project(camera).y;
-}
-
-function findDynamicCameraZ(
-  baseCamera: THREE.OrthographicCamera,
-  playerWorldPosition: [number, number, number],
-  targetNdcY: number,
-) {
-  const probe = baseCamera.clone() as THREE.OrthographicCamera;
-  probe.left = baseCamera.left;
-  probe.right = baseCamera.right;
-  probe.top = baseCamera.top;
-  probe.bottom = baseCamera.bottom;
-  probe.near = baseCamera.near;
-  probe.far = baseCamera.far;
-
-  const playerPoint = new THREE.Vector3(...playerWorldPosition);
-  let bestZ = DEFAULT_CAMERA_POSITION[2];
-  let bestDistance = Number.POSITIVE_INFINITY;
-  let previousZ = playerWorldPosition[2] - 800;
-  let previousDelta =
-    projectPointAtCameraZ(
-      probe,
-      playerPoint,
-      playerWorldPosition[0],
-      previousZ,
-    ) - targetNdcY;
-  let bracket: [number, number] | null = null;
-
-  const updateBest = (z: number, delta: number) => {
-    const distance = Math.abs(delta);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestZ = z;
-    }
-  };
-
-  updateBest(previousZ, previousDelta);
-
-  for (
-    let z = playerWorldPosition[2] - 760;
-    z <= playerWorldPosition[2] + 800;
-    z += 40
-  ) {
-    const delta =
-      projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], z) -
-      targetNdcY;
-    updateBest(z, delta);
-
-    if (previousDelta === 0 || delta === 0 || previousDelta * delta < 0) {
-      bracket = [previousZ, z];
-      break;
-    }
-
-    previousZ = z;
-    previousDelta = delta;
-  }
-
-  if (!bracket) {
-    return bestZ;
-  }
-
-  let [low, high] = bracket;
-  for (let index = 0; index < 24; index += 1) {
-    const mid = (low + high) / 2;
-    const delta =
-      projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], mid) -
-      targetNdcY;
-    updateBest(mid, delta);
-
-    if (delta === 0) {
-      return mid;
-    }
-
-    const lowDelta =
-      projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], low) -
-      targetNdcY;
-    if (lowDelta * delta <= 0) {
-      high = mid;
-    } else {
-      low = mid;
-    }
-  }
-
-  return bestZ;
-}
-
 function FieldCameraController({
-  legendPlayer,
-  legendWorldPosition,
+  pose,
   cameraLocked,
   framingKey,
-  targetNdcY,
 }: {
-  legendPlayer: BackendFieldPlayer | null;
-  legendWorldPosition: [number, number, number] | null;
+  pose: FieldCameraPose;
   cameraLocked: boolean;
   framingKey: string;
-  targetNdcY: number;
 }) {
   const camera = useThree((state) => state.camera) as THREE.OrthographicCamera;
-  const size = useThree((state) => state.size);
   const framedKeyRef = useRef("");
 
   useLayoutEffect(() => {
-    if (cameraLocked) {
+    if (framedKeyRef.current === framingKey) {
       return;
     }
-
-    const nextFrameKey = `${framingKey}:${size.width}:${size.height}`;
-    if (framedKeyRef.current === nextFrameKey) {
-      return;
-    }
-
-    if (!legendWorldPosition) {
-      return;
-    }
-
-    camera.rotation.set(...DEFAULT_CAMERA_ROTATION);
-    camera.zoom = DEFAULT_CAMERA_ZOOM;
-
-    if (shouldUseDefaultCamera(legendPlayer)) {
-      camera.position.set(...DEFAULT_CAMERA_POSITION);
-      camera.updateProjectionMatrix();
-      camera.updateMatrixWorld();
-      framedKeyRef.current = nextFrameKey;
-      return;
-    }
-
-    const dynamicCameraZ = findDynamicCameraZ(
-      camera,
-      legendWorldPosition,
-      targetNdcY,
-    );
-    camera.position.set(
-      legendWorldPosition[0],
-      DEFAULT_CAMERA_POSITION[1],
-      dynamicCameraZ,
-    );
+    if (cameraLocked && framedKeyRef.current) return;
+    camera.position.set(...pose.position);
+    camera.rotation.set(...pose.rotation);
+    camera.left = pose.frustum.left;
+    camera.right = pose.frustum.right;
+    camera.top = pose.frustum.top;
+    camera.bottom = pose.frustum.bottom;
+    camera.zoom = 1;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
-    framedKeyRef.current = nextFrameKey;
-  }, [
-    camera,
-    cameraLocked,
-    framingKey,
-    legendPlayer,
-    legendWorldPosition,
-    size.height,
-    size.width,
-    targetNdcY,
-  ]);
+    framedKeyRef.current = framingKey;
+  }, [camera, cameraLocked, framingKey, pose]);
 
   return null;
 }
@@ -491,22 +369,6 @@ function FieldRenderReadiness({
   return null;
 }
 
-function rotationTowardsFieldTarget(
-  source: { x: number; y: number },
-  target: { x: number; y: number },
-) {
-  const [sourceX, , sourceZ] = fieldToWorld(source.x, source.y);
-  const [targetX, , targetZ] = fieldToWorld(target.x, target.y);
-  return Math.atan2(targetX - sourceX, targetZ - sourceZ);
-}
-
-function normalizeAngle(angle: number) {
-  let normalized = angle;
-  while (normalized > Math.PI) normalized -= Math.PI * 2;
-  while (normalized < -Math.PI) normalized += Math.PI * 2;
-  return normalized;
-}
-
 function hashString(value: string) {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -558,7 +420,7 @@ function PlayerLabel({
 
   return (
     <Html
-      position={[worldPosition[0], FIELD_Y + 0.5, worldPosition[2]]}
+      position={worldPosition}
       center
       zIndexRange={[20, 20]}
       style={{ display: visible ? "block" : "none" }}
@@ -599,6 +461,189 @@ function PlayerScreenAnchor({
       }}
     >
       <span data-testid={testId} data-player-id={playerId} />
+    </Html>
+  );
+}
+
+function PlayerRenderProbe({
+  player,
+  groupRef,
+  targetRotation,
+  worldPosition,
+}: {
+  player: BackendFieldPlayer;
+  groupRef: RefObject<THREE.Group | null>;
+  targetRotation: number;
+  worldPosition: [number, number, number];
+}) {
+  const probeRef = useRef<HTMLSpanElement>(null);
+
+  useFrame(() => {
+    const probe = probeRef.current;
+    const group = groupRef.current;
+    if (!probe || !group) return;
+    probe.dataset.rotationY = String(group.rotation.y);
+  });
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        ref={probeRef}
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="player-render-probe"
+        data-player-id={player.id}
+        data-player-x={player.x}
+        data-player-y={player.y}
+        data-target-rotation-y={targetRotation}
+      />
+    </Html>
+  );
+}
+
+function BallRenderProbe({
+  fieldPosition,
+  groupRef,
+  worldPosition,
+}: {
+  fieldPosition: { x: number; y: number; z: number };
+  groupRef: RefObject<THREE.Group | null>;
+  worldPosition: [number, number, number];
+}) {
+  const probeRef = useRef<HTMLSpanElement>(null);
+  const sampledWorldPosition = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    const probe = probeRef.current;
+    const group = groupRef.current;
+    if (!probe || !group) return;
+    group.getWorldPosition(sampledWorldPosition.current);
+    const renderedFieldPosition = WORLD_FIELD_TRANSFORM.worldToField(
+      sampledWorldPosition.current,
+    );
+    probe.dataset.ballX = String(renderedFieldPosition.x);
+    probe.dataset.ballY = String(renderedFieldPosition.y);
+    probe.dataset.ballZ = String(renderedFieldPosition.z);
+  });
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        ref={probeRef}
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="ball-render-probe"
+        data-ball-x={fieldPosition.x}
+        data-ball-y={fieldPosition.y}
+        data-ball-z={fieldPosition.z}
+      />
+    </Html>
+  );
+}
+
+type BallFlightPoint = { x: number; y: number; z: number };
+
+type BallFlightPlayback = {
+  completed: boolean;
+  durationMs: number;
+  finalPoint: BallFlightPoint;
+  id: number;
+  path: Array<BallFlightPoint & { t: number }>;
+  startedAt: number;
+};
+
+function BallFlightController({
+  ballGroupRef,
+  livePointRef,
+  playbackRef,
+  onComplete,
+}: {
+  ballGroupRef: RefObject<THREE.Group | null>;
+  livePointRef: { current: BallFlightPoint | null };
+  playbackRef: { current: BallFlightPlayback | null };
+  onComplete: (playbackId: number, point: BallFlightPoint) => void;
+}) {
+  useFrame(() => {
+    const group = ballGroupRef.current;
+    const playback = playbackRef.current;
+    if (!group || !playback) return;
+
+    const elapsedMs = Math.min(
+      playback.durationMs,
+      performance.now() - playback.startedAt,
+    );
+    const point = sampleFlightPath(playback.path, elapsedMs / 1000);
+    if (!point) return;
+
+    livePointRef.current = point;
+    const [worldX, worldY, worldZ] = fieldToWorld(point.x, point.y, point.z);
+    group.position.set(worldX, worldY, worldZ);
+
+    if (elapsedMs >= playback.durationMs && !playback.completed) {
+      playback.completed = true;
+      livePointRef.current = playback.finalPoint;
+      const [finalX, finalY, finalZ] = fieldToWorld(
+        playback.finalPoint.x,
+        playback.finalPoint.y,
+        playback.finalPoint.z,
+      );
+      group.position.set(finalX, finalY, finalZ);
+      queueMicrotask(() => onComplete(playback.id, playback.finalPoint));
+    }
+  });
+
+  return null;
+}
+
+function FieldCameraAnchorProbe() {
+  const worldPosition = fieldToWorld(50, 0, FIELD_SURFACE_Y);
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="field-camera-anchor"
+      />
+    </Html>
+  );
+}
+
+function PlayerReachProbe({
+  player,
+  worldPosition,
+}: {
+  player: BackendFieldPlayer;
+  worldPosition: [number, number, number];
+}) {
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="player-reach-probe"
+        data-player-id={player.id}
+        data-player-x={player.x}
+        data-player-y={player.y}
+        data-player-radius-m={player.collision_shape?.radius_m ?? 0.42}
+        data-reach-height-m={player.collision_shape?.height_m ?? 2}
+      />
     </Html>
   );
 }
@@ -658,6 +703,7 @@ function BackendPlayerModel({
   player,
   isTeammate,
   ballFieldPosition,
+  liveBallFlightPointRef,
   stagedDecisionResult,
   isResultAnimating,
   legendPlayerId,
@@ -669,6 +715,7 @@ function BackendPlayerModel({
   player: BackendFieldPlayer;
   isTeammate: boolean;
   ballFieldPosition: { x: number; y: number };
+  liveBallFlightPointRef: { current: BallFlightPoint | null };
   stagedDecisionResult?: BackendMatchResponse["decision_result"];
   isResultAnimating: boolean;
   legendPlayerId: string | null;
@@ -681,13 +728,10 @@ function BackendPlayerModel({
     player.x + visualFieldXOffset,
     player.y + visualFieldYOffset,
   );
-  const renderWorldPosition: [number, number, number] = [
-    worldPosition[0],
-    worldPosition[1],
-    worldPosition[2] + PLAYER_RENDER_Z_OFFSET,
-  ];
+  const renderWorldPosition = worldPosition;
   const modelVariant = buildModelVariant(player, isTeammate);
-  const stagedFlightPath = stagedDecisionResult?.flight_path || [];
+  const stagedFlightPath =
+    completeAuthoritativeFlightPath(stagedDecisionResult);
   const involvedPlayerId =
     stagedDecisionResult?.receiver?.id ||
     stagedDecisionResult?.interceptor?.id ||
@@ -695,32 +739,37 @@ function BackendPlayerModel({
   const tracksTrajectory =
     stagedFlightPath.length > 0 &&
     minDistanceToFlightPath(player, stagedFlightPath) <=
-      PLAYER_TRAJECTORY_TRACK_DISTANCE;
+      PLAYER_TRAJECTORY_TRACK_DISTANCE_M;
   const tracksBallNow =
-    distanceInField(player, ballFieldPosition) <= OPPONENT_NEAR_BALL_DISTANCE;
+    distanceInFieldMeters(player, ballFieldPosition) <=
+    OPPONENT_NEAR_BALL_DISTANCE_M;
   const shouldTrackBall =
     Boolean(stagedDecisionResult) &&
     (tracksTrajectory || tracksBallNow || player.id === involvedPlayerId);
   const opponentNearBall =
     !isTeammate &&
-    distanceInField(player, ballFieldPosition) <= OPPONENT_NEAR_BALL_DISTANCE;
+    distanceInFieldMeters(player, ballFieldPosition) <=
+      OPPONENT_NEAR_BALL_DISTANCE_M;
   const backendFacingTarget = authoritativeFacingTarget(
     player,
     stagedDecisionResult?.receiver_control,
   );
-  const rotationY = backendFacingTarget
-    ? rotationTowardsFieldTarget(player, backendFacingTarget)
-    : shouldTrackBall && (isResultAnimating || player.id === involvedPlayerId)
+  const rotationY =
+    isResultAnimating && shouldTrackBall
       ? rotationTowardsFieldTarget(player, ballFieldPosition)
-      : isTeammate
-        ? Math.PI
-        : opponentNearBall
+      : backendFacingTarget
+        ? rotationTowardsFieldTarget(player, backendFacingTarget)
+        : shouldTrackBall && player.id === involvedPlayerId
           ? rotationTowardsFieldTarget(player, ballFieldPosition)
-          : player.role === "GK"
-            ? 0
-            : player.y < ballFieldPosition.y
-              ? 0
-              : Math.PI;
+          : isTeammate
+            ? Math.PI
+            : opponentNearBall
+              ? rotationTowardsFieldTarget(player, ballFieldPosition)
+              : player.role === "GK"
+                ? 0
+                : player.y < ballFieldPosition.y
+                  ? 0
+                  : Math.PI;
   const groupRef = useRef<THREE.Group>(null);
   const currentRotationRef = useRef(rotationY);
 
@@ -730,12 +779,17 @@ function BackendPlayerModel({
       return;
     }
 
-    const current = currentRotationRef.current;
-    const target = rotationY;
-    const deltaAngle = normalizeAngle(target - current);
-    const step = Math.min(1, delta * PLAYER_TRACK_TURN_SPEED);
-    const next = current + deltaAngle * step;
-    currentRotationRef.current = normalizeAngle(next);
+    const liveBallPosition = liveBallFlightPointRef.current;
+    const liveRotationTarget =
+      isResultAnimating && shouldTrackBall && liveBallPosition
+        ? rotationTowardsFieldTarget(player, liveBallPosition)
+        : rotationY;
+    currentRotationRef.current = advancePlayerRotation(
+      currentRotationRef.current,
+      liveRotationTarget,
+      delta,
+      PLAYER_TRACK_TURN_SPEED,
+    );
     group.rotation.y = currentRotationRef.current;
   });
 
@@ -748,7 +802,7 @@ function BackendPlayerModel({
           animationName="DefensiveIdle"
           position={[0, 0, 0]}
           rotation={[0, 0, 0]}
-          scale={0.1}
+          scale={PLAYER_MODEL_REGISTRATION.visualScale}
           targetPosition={null}
           renderOnly={true}
         />
@@ -765,6 +819,24 @@ function BackendPlayerModel({
         playerId={player.id}
         worldPosition={renderWorldPosition}
       />
+      {E2E_RENDER_PROBES && (
+        <>
+          <PlayerRenderProbe
+            player={player}
+            groupRef={groupRef}
+            targetRotation={rotationY}
+            worldPosition={renderWorldPosition}
+          />
+          <PlayerReachProbe
+            player={player}
+            worldPosition={fieldToWorld(
+              player.x + visualFieldXOffset,
+              player.y + visualFieldYOffset,
+              player.collision_shape?.height_m ?? 2,
+            )}
+          />
+        </>
+      )}
     </>
   );
 }
@@ -861,7 +933,11 @@ export default function GameScene({
     lane: DribbleLane;
   } | null>(null);
   const [rehydrationKey, setRehydrationKey] = useState(0);
-  const animationFrameRef = useRef<number | null>(null);
+  const ballRenderGroupRef = useRef<THREE.Group | null>(null);
+  const ballFlightPlaybackRef = useRef<BallFlightPlayback | null>(null);
+  const liveBallFlightPointRef = useRef<BallFlightPoint | null>(null);
+  const ballFlightSequenceRef = useRef(0);
+  const terminalFrameTimeoutRef = useRef<number | null>(null);
   const resultTimerRef = useRef<number | null>(null);
   const kickSubmissionGateRef = useRef(createKickSubmissionGate());
   const dribbleSubmissionGateRef = useRef(createDribbleSubmissionGate());
@@ -884,9 +960,11 @@ export default function GameScene({
   }, [active, routeMatchId]);
 
   useLayoutEffect(() => {
-    if (animationFrameRef.current) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+    ballFlightPlaybackRef.current = null;
+    liveBallFlightPointRef.current = null;
+    if (terminalFrameTimeoutRef.current) {
+      window.clearTimeout(terminalFrameTimeoutRef.current);
+      terminalFrameTimeoutRef.current = null;
     }
     if (resultTimerRef.current) {
       window.clearTimeout(resultTimerRef.current);
@@ -1204,6 +1282,7 @@ export default function GameScene({
   // The authoritative continuation replaces it only after the flight completes.
   const displayFieldState =
     stagedFieldState || resolvedSceneFieldState || fieldState;
+  const sequenceFieldState = resolvedSceneFieldState || fieldState;
   const myPlayers = displayFieldState?.my_team_positions || [];
   const opponentPlayers = displayFieldState?.opponent_positions || [];
   const legendPlayer = displayFieldState?.legend_player_id
@@ -1216,6 +1295,24 @@ export default function GameScene({
         (player) => player.id === displayFieldState.carrier_player_id,
       ) || null
     : null;
+  const sequenceAnchorPlayer = sequenceFieldState?.legend_player_id
+    ? sequenceFieldState.my_team_positions.find(
+        (player) => player.id === sequenceFieldState.legend_player_id,
+      ) || null
+    : null;
+  const fallbackCameraView: FieldViewWindow = shouldUseDefaultCamera(
+    sequenceAnchorPlayer,
+  )
+    ? fixedAttackingView()
+    : followLegendView(sequenceAnchorPlayer ?? { x: 50, y: 25 });
+  const fieldViewWindow =
+    sequenceFieldState?.sequence?.camera.view_window ?? fallbackCameraView;
+  const fieldCameraPose = createFieldCameraPose(fieldViewWindow);
+  const fieldCameraFramingKey =
+    sequenceFieldState?.sequence?.sequence_id ??
+    sequenceFieldState?.id ??
+    pendingAction?.id ??
+    "no-action";
   const penaltyNonparticipantCount =
     displayFieldState?.scene_family === "PENALTY"
       ? myPlayers.length +
@@ -1238,8 +1335,8 @@ export default function GameScene({
       ? (opponentPlayers.reduce<BackendFieldPlayer | null>(
           (closest, player) => {
             if (!closest) return player;
-            return distanceInField(player, legendPlayer) <
-              distanceInField(closest, legendPlayer)
+            return distanceInFieldMeters(player, legendPlayer) <
+              distanceInFieldMeters(closest, legendPlayer)
               ? player
               : closest;
           },
@@ -1258,34 +1355,25 @@ export default function GameScene({
     isDribbleScene && !stagedKickResult && activeDribbleLane
       ? (DRIBBLE_LANES.indexOf(activeDribbleLane) - 1) * 4
       : 0;
-  // Compress the 1v1 into the unobstructed field viewport without altering
-  // the authoritative field-state coordinates submitted to the backend.
-  const dribbleVisualFieldYOffset =
-    isDribbleScene && !stagedKickResult ? DRIBBLE_VISUAL_FIELD_Y_OFFSET : 0;
+  const dribbleVisualFieldYOffset = 0;
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
-    : { x: 50, y: VISIBLE_FIELD_CENTER_Y };
+    : { x: 50, y: 25 };
   const ballFieldPosition = animatedBallFlightPoint || {
     x: baseBallFieldPosition.x + dribbleVisualFieldXOffset,
     y: baseBallFieldPosition.y,
   };
-  const [ballX, , logicalBallZ] = displayFieldState
+  const ballCenterHeight =
+    animatedBallFlightPoint?.z ??
+    displayFieldState?.geometry?.ball_radius_m ??
+    DEFAULT_BALL_RADIUS_M;
+  const [ballX, ballY, ballZ] = displayFieldState
     ? fieldToWorld(
         ballFieldPosition.x,
         ballFieldPosition.y + dribbleVisualFieldYOffset,
+        ballCenterHeight,
       )
-    : [0, BALL_Y, 0];
-  const ballY = BALL_Y + (animatedBallFlightPoint?.z ?? 0);
-  const ballZ = logicalBallZ + PLAYER_RENDER_Z_OFFSET;
-  const legendWorldPosition = legendPlayer
-    ? (() => {
-        const [x, y, z] = fieldToWorld(
-          legendPlayer.x + dribbleVisualFieldXOffset,
-          legendPlayer.y + dribbleVisualFieldYOffset,
-        );
-        return [x, y, z + PLAYER_RENDER_Z_OFFSET] as [number, number, number];
-      })()
-    : null;
+    : [0, DEFAULT_BALL_RADIUS_M, 0];
   const kickControlEnvelope = parseKickControlEnvelope(
     pendingAction?.control_envelope,
   );
@@ -1353,12 +1441,26 @@ export default function GameScene({
 
   useEffect(() => {
     return () => {
-      if (animationFrameRef.current) {
-        window.cancelAnimationFrame(animationFrameRef.current);
+      ballFlightPlaybackRef.current = null;
+      liveBallFlightPointRef.current = null;
+      if (terminalFrameTimeoutRef.current) {
+        window.clearTimeout(terminalFrameTimeoutRef.current);
       }
       if (resultTimerRef.current) {
         window.clearTimeout(resultTimerRef.current);
       }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!E2E_RENDER_PROBES) return;
+    const e2eState = globalThis as typeof globalThis & {
+      __OVERGOAL_E2E_READ_LIVE_BALL__?: () => BallFlightPoint | null;
+    };
+    e2eState.__OVERGOAL_E2E_READ_LIVE_BALL__ = () =>
+      liveBallFlightPointRef.current;
+    return () => {
+      delete e2eState.__OVERGOAL_E2E_READ_LIVE_BALL__;
     };
   }, []);
 
@@ -1384,9 +1486,11 @@ export default function GameScene({
   }, [active, assetErrors, setError]);
 
   const clearStagedKickResult = () => {
-    if (animationFrameRef.current) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
+    ballFlightPlaybackRef.current = null;
+    liveBallFlightPointRef.current = null;
+    if (terminalFrameTimeoutRef.current) {
+      window.clearTimeout(terminalFrameTimeoutRef.current);
+      terminalFrameTimeoutRef.current = null;
     }
     setStagedKickResult(null);
     setResolvedSceneFieldState(null);
@@ -1394,57 +1498,66 @@ export default function GameScene({
     setIsResultAnimating(false);
   };
 
+  const completeBallPlayback = useCallback(
+    (playbackId: number, finalPoint: BallFlightPoint) => {
+      if (ballFlightPlaybackRef.current?.id !== playbackId) return;
+      ballFlightPlaybackRef.current = null;
+      liveBallFlightPointRef.current = finalPoint;
+      setAnimatedBallFlightPoint(finalPoint);
+
+      const response = stagedKickResult?.response;
+      if (response && authoritativeContinuationFieldState(response)) {
+        terminalFrameTimeoutRef.current = window.setTimeout(() => {
+          terminalFrameTimeoutRef.current = null;
+          liveBallFlightPointRef.current = null;
+          setAnimatedBallFlightPoint(null);
+          setIsResultAnimating(false);
+        }, 100);
+      } else {
+        setIsResultAnimating(false);
+      }
+    },
+    [stagedKickResult],
+  );
+
   const startBallPlayback = useCallback(
     (response: BackendMatchResponse, operationId: string | null = null) => {
       if (operationId) playedOperationIdRef.current = operationId;
-      if (animationFrameRef.current) {
-        window.cancelAnimationFrame(animationFrameRef.current);
+      ballFlightPlaybackRef.current = null;
+      liveBallFlightPointRef.current = null;
+      if (terminalFrameTimeoutRef.current) {
+        window.clearTimeout(terminalFrameTimeoutRef.current);
+        terminalFrameTimeoutRef.current = null;
       }
 
-      const flightPath = response.decision_result?.flight_path;
-      if (Array.isArray(flightPath) && flightPath.length > 1) {
-        const startedAt = performance.now();
+      const trajectory = authoritativeTrajectoryPlayback(
+        response.decision_result,
+      );
+      if (trajectory) {
+        const { finalPoint, path: flightPath } = trajectory;
         const durationMs = Math.max(
           500,
           flightPath[flightPath.length - 1].t * 1000,
         );
-        setIsResultAnimating(true);
-
-        const tick = (now: number) => {
-          const elapsed = now - startedAt;
-          const progressMs = Math.min(durationMs, elapsed);
-          const point = sampleFlightPath(flightPath, progressMs / 1000);
-          if (point) {
-            setAnimatedBallFlightPoint(point);
-          }
-
-          if (progressMs < durationMs) {
-            animationFrameRef.current = window.requestAnimationFrame(tick);
-          } else {
-            animationFrameRef.current = null;
-            const authoritativeFinalPoint = response.decision_result
-              ?.final_point
-              ? {
-                  x: response.decision_result.final_point.x,
-                  y: response.decision_result.final_point.y,
-                  z: response.decision_result.final_point.z,
-                }
-              : point;
-            setAnimatedBallFlightPoint(
-              authoritativeContinuationFieldState(response)
-                ? null
-                : authoritativeFinalPoint,
-            );
-            setIsResultAnimating(false);
-          }
+        const initialPoint = sampleFlightPath(flightPath, 0);
+        const playbackId = (ballFlightSequenceRef.current += 1);
+        ballFlightPlaybackRef.current = {
+          completed: false,
+          durationMs,
+          finalPoint,
+          id: playbackId,
+          path: flightPath,
+          startedAt: performance.now(),
         };
-
-        animationFrameRef.current = window.requestAnimationFrame(tick);
+        liveBallFlightPointRef.current = initialPoint;
+        setAnimatedBallFlightPoint(initialPoint);
+        setIsResultAnimating(true);
         return;
       }
 
       // Canonical kick scenes never fabricate a trajectory when the server omits one.
       if (authoritativeContinuationFieldState(response)) {
+        liveBallFlightPointRef.current = null;
         setAnimatedBallFlightPoint(null);
       }
       setIsResultAnimating(false);
@@ -2011,8 +2124,9 @@ export default function GameScene({
         .sort()
         .join(",")}
       data-scene-family={displayFieldState?.scene_family ?? ""}
-      data-ball-x={displayFieldState?.ball_x ?? ""}
-      data-ball-y={displayFieldState?.ball_y ?? ""}
+      data-ball-x={displayFieldState ? ballFieldPosition.x : ""}
+      data-ball-y={displayFieldState ? ballFieldPosition.y : ""}
+      data-ball-z={ballCenterHeight}
       data-carrier-player-id={displayFieldState?.carrier_player_id ?? ""}
       data-carrier-player-x={carrierPlayer?.x ?? ""}
       data-carrier-player-y={carrierPlayer?.y ?? ""}
@@ -2107,22 +2221,21 @@ export default function GameScene({
         >
           <OrthographicCamera
             makeDefault
-            position={DEFAULT_CAMERA_POSITION}
-            rotation={DEFAULT_CAMERA_ROTATION}
-            zoom={DEFAULT_CAMERA_ZOOM}
+            manual
+            position={fieldCameraPose.position}
+            rotation={fieldCameraPose.rotation}
+            left={fieldCameraPose.frustum.left}
+            right={fieldCameraPose.frustum.right}
+            top={fieldCameraPose.frustum.top}
+            bottom={fieldCameraPose.frustum.bottom}
+            zoom={1}
             near={0.1}
             far={1000}
           />
           <FieldCameraController
-            legendPlayer={legendPlayer}
-            legendWorldPosition={legendWorldPosition}
+            pose={fieldCameraPose}
             cameraLocked={Boolean(stagedKickResult)}
-            framingKey={pendingAction?.id ?? "no-action"}
-            targetNdcY={
-              isDribbleScene
-                ? DRIBBLE_PLAYER_SCREEN_NDC_Y
-                : DYNAMIC_PLAYER_SCREEN_NDC_Y
-            }
+            framingKey={fieldCameraFramingKey}
           />
 
           <Suspense fallback={null}>
@@ -2130,14 +2243,15 @@ export default function GameScene({
               <Sky sunPosition={[10, 10, 0]} />
               <ContactShadows
                 frames={1}
-                scale={10}
-                position={[0, -2, 0]}
+                scale={100}
+                position={[0, FIELD_SURFACE_Y, 0]}
                 blur={4}
                 opacity={0.2}
               />
-              <Stadium position={[0, 0, 0]} scale={10} rotation={[0, 0, 0]} />
+              <Stadium position={[0, 0, 0]} rotation={[0, 0, 0]} />
 
               <Ball
+                renderGroupRef={ballRenderGroupRef}
                 position={[ballX, ballY, ballZ]}
                 interactive={false}
                 renderOnly={true}
@@ -2146,6 +2260,26 @@ export default function GameScene({
                 kickControlEnvelope={kickControlEnvelope}
                 onAimChange={setActiveAimDraft}
                 onAimRelease={handleAimRelease}
+              />
+              {E2E_RENDER_PROBES && (
+                <>
+                  <FieldCameraAnchorProbe />
+                  <BallRenderProbe
+                    fieldPosition={{
+                      x: ballFieldPosition.x,
+                      y: ballFieldPosition.y,
+                      z: ballCenterHeight,
+                    }}
+                    groupRef={ballRenderGroupRef}
+                    worldPosition={[ballX, ballY, ballZ]}
+                  />
+                </>
+              )}
+              <BallFlightController
+                ballGroupRef={ballRenderGroupRef}
+                livePointRef={liveBallFlightPointRef}
+                playbackRef={ballFlightPlaybackRef}
+                onComplete={completeBallPlayback}
               />
               {canAim && (
                 <BallAimSurface
@@ -2165,11 +2299,11 @@ export default function GameScene({
                   player={player}
                   isTeammate={true}
                   ballFieldPosition={ballFieldPosition}
+                  liveBallFlightPointRef={liveBallFlightPointRef}
                   stagedDecisionResult={stagedDecisionResult}
                   isResultAnimating={isResultAnimating}
                   legendPlayerId={displayFieldState?.legend_player_id ?? null}
                   screenAnchorTestId={
-                    isDribbleScene &&
                     player.id === displayFieldState?.legend_player_id
                       ? "legend-player-anchor"
                       : null
@@ -2190,6 +2324,7 @@ export default function GameScene({
                   player={player}
                   isTeammate={false}
                   ballFieldPosition={ballFieldPosition}
+                  liveBallFlightPointRef={liveBallFlightPointRef}
                   stagedDecisionResult={stagedDecisionResult}
                   isResultAnimating={isResultAnimating}
                   legendPlayerId={displayFieldState?.legend_player_id ?? null}

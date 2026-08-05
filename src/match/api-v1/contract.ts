@@ -32,6 +32,7 @@ export const KNOWN_PLAYABLE_SCENES = [
 export type KnownMatchStatus = (typeof KNOWN_MATCH_STATUSES)[number];
 export type KnownPlayableScene = (typeof KNOWN_PLAYABLE_SCENES)[number];
 export type BackendActionTeam = "MY_TEAM" | "OPPONENT_TEAM" | "NEUTRAL";
+export type BackendTeamSide = "MY_TEAM" | "OPPONENT_TEAM";
 export type BackendLegendStatus =
   | "AVAILABLE"
   | "SUBSTITUTED"
@@ -75,11 +76,140 @@ export interface BackendLegendProfile {
 
 export interface BackendFieldPlayer {
   id: string;
+  team_id?: string;
+  team_side?: BackendTeamSide;
   role: string;
   x: number;
   y: number;
   is_legend?: boolean;
   has_ball?: boolean;
+  facing_target_x?: number;
+  facing_target_y?: number;
+  facing_target_player_id?: string | null;
+  carry_offset_m?: number;
+  collision_shape?: BackendCollisionShape;
+  [key: string]: unknown;
+}
+
+export interface BackendCollisionShape {
+  radius_m: number;
+  height_m: number;
+  receive_radius_m: number;
+}
+
+export interface BackendFieldCoordinateSystem {
+  version: "field-coordinate-system/1";
+  x: {
+    unit: "PERCENT_OF_PITCH_WIDTH";
+    minimum: 0;
+    maximum: 100;
+    direction: "LEFT_TO_RIGHT";
+  };
+  y: {
+    unit: "PERCENT_OF_PITCH_LENGTH";
+    minimum: 0;
+    maximum: 100;
+    direction: "OPPONENT_GOAL_TO_OWN_GOAL";
+  };
+  z: {
+    unit: "METRE";
+    origin: "PITCH_PLANE";
+    direction: "UP";
+  };
+  attacking_direction: "NEGATIVE_Y";
+  world_transform: {
+    version: "pitch-world-affine/1";
+    unit: "METRE";
+    world_x: {
+      source_axis: "x";
+      source_origin: 50;
+      metres_per_unit: 0.68;
+    };
+    world_y: {
+      source_axis: "z";
+      source_origin: 0;
+      metres_per_unit: 1;
+    };
+    world_z: {
+      source_axis: "y";
+      source_origin: 50;
+      metres_per_unit: 1.05;
+    };
+  };
+  anchors: {
+    player_xy: "FEET_MIDPOINT";
+    ball_xy: "GROUND_PROJECTION";
+    ball_z: "BALL_CENTER";
+    label_xy: "PLAYER_FEET_MIDPOINT";
+  };
+}
+
+export interface BackendFieldSequence {
+  version: 1;
+  sequence_id: string;
+  anchor_player_id: string;
+  attacking_target: {
+    type: "OPPONENT_GOAL_CENTER";
+    x: 50;
+    y: 0;
+    goalkeeper_player_id: string | null;
+  };
+  camera: {
+    policy_version: "attacking-top-down/1";
+    projection: "ORTHOGRAPHIC_TOP_DOWN";
+    locked: true;
+    mode: "FIXED_ATTACKING_THIRD" | "CORNER_ATTACKING_THIRD" | "FOLLOW_LEGEND";
+    view_window: {
+      left: number;
+      top: number;
+      width: 100;
+      height: 50;
+    };
+  };
+}
+
+export interface BackendFieldGeometry {
+  version: "regulation-68x105-v1";
+  pitch_width_m: 68;
+  pitch_length_m: 105;
+  goal_width_m: 7.32;
+  goal_height_m: 2.44;
+  goal_depth_m: 2;
+  goal_post_radius_m: 0.06;
+  ball_radius_m: 0.11;
+  opponent_goal: {
+    line_y: 0;
+    left_post_x: 44.62;
+    right_post_x: 55.38;
+  };
+  opponent_penalty_area: {
+    min_x: 20.35;
+    max_x: 79.65;
+    min_y: 0;
+    max_y: 15.71;
+    penalty_spot: { x: 50; y: 10.48 };
+  };
+}
+
+export interface BackendCurrentFieldPlayer extends BackendFieldPlayer {
+  team_id: string;
+  team_side: BackendTeamSide;
+  collision_shape: BackendCollisionShape;
+}
+
+export interface BackendCurrentFieldContext {
+  seed: number;
+  distance_to_goal: number;
+  side_of_pitch: "LEFT" | "CENTER" | "RIGHT";
+  pressure: number;
+  attack_phase: "SETTLED" | "TRANSITION" | "HALF_SPACE";
+  numerical_advantage: number;
+  quality_band: "SAFE" | "PROGRESSIVE" | "RISKY";
+  previous_outcome: string | null;
+  carrier_player_id: string;
+  possession_state?: "PASS_RECEIVED" | "PENALTY_REBOUND";
+  ball_x?: number;
+  ball_y?: number;
   facing_target_x?: number;
   facing_target_y?: number;
   facing_target_player_id?: string | null;
@@ -103,8 +233,35 @@ export interface BackendFlightPoint {
   [key: string]: unknown;
 }
 
+export interface BackendKickContact {
+  type: "PLAYER" | "GOALKEEPER" | "POST" | "CROSSBAR";
+  player_id?: string;
+  at: BackendFlightPoint;
+  speed_mps?: number;
+}
+
+export interface BackendAutomaticKickFollowUp {
+  type: "TEAMMATE_SHOT";
+  actor_player_id: string;
+  opportunity: {
+    eligible: true;
+    score: number;
+    distance_to_goal_m: number;
+    nearest_defender_m: number | null;
+    lane_blocked: false;
+    scene_pressure: number;
+    receive_speed_mps: number;
+  };
+  flight_path: BackendFlightPoint[];
+  flight_outcome: string;
+  final_point: BackendFlightPoint;
+  contact: BackendKickContact | null;
+  frame_contacts: BackendKickContact[];
+}
+
 export interface BackendFieldState {
   id: string;
+  action_sequence?: number;
   match_id: string;
   minute: number;
   action_type: string;
@@ -122,7 +279,21 @@ export interface BackendFieldState {
   carry_offset_m?: number;
   context?: Record<string, unknown>;
   dribble_pattern?: unknown;
+  geometry?: BackendFieldGeometry;
+  coordinate_system?: BackendFieldCoordinateSystem;
+  sequence?: BackendFieldSequence;
   [key: string]: unknown;
+}
+
+export interface BackendCurrentFieldState extends BackendFieldState {
+  action_sequence: number;
+  my_team_positions: BackendCurrentFieldPlayer[];
+  opponent_positions: BackendCurrentFieldPlayer[];
+  legend_player_id: string;
+  carrier_player_id: string;
+  context: BackendCurrentFieldContext;
+  coordinate_system: BackendFieldCoordinateSystem;
+  sequence: BackendFieldSequence;
 }
 
 export interface BackendPendingAction {
@@ -199,6 +370,7 @@ export interface BackendDecisionResult {
   receiver?: BackendFieldPlayer;
   interceptor?: BackendFieldPlayer;
   receiver_control?: BackendReceiverControl;
+  automatic_follow_up?: BackendAutomaticKickFollowUp;
   unsupported_scene_recovery?: BackendUnsupportedSceneRecoveryResult;
   [key: string]: unknown;
 }
@@ -459,6 +631,189 @@ const identifier = z.string().trim().min(1).max(128);
 const coordinate = z.number().finite().min(0).max(100);
 const rating = z.number().finite().min(0).max(100);
 const actionTeam = z.enum(["MY_TEAM", "OPPONENT_TEAM", "NEUTRAL"]);
+const teamSide = z.enum(["MY_TEAM", "OPPONENT_TEAM"]);
+
+export const BackendCollisionShapeSchema: z.ZodType<BackendCollisionShape> = z
+  .object({
+    radius_m: z.number().finite().min(0.3).max(0.9),
+    height_m: z.number().finite().min(1.7).max(2.44),
+    receive_radius_m: z.number().finite().min(0.3).max(0.9),
+  })
+  .strict();
+
+export const BackendFieldCoordinateSystemSchema: z.ZodType<BackendFieldCoordinateSystem> =
+  z
+    .object({
+      version: z.literal("field-coordinate-system/1"),
+      x: z
+        .object({
+          unit: z.literal("PERCENT_OF_PITCH_WIDTH"),
+          minimum: z.literal(0),
+          maximum: z.literal(100),
+          direction: z.literal("LEFT_TO_RIGHT"),
+        })
+        .strict(),
+      y: z
+        .object({
+          unit: z.literal("PERCENT_OF_PITCH_LENGTH"),
+          minimum: z.literal(0),
+          maximum: z.literal(100),
+          direction: z.literal("OPPONENT_GOAL_TO_OWN_GOAL"),
+        })
+        .strict(),
+      z: z
+        .object({
+          unit: z.literal("METRE"),
+          origin: z.literal("PITCH_PLANE"),
+          direction: z.literal("UP"),
+        })
+        .strict(),
+      attacking_direction: z.literal("NEGATIVE_Y"),
+      world_transform: z
+        .object({
+          version: z.literal("pitch-world-affine/1"),
+          unit: z.literal("METRE"),
+          world_x: z
+            .object({
+              source_axis: z.literal("x"),
+              source_origin: z.literal(50),
+              metres_per_unit: z.literal(0.68),
+            })
+            .strict(),
+          world_y: z
+            .object({
+              source_axis: z.literal("z"),
+              source_origin: z.literal(0),
+              metres_per_unit: z.literal(1),
+            })
+            .strict(),
+          world_z: z
+            .object({
+              source_axis: z.literal("y"),
+              source_origin: z.literal(50),
+              metres_per_unit: z.literal(1.05),
+            })
+            .strict(),
+        })
+        .strict(),
+      anchors: z
+        .object({
+          player_xy: z.literal("FEET_MIDPOINT"),
+          ball_xy: z.literal("GROUND_PROJECTION"),
+          ball_z: z.literal("BALL_CENTER"),
+          label_xy: z.literal("PLAYER_FEET_MIDPOINT"),
+        })
+        .strict(),
+    })
+    .strict();
+
+export const BackendFieldSequenceSchema: z.ZodType<BackendFieldSequence> = z
+  .object({
+    version: z.literal(1),
+    sequence_id: identifier,
+    anchor_player_id: identifier,
+    attacking_target: z
+      .object({
+        type: z.literal("OPPONENT_GOAL_CENTER"),
+        x: z.literal(50),
+        y: z.literal(0),
+        goalkeeper_player_id: identifier.nullable(),
+      })
+      .strict(),
+    camera: z
+      .object({
+        policy_version: z.literal("attacking-top-down/1"),
+        projection: z.literal("ORTHOGRAPHIC_TOP_DOWN"),
+        locked: z.literal(true),
+        mode: z.enum([
+          "FIXED_ATTACKING_THIRD",
+          "CORNER_ATTACKING_THIRD",
+          "FOLLOW_LEGEND",
+        ]),
+        view_window: z
+          .object({
+            left: z.number().finite().min(-50).max(50),
+            top: z.number().finite().min(-40).max(60),
+            width: z.literal(100),
+            height: z.literal(50),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const BackendFieldGeometrySchema: z.ZodType<BackendFieldGeometry> = z
+  .object({
+    version: z.literal("regulation-68x105-v1"),
+    pitch_width_m: z.literal(68),
+    pitch_length_m: z.literal(105),
+    goal_width_m: z.literal(7.32),
+    goal_height_m: z.literal(2.44),
+    goal_depth_m: z.literal(2),
+    goal_post_radius_m: z.literal(0.06),
+    ball_radius_m: z.literal(0.11),
+    opponent_goal: z
+      .object({
+        line_y: z.literal(0),
+        left_post_x: z.literal(44.62),
+        right_post_x: z.literal(55.38),
+      })
+      .strict(),
+    opponent_penalty_area: z
+      .object({
+        min_x: z.literal(20.35),
+        max_x: z.literal(79.65),
+        min_y: z.literal(0),
+        max_y: z.literal(15.71),
+        penalty_spot: z
+          .object({ x: z.literal(50), y: z.literal(10.48) })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const BackendCurrentFieldContextSchema: z.ZodType<BackendCurrentFieldContext> =
+  z
+    .object({
+      seed: z.number().finite(),
+      distance_to_goal: z.number().finite().min(0).max(100),
+      side_of_pitch: z.enum(["LEFT", "CENTER", "RIGHT"]),
+      pressure: rating,
+      attack_phase: z.enum(["SETTLED", "TRANSITION", "HALF_SPACE"]),
+      numerical_advantage: z.number().int().min(-2).max(2),
+      quality_band: z.enum(["SAFE", "PROGRESSIVE", "RISKY"]),
+      previous_outcome: z.string().nullable(),
+      carrier_player_id: identifier,
+      possession_state: z.enum(["PASS_RECEIVED", "PENALTY_REBOUND"]).optional(),
+      ball_x: coordinate.optional(),
+      ball_y: coordinate.optional(),
+      facing_target_x: coordinate.optional(),
+      facing_target_y: coordinate.optional(),
+      facing_target_player_id: identifier.nullable().optional(),
+      carry_offset_m: z.number().finite().min(0).max(2).optional(),
+    })
+    .strict()
+    .superRefine((value, context) => {
+      if (value.possession_state !== "PASS_RECEIVED") return;
+      for (const key of [
+        "ball_x",
+        "ball_y",
+        "facing_target_x",
+        "facing_target_y",
+        "facing_target_player_id",
+        "carry_offset_m",
+      ] as const) {
+        if (value[key] === undefined) {
+          context.addIssue({
+            code: "custom",
+            message: `PASS_RECEIVED requires ${key}.`,
+            path: [key],
+          });
+        }
+      }
+    });
 
 export const BackendTeamSchema: z.ZodType<BackendTeam> = z
   .object({
@@ -494,6 +849,8 @@ export const BackendLegendProfileSchema: z.ZodType<BackendLegendProfile> = z
 export const BackendFieldPlayerSchema: z.ZodType<BackendFieldPlayer> = z
   .object({
     id: identifier,
+    team_id: identifier.optional(),
+    team_side: teamSide.optional(),
     role: z.string().trim().min(1),
     x: coordinate,
     y: coordinate,
@@ -503,8 +860,29 @@ export const BackendFieldPlayerSchema: z.ZodType<BackendFieldPlayer> = z
     facing_target_y: coordinate.optional(),
     facing_target_player_id: identifier.nullable().optional(),
     carry_offset_m: z.number().finite().min(0).max(2).optional(),
+    collision_shape: BackendCollisionShapeSchema.optional(),
   })
   .passthrough();
+
+export const BackendCurrentFieldPlayerSchema: z.ZodType<BackendCurrentFieldPlayer> =
+  z
+    .object({
+      id: identifier,
+      team_id: identifier,
+      team_side: teamSide,
+      side: teamSide.optional(),
+      role: z.string().trim().min(1),
+      x: coordinate,
+      y: coordinate,
+      is_legend: z.boolean().optional(),
+      has_ball: z.boolean().optional(),
+      facing_target_x: coordinate.optional(),
+      facing_target_y: coordinate.optional(),
+      facing_target_player_id: identifier.nullable().optional(),
+      carry_offset_m: z.number().finite().min(0).max(2).optional(),
+      collision_shape: BackendCollisionShapeSchema,
+    })
+    .strict();
 
 export const BackendReceiverControlSchema: z.ZodType<BackendReceiverControl> = z
   .object({
@@ -518,16 +896,110 @@ export const BackendReceiverControlSchema: z.ZodType<BackendReceiverControl> = z
 
 export const BackendFlightPointSchema: z.ZodType<BackendFlightPoint> = z
   .object({
-    x: coordinate,
-    y: coordinate,
-    z: z.number().finite().min(0),
-    t: z.number().finite().min(0),
+    // The trajectory uses the field state's normalized x/y axes but may cross
+    // a boundary before the full ball exits. z remains metric ball-center height.
+    x: z.number().finite(),
+    y: z.number().finite(),
+    z: z.number().finite().min(0.11),
+    t: z.number().finite().min(0).max(6),
   })
-  .passthrough();
+  .strict();
+
+function validateFlightTrajectory(
+  flightPath: BackendFlightPoint[],
+  finalPoint: BackendFlightPoint,
+  context: z.RefinementCtx,
+  flightPathPrefix: (string | number)[] = ["flight_path"],
+  finalPointPrefix: (string | number)[] = ["final_point"],
+) {
+  if (flightPath[0]?.t !== 0) {
+    context.addIssue({
+      code: "custom",
+      message: "Trajectory playback must start at contact time t=0.",
+      path: [...flightPathPrefix, 0, "t"],
+    });
+  }
+  for (let index = 1; index < flightPath.length; index += 1) {
+    if (flightPath[index].t <= flightPath[index - 1].t) {
+      context.addIssue({
+        code: "custom",
+        message: "Trajectory times must increase strictly.",
+        path: [...flightPathPrefix, index, "t"],
+      });
+    }
+  }
+  const lastPoint = flightPath[flightPath.length - 1];
+  if (
+    lastPoint &&
+    (["x", "y", "z", "t"] as const).some(
+      (axis) => Math.abs(finalPoint[axis] - lastPoint[axis]) > 1e-9,
+    )
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "final_point must equal the last trajectory point.",
+      path: finalPointPrefix,
+    });
+  }
+}
+
+const BackendKickContactSchema: z.ZodType<BackendKickContact> = z
+  .object({
+    type: z.enum(["PLAYER", "GOALKEEPER", "POST", "CROSSBAR"]),
+    player_id: identifier.optional(),
+    at: BackendFlightPointSchema,
+    speed_mps: z.number().finite().min(0).optional(),
+  })
+  .strict()
+  .superRefine((contact, context) => {
+    if (
+      (contact.type === "PLAYER" || contact.type === "GOALKEEPER") &&
+      (!contact.player_id || contact.speed_mps === undefined)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Player contact requires player_id and speed_mps.",
+      });
+    }
+  });
+
+const BackendAutomaticKickFollowUpSchema: z.ZodType<BackendAutomaticKickFollowUp> =
+  z
+    .object({
+      type: z.literal("TEAMMATE_SHOT"),
+      actor_player_id: identifier,
+      opportunity: z
+        .object({
+          eligible: z.literal(true),
+          score: z.number().finite().min(0).max(100),
+          distance_to_goal_m: z.number().finite().min(0),
+          nearest_defender_m: z.number().finite().min(0).nullable(),
+          lane_blocked: z.literal(false),
+          scene_pressure: z.number().finite().min(0).max(100),
+          receive_speed_mps: z.number().finite().min(0),
+        })
+        .strict(),
+      flight_path: z.array(BackendFlightPointSchema).min(2),
+      flight_outcome: z.string().trim().min(1),
+      final_point: BackendFlightPointSchema,
+      contact: BackendKickContactSchema.nullable(),
+      frame_contacts: z.array(BackendKickContactSchema).max(2),
+    })
+    .strict()
+    .superRefine((followUp, context) => {
+      validateFlightTrajectory(
+        followUp.flight_path,
+        followUp.final_point,
+        context,
+        ["flight_path"],
+        ["final_point"],
+      );
+    });
 
 export const BackendFieldStateSchema: z.ZodType<BackendFieldState> = z
   .object({
     id: identifier,
+    action_sequence: z.number().int().min(1).optional(),
     match_id: identifier,
     minute: z.number().int().min(1).max(89),
     action_type: z.string().trim().min(1),
@@ -545,8 +1017,124 @@ export const BackendFieldStateSchema: z.ZodType<BackendFieldState> = z
     carry_offset_m: z.number().finite().min(0).max(2).optional(),
     context: z.record(z.string(), z.unknown()),
     dribble_pattern: z.unknown().optional(),
+    geometry: BackendFieldGeometrySchema.optional(),
+    coordinate_system: BackendFieldCoordinateSystemSchema.optional(),
+    sequence: BackendFieldSequenceSchema.optional(),
   })
   .passthrough();
+
+export const BackendCurrentFieldStateSchema: z.ZodType<BackendCurrentFieldState> =
+  z
+    .object({
+      id: identifier,
+      action_sequence: z.number().int().min(1),
+      match_id: identifier,
+      minute: z.number().int().min(1).max(89),
+      action_type: z.string().trim().min(1),
+      scene_family: z.enum([
+        "OPEN_PLAY",
+        "DRIBBLE",
+        "FREE_KICK",
+        "CORNER",
+        "PENALTY",
+        "RANDOM_EVENT",
+      ]),
+      my_team_positions: z.array(BackendCurrentFieldPlayerSchema).min(1),
+      opponent_positions: z.array(BackendCurrentFieldPlayerSchema).min(1),
+      legend_player_id: identifier,
+      carrier_player_id: identifier,
+      distance_to_goal: z.number().finite().min(0).max(100),
+      ball_x: coordinate,
+      ball_y: coordinate,
+      facing_target_x: coordinate.optional(),
+      facing_target_y: coordinate.optional(),
+      facing_target_player_id: identifier.nullable().optional(),
+      carry_offset_m: z.number().finite().min(0).max(2).optional(),
+      context: BackendCurrentFieldContextSchema,
+      dribble_pattern: z.unknown().optional(),
+      geometry: BackendFieldGeometrySchema.optional(),
+      coordinate_system: BackendFieldCoordinateSystemSchema,
+      sequence: BackendFieldSequenceSchema,
+    })
+    .strict()
+    .superRefine((fieldState, context) => {
+      const players = [
+        ...fieldState.my_team_positions,
+        ...fieldState.opponent_positions,
+      ];
+      const playerById = new Map(players.map((player) => [player.id, player]));
+      const myTeamIds = new Set(
+        fieldState.my_team_positions.map((player) => player.id),
+      );
+
+      for (const player of fieldState.my_team_positions) {
+        if (player.team_side !== "MY_TEAM") {
+          context.addIssue({
+            code: "custom",
+            message: "my_team_positions must declare MY_TEAM ownership.",
+            path: ["my_team_positions"],
+          });
+          break;
+        }
+      }
+      for (const player of fieldState.opponent_positions) {
+        if (player.team_side !== "OPPONENT_TEAM") {
+          context.addIssue({
+            code: "custom",
+            message: "opponent_positions must declare OPPONENT_TEAM ownership.",
+            path: ["opponent_positions"],
+          });
+          break;
+        }
+      }
+      for (const playerId of [
+        fieldState.legend_player_id,
+        fieldState.carrier_player_id,
+      ]) {
+        if (!myTeamIds.has(playerId)) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "Legend and carrier identities must refer to MY_TEAM players.",
+            path: ["carrier_player_id"],
+          });
+        }
+      }
+      if (
+        fieldState.context.carrier_player_id !== fieldState.carrier_player_id
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "Field context carrier identity must match the field carrier.",
+          path: ["context", "carrier_player_id"],
+        });
+      }
+      if (!playerById.has(fieldState.sequence.anchor_player_id)) {
+        context.addIssue({
+          code: "custom",
+          message: "Sequence anchor must identify a declared field player.",
+          path: ["sequence", "anchor_player_id"],
+        });
+      }
+      const goalkeeperId =
+        fieldState.sequence.attacking_target.goalkeeper_player_id;
+      if (goalkeeperId !== null) {
+        const goalkeeper = playerById.get(goalkeeperId);
+        if (
+          !goalkeeper ||
+          goalkeeper.team_side !== "OPPONENT_TEAM" ||
+          goalkeeper.role !== "GK"
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "The attacking target goalkeeper must identify an opponent goalkeeper.",
+            path: ["sequence", "attacking_target", "goalkeeper_player_id"],
+          });
+        }
+      }
+    });
 
 export const BackendPendingActionSchema: z.ZodType<BackendPendingAction> = z
   .object({
@@ -1014,12 +1602,13 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
     description: z.string(),
     success: z.boolean(),
     outcome_type: z.string().trim().min(1),
-    flight_path: z.array(BackendFlightPointSchema).optional(),
+    flight_path: z.array(BackendFlightPointSchema).min(2).optional(),
     flight_outcome: z.string().trim().min(1).optional(),
     final_point: BackendFlightPointSchema.optional(),
     receiver: BackendFieldPlayerSchema.optional(),
     interceptor: BackendFieldPlayerSchema.optional(),
     receiver_control: BackendReceiverControlSchema.optional(),
+    automatic_follow_up: BackendAutomaticKickFollowUpSchema.optional(),
     immediate_effects: z.record(z.string(), z.unknown()).optional(),
     pending_settlement_events: z
       .array(BackendPendingSettlementEventSchema)
@@ -1037,6 +1626,43 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
   })
   .passthrough()
   .superRefine((result, context) => {
+    const flightPath = result.flight_path;
+    const finalPoint = result.final_point;
+    const flightOutcome = result.flight_outcome;
+    const hasAnyFlightField = Boolean(
+      flightPath || finalPoint || flightOutcome,
+    );
+    const requiresFlightPlayback =
+      hasAnyFlightField ||
+      result.automatic_follow_up !== undefined ||
+      result.kick_resolution !== undefined;
+    if (
+      requiresFlightPlayback &&
+      (!flightPath || !finalPoint || !flightOutcome)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "Trajectory playback requires flight_path, flight_outcome, and final_point.",
+        path: !flightPath
+          ? ["flight_path"]
+          : !flightOutcome
+            ? ["flight_outcome"]
+            : ["final_point"],
+      });
+    }
+    if (flightPath && finalPoint) {
+      validateFlightTrajectory(flightPath, finalPoint, context);
+    }
+    if (result.automatic_follow_up && !flightPath) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "An automatic teammate shot requires the authoritative incoming pass trajectory.",
+        path: ["flight_path"],
+      });
+    }
+
     if (result.flight_outcome !== "TEAMMATE_CONTROL" && !result.receiver) {
       return;
     }
@@ -1095,6 +1721,173 @@ const BackendOperationPlaybackSchema: z.ZodType<BackendOperationPlayback> = z
   })
   .strict();
 
+function appendSchemaIssues(
+  result: { success: boolean; error?: z.ZodError },
+  context: z.RefinementCtx,
+  prefix: (string | number)[],
+) {
+  if (result.success) return;
+  for (const issue of result.error?.issues ?? []) {
+    context.addIssue({
+      ...issue,
+      path: [...prefix, ...issue.path],
+    });
+  }
+}
+
+function jsonValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => jsonValuesEqual(value, right[index]))
+    );
+  }
+  if (
+    !left ||
+    !right ||
+    typeof left !== "object" ||
+    typeof right !== "object"
+  ) {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] &&
+        jsonValuesEqual(leftRecord[key], rightRecord[key]),
+    )
+  );
+}
+
+function validateCurrentFieldState(
+  value: unknown,
+  context: z.RefinementCtx,
+  path: (string | number)[],
+) {
+  appendSchemaIssues(
+    BackendCurrentFieldStateSchema.safeParse(value),
+    context,
+    path,
+  );
+}
+
+function validateCurrentPendingAction(
+  value: BackendPendingAction | null,
+  context: z.RefinementCtx,
+  path: (string | number)[],
+) {
+  if (!value) return;
+  appendSchemaIssues(
+    z.number().int().min(1).safeParse(value.action_sequence),
+    context,
+    [...path, "action_sequence"],
+  );
+  appendSchemaIssues(
+    BackendCurrentFieldContextSchema.safeParse(value.context),
+    context,
+    [...path, "context"],
+  );
+  if (value.field_state !== undefined) {
+    validateCurrentFieldState(value.field_state, context, [
+      ...path,
+      "field_state",
+    ]);
+  }
+}
+
+function validateCurrentDecisionResult(
+  value: BackendDecisionResult | undefined,
+  context: z.RefinementCtx,
+  path: (string | number)[],
+) {
+  if (!value) return;
+  if (value.receiver !== undefined) {
+    appendSchemaIssues(
+      BackendCurrentFieldPlayerSchema.safeParse(value.receiver),
+      context,
+      [...path, "receiver"],
+    );
+  }
+  if (value.interceptor !== undefined) {
+    appendSchemaIssues(
+      BackendCurrentFieldPlayerSchema.safeParse(value.interceptor),
+      context,
+      [...path, "interceptor"],
+    );
+  }
+  const followUpContext = value.follow_up_context;
+  if (followUpContext !== undefined) {
+    appendSchemaIssues(
+      BackendCurrentFieldContextSchema.safeParse(followUpContext),
+      context,
+      [...path, "follow_up_context"],
+    );
+  }
+}
+
+function validateCurrentOperationReceipt(
+  value: BackendMatchOperationReceipt | null | undefined,
+  context: z.RefinementCtx,
+  path: (string | number)[],
+) {
+  const playback = value?.playback;
+  if (!playback) return;
+  if (playback.submitted_action) {
+    validateCurrentPendingAction(playback.submitted_action, context, [
+      ...path,
+      "playback",
+      "submitted_action",
+    ]);
+  }
+  if (playback.submitted_field_state) {
+    validateCurrentFieldState(playback.submitted_field_state, context, [
+      ...path,
+      "playback",
+      "submitted_field_state",
+    ]);
+  }
+  validateCurrentDecisionResult(
+    playback.decision_result ?? undefined,
+    context,
+    [...path, "playback", "decision_result"],
+  );
+}
+
+function validateCurrentEngineResponse(
+  response: BackendMatchResponse | BackendMatchSnapshot,
+  context: z.RefinementCtx,
+) {
+  if (response.match.engine_version !== "match-engine/6") return;
+  validateCurrentPendingAction(response.pending_action, context, [
+    "pending_action",
+  ]);
+  validateCurrentPendingAction(response.match.pending_action, context, [
+    "match",
+    "pending_action",
+  ]);
+  if (response.field_state) {
+    validateCurrentFieldState(response.field_state, context, ["field_state"]);
+  }
+  if ("decision_result" in response) {
+    validateCurrentDecisionResult(
+      (response as BackendMatchResponse).decision_result,
+      context,
+      ["decision_result"],
+    );
+  }
+  validateCurrentOperationReceipt(response.latest_operation, context, [
+    "latest_operation",
+  ]);
+}
+
 export const BackendMatchOperationReceiptSchema: z.ZodType<BackendMatchOperationReceipt> =
   z
     .object({
@@ -1136,6 +1929,7 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
   })
   .passthrough()
   .superRefine((response, context) => {
+    validateCurrentEngineResponse(response, context);
     requireLegendAvailabilityMatchesMatch(
       response.match,
       response.legend_availability,
@@ -1281,14 +2075,12 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
     if (
       embeddedField &&
       response.field_state &&
-      (response.field_state.id !== embeddedField.id ||
-        response.field_state.match_id !== embeddedField.match_id ||
-        response.field_state.minute !== embeddedField.minute ||
-        response.field_state.action_type !== embeddedField.action_type)
+      !jsonValuesEqual(response.field_state, embeddedField)
     ) {
       context.addIssue({
         code: "custom",
-        message: "Embedded and top-level field states must agree.",
+        message:
+          "Embedded and top-level field states must be identical authoritative copies.",
         path: ["field_state"],
       });
     }
@@ -1370,8 +2162,8 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
   })
   .strict()
   .superRefine((response, context) => {
+    validateCurrentEngineResponse(response, context);
     requireMatchTeamIdentity(response, context);
-    requirePrematchLegendData(response.match, context, ["match"]);
     requireLegendAvailabilityMatchesMatch(
       response.match,
       response.legend_availability,

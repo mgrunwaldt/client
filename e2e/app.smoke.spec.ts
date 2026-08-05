@@ -214,6 +214,8 @@ test("renders a complete backend player scene without a fatal error", async ({
   ];
   const myTeamPositions = myTeamFormation.map(([role, x, y], index) => ({
     id: `team_1_${role}_${index}`,
+    team_id: "team_1",
+    team_side: "MY_TEAM",
     role,
     x,
     y,
@@ -236,6 +238,8 @@ test("renders a complete backend player scene without a fatal error", async ({
   ];
   const opponentPositions = opponentFormation.map(([role, x, y], index) => ({
     id: `team_2_${role}_${index}`,
+    team_id: "team_2",
+    team_side: "OPPONENT_TEAM",
     role,
     x,
     y,
