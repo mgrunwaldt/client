@@ -41,9 +41,7 @@ import {
 import { BALL_MODEL_REGISTRATION } from "../../match/ball-registration";
 import {
   createDribbleSubmissionGate,
-  DRIBBLE_LANES,
   type DribbleDecision,
-  type DribbleLane,
   parseDribblePattern,
 } from "../../match/dribble-input";
 import {
@@ -710,8 +708,6 @@ function BackendPlayerModel({
   legendPlayerId,
   screenAnchorTestId = null,
   showPlayerLabel = true,
-  visualFieldXOffset = 0,
-  visualFieldYOffset = 0,
 }: {
   player: BackendFieldPlayer;
   isTeammate: boolean;
@@ -722,13 +718,8 @@ function BackendPlayerModel({
   legendPlayerId: string | null;
   screenAnchorTestId?: string | null;
   showPlayerLabel?: boolean;
-  visualFieldXOffset?: number;
-  visualFieldYOffset?: number;
 }) {
-  const worldPosition = fieldToWorld(
-    player.x + visualFieldXOffset,
-    player.y + visualFieldYOffset,
-  );
+  const worldPosition = fieldToWorld(player.x, player.y);
   const renderWorldPosition = worldPosition;
   const modelVariant = buildModelVariant(player, isTeammate);
   const stagedFlightPath =
@@ -831,8 +822,8 @@ function BackendPlayerModel({
           <PlayerReachProbe
             player={player}
             worldPosition={fieldToWorld(
-              player.x + visualFieldXOffset,
-              player.y + visualFieldYOffset,
+              player.x,
+              player.y,
               player.collision_shape?.height_m ?? 2,
             )}
           />
@@ -929,10 +920,6 @@ export default function GameScene({
   } | null>(null);
   const [isResultAnimating, setIsResultAnimating] = useState(false);
   const [readySceneKey, setReadySceneKey] = useState("");
-  const [dribbleLane, setDribbleLane] = useState<{
-    actionId: string;
-    lane: DribbleLane;
-  } | null>(null);
   const [rehydrationKey, setRehydrationKey] = useState(0);
   const ballRenderGroupRef = useRef<THREE.Group | null>(null);
   const ballFlightPlaybackRef = useRef<BallFlightPlayback | null>(null);
@@ -982,7 +969,6 @@ export default function GameScene({
     setAnimatedBallFlightPoint(null);
     setIsResultAnimating(false);
     setReadySceneKey("");
-    setDribbleLane(null);
     kickSubmissionGateRef.current = createKickSubmissionGate();
     dribbleSubmissionGateRef.current = createDribbleSubmissionGate();
     randomEventSubmissionGateRef.current = createRandomEventSubmissionGate();
@@ -1348,32 +1334,16 @@ export default function GameScene({
     ? parseDribblePattern(displayFieldState?.dribble_pattern)
     : { pattern: null, error: null };
   const dribblePattern = parsedDribblePattern.pattern;
-  const activeDribbleLane =
-    dribbleLane?.actionId === pendingAction?.id
-      ? dribbleLane?.lane
-      : dribblePattern?.starting_lane;
-  const dribbleVisualFieldXOffset =
-    isDribbleScene && !stagedKickResult && activeDribbleLane
-      ? (DRIBBLE_LANES.indexOf(activeDribbleLane) - 1) * 4
-      : 0;
-  const dribbleVisualFieldYOffset = 0;
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
     : { x: 50, y: 25 };
-  const ballFieldPosition = animatedBallFlightPoint || {
-    x: baseBallFieldPosition.x + dribbleVisualFieldXOffset,
-    y: baseBallFieldPosition.y,
-  };
+  const ballFieldPosition = animatedBallFlightPoint || baseBallFieldPosition;
   const ballCenterHeight =
     animatedBallFlightPoint?.z ??
     displayFieldState?.geometry?.ball_radius_m ??
     DEFAULT_BALL_RADIUS_M;
   const [ballX, ballY, ballZ] = displayFieldState
-    ? fieldToWorld(
-        ballFieldPosition.x,
-        ballFieldPosition.y + dribbleVisualFieldYOffset,
-        ballCenterHeight,
-      )
+    ? fieldToWorld(ballFieldPosition.x, ballFieldPosition.y, ballCenterHeight)
     : [0, DEFAULT_BALL_RADIUS_M, 0];
   const kickControlEnvelope = parseKickControlEnvelope(
     pendingAction?.control_envelope,
@@ -2310,13 +2280,6 @@ export default function GameScene({
                       : null
                   }
                   showPlayerLabel={showLegendPlayerLabel}
-                  visualFieldXOffset={
-                    isDribbleScene &&
-                    player.id === displayFieldState?.legend_player_id
-                      ? dribbleVisualFieldXOffset
-                      : 0
-                  }
-                  visualFieldYOffset={dribbleVisualFieldYOffset}
                 />
               ))}
               {opponentPlayers.map((player) => (
@@ -2335,7 +2298,6 @@ export default function GameScene({
                       : null
                   }
                   showPlayerLabel={showLegendPlayerLabel}
-                  visualFieldYOffset={dribbleVisualFieldYOffset}
                 />
               ))}
               <Preload all />
@@ -2383,9 +2345,6 @@ export default function GameScene({
           key={pendingAction.id}
           pattern={dribblePattern}
           disabled={isSubmitting}
-          onLaneChange={(lane) => {
-            setDribbleLane({ actionId: pendingAction.id, lane });
-          }}
           onSubmit={handleDribbleDecision}
         />
       )}

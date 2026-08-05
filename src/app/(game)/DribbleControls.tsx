@@ -24,12 +24,10 @@ function laneProgress(lane: DribbleLane) {
 export function DribbleControls({
   pattern,
   disabled,
-  onLaneChange,
   onSubmit,
 }: {
   pattern: DribblePattern;
   disabled: boolean;
-  onLaneChange: (lane: DribbleLane) => void;
   onSubmit: (decision: DribbleDecision) => void;
 }) {
   const [elapsed, setElapsed] = useState(0);
@@ -164,7 +162,6 @@ export function DribbleControls({
     elapsedRef.current = inputElapsed;
     traceRef.current = nextTrace;
     setTrace(nextTrace);
-    onLaneChange(nextLane);
   };
 
   const switchRelative = (direction: -1 | 1) => {

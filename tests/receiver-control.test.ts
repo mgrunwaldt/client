@@ -9,6 +9,7 @@ import {
   authoritativeFacingTarget,
 } from "../src/match/receiver-control";
 import {
+  automaticKickResponse,
   controlledKickResponse,
   controlledResultExpectation,
 } from "./fixtures/tactical-kick-scenes/controlled-result";
@@ -164,6 +165,18 @@ describe("authoritative receiver control", () => {
       ).success,
     ).toBe(false);
     expect(BackendMatchResponseSchema.safeParse(nonMonotonic).success).toBe(
+      false,
+    );
+  });
+
+  it("requires the automatic shot actor to be the authoritative receiver", () => {
+    const response = automaticKickResponse();
+    expect(BackendMatchResponseSchema.safeParse(response).success).toBe(true);
+
+    const mismatchedActor = structuredClone(response);
+    mismatchedActor.decision_result!.automatic_follow_up!.actor_player_id =
+      "team_1_wrong_receiver";
+    expect(BackendMatchResponseSchema.safeParse(mismatchedActor).success).toBe(
       false,
     );
   });

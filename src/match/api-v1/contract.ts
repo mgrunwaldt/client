@@ -1750,6 +1750,25 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
         });
       }
     }
+    if (result.automatic_follow_up) {
+      if (!result.receiver) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "An automatic teammate shot requires its authoritative receiver.",
+          path: ["receiver"],
+        });
+      } else if (
+        result.automatic_follow_up.actor_player_id !== result.receiver.id
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "The automatic shot actor must be the authoritative receiver.",
+          path: ["automatic_follow_up", "actor_player_id"],
+        });
+      }
+    }
 
     if (result.flight_outcome !== "TEAMMATE_CONTROL" && !result.receiver) {
       return;

@@ -184,6 +184,7 @@ function validMatchResponse(value: unknown) {
 async function hydrateDribble(
   page: Page,
   response: ReturnType<typeof dribbleResponse> = dribbleResponse(),
+  { pauseClock = true }: { pauseClock?: boolean } = {},
 ) {
   const gamePath = `/game/${response.match.id}`;
   await page.waitForFunction(
@@ -218,6 +219,11 @@ async function hydrateDribble(
       window.dispatchEvent(new PopStateEvent("popstate"));
     }, gamePath);
     await expect(page).toHaveURL(new RegExp(`${gamePath}$`, "u"));
+  }
+  if (pauseClock) {
+    // Pause on the first interactive frame. Slow software rendering must not
+    // consume an entire challenge before the test runner can reach the HUD.
+    await advanceDribble(page, 0, FIELD_READY_TIMEOUT_MS);
   }
   await expect(page.getByTestId("game-field")).toHaveAttribute(
     "data-render-ready",
@@ -299,19 +305,21 @@ function expectDribblePlayersClearOfHud(
   }
 }
 
-async function advanceDribble(page: Page, second: number) {
+async function advanceDribble(page: Page, second: number, timeout = 5_000) {
   await expect
-    .poll(() =>
-      page.evaluate((nextSecond) => {
-        const advance = (
-          globalThis as typeof globalThis & {
-            __OVERGOAL_E2E_DRIBBLE_ADVANCE__?: (value: number) => void;
-          }
-        ).__OVERGOAL_E2E_DRIBBLE_ADVANCE__;
-        if (!advance) return false;
-        advance(nextSecond);
-        return true;
-      }, second),
+    .poll(
+      () =>
+        page.evaluate((nextSecond) => {
+          const advance = (
+            globalThis as typeof globalThis & {
+              __OVERGOAL_E2E_DRIBBLE_ADVANCE__?: (value: number) => void;
+            }
+          ).__OVERGOAL_E2E_DRIBBLE_ADVANCE__;
+          if (!advance) return false;
+          advance(nextSecond);
+          return true;
+        }, second),
+      { timeout },
     )
     .toBe(true);
 }
@@ -436,7 +444,7 @@ test("accepts left and right screen-side taps and submits once", async ({
   page,
 }, testInfo) => {
   test.slow();
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   await enableDebugResultContinuation(page);
   const requests: unknown[] = [];
   await context.route("**/api/processMatchAction", async (route) => {
@@ -461,7 +469,13 @@ test("accepts left and right screen-side taps and submits once", async ({
   });
   await authenticateForContinuation(page);
   await page.bringToFront();
-  await hydrateDribble(page, dribbleResponse("action-dribble-screen-taps"));
+  const authoritativeScene = dribbleResponse("action-dribble-screen-taps");
+  await hydrateDribble(page, authoritativeScene);
+  await expect(page.getByTestId("game-field")).toHaveAttribute(
+    "data-ball-x",
+    String(authoritativeScene.field_state!.ball_x),
+  );
+  const startingGeometry = await dribblePlayerHudGeometry(page);
   const centerLane = page.getByTestId("dribble-lane-center");
   const rightLane = page.getByTestId("dribble-lane-right");
   await advanceDribble(page, 1);
@@ -474,6 +488,17 @@ test("accepts left and right screen-side taps and submits once", async ({
   await expect
     .poll(async () => (await readDribbleState(page)).trace.at(-1)?.lane)
     .toBe("CENTER");
+  const centerGeometry = await dribblePlayerHudGeometry(page);
+  expect(
+    Math.abs(centerGeometry.legend.left - startingGeometry.legend.left),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(centerGeometry.legend.top - startingGeometry.legend.top),
+  ).toBeLessThanOrEqual(1);
+  await expect(page.getByTestId("game-field")).toHaveAttribute(
+    "data-ball-x",
+    String(authoritativeScene.field_state!.ball_x),
+  );
   const centerTrace = (await readDribbleState(page)).trace;
   await advanceDribble(page, centerTrace.at(-1)!.at_second + 1);
   await expect(rightLane).toBeEnabled();
@@ -522,13 +547,23 @@ test("accepts left and right screen-side taps and submits once", async ({
   await expect(nextAction).toBeVisible();
   await nextAction.click();
   await expect(page).toHaveURL(/\/match\/match-fixture-1$/u);
+  expect(requests).toHaveLength(1);
+});
 
-  // Keep this second action paused so visual baselines can compare two stable
-  // active frames without the eight-second result replacing the HUD.
+test("renders authoritative dribble lane controls without moving field entities", async ({
+  page,
+}, testInfo) => {
+  test.slow();
+  test.setTimeout(300_000);
+  await authenticateForContinuation(page);
+  await page.bringToFront();
   await hydrateDribble(
     page,
     dribbleResponse("action-dribble-visual-evidence", 2),
   );
+  const legendLabel = page.getByTestId("legend-player-label");
+  await expect(legendLabel).toHaveCount(1);
+  await expect(legendLabel).toBeHidden();
   await advanceDribble(page, 1);
   const visualCenterLane = page.getByTestId("dribble-lane-center");
   await tapDribbleScreenSide(
@@ -608,8 +643,8 @@ test("accepts left and right screen-side taps and submits once", async ({
   await expect(page).toHaveScreenshot("dribble-active.png", {
     animations: "disabled",
     maxDiffPixelRatio: 0.0005,
+    timeout: 20_000,
   });
-  expect(requests).toHaveLength(1);
 });
 
 test("submits once after the real eight-second dribble deadline", async ({
@@ -660,7 +695,9 @@ test("submits once after the real eight-second dribble deadline", async ({
 
   await authenticateForContinuation(page);
   await page.bringToFront();
-  await hydrateDribble(page, dribbleResponse("action-dribble-real-timer"));
+  await hydrateDribble(page, dribbleResponse("action-dribble-real-timer"), {
+    pauseClock: false,
+  });
   const timerStartedAt = Number(
     await page
       .getByTestId("dribble-controls")
