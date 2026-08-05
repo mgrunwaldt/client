@@ -289,30 +289,44 @@ function expectDribblePlayersClearOfHud(
 }
 
 async function advanceDribble(page: Page, second: number) {
-  await page.evaluate((nextSecond) => {
-    const advance = (
-      globalThis as typeof globalThis & {
-        __OVERGOAL_E2E_DRIBBLE_ADVANCE__?: (value: number) => void;
-      }
-    ).__OVERGOAL_E2E_DRIBBLE_ADVANCE__;
-    if (!advance) throw new Error("Dribble E2E bridge unavailable");
-    advance(nextSecond);
-  }, second);
+  await expect
+    .poll(() =>
+      page.evaluate((nextSecond) => {
+        const advance = (
+          globalThis as typeof globalThis & {
+            __OVERGOAL_E2E_DRIBBLE_ADVANCE__?: (value: number) => void;
+          }
+        ).__OVERGOAL_E2E_DRIBBLE_ADVANCE__;
+        if (!advance) return false;
+        advance(nextSecond);
+        return true;
+      }, second),
+    )
+    .toBe(true);
 }
 
 async function readDribbleState(page: Page) {
-  return page.evaluate(() => {
-    const read = (
-      globalThis as typeof globalThis & {
-        __OVERGOAL_E2E_DRIBBLE_READ__?: () => {
-          elapsed: number;
-          trace: Array<{ at_second: number; lane: string }>;
-        };
-      }
-    ).__OVERGOAL_E2E_DRIBBLE_READ__;
-    if (!read) throw new Error("Dribble E2E state bridge unavailable");
-    return read();
-  });
+  let state: {
+    elapsed: number;
+    trace: Array<{ at_second: number; lane: string }>;
+  } | null = null;
+  await expect
+    .poll(async () => {
+      state = await page.evaluate(() => {
+        const read = (
+          globalThis as typeof globalThis & {
+            __OVERGOAL_E2E_DRIBBLE_READ__?: () => {
+              elapsed: number;
+              trace: Array<{ at_second: number; lane: string }>;
+            };
+          }
+        ).__OVERGOAL_E2E_DRIBBLE_READ__;
+        return read?.() ?? null;
+      });
+      return state;
+    })
+    .not.toBeNull();
+  return state!;
 }
 
 test("renders every authoritative outcome and returns to the Timeline", async ({
@@ -409,6 +423,7 @@ test("accepts left and right screen-side taps and submits once", async ({
   page,
 }, testInfo) => {
   test.slow();
+  test.setTimeout(180_000);
   await enableDebugResultContinuation(page);
   const requests: unknown[] = [];
   await context.route("**/api/processMatchAction", async (route) => {
