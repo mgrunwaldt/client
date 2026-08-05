@@ -1,10 +1,11 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 
-import type {
-  BackendLastDecision,
-  BackendMatchResponse,
-  BackendMatchSnapshot,
-  BackendUnsupportedSceneRecovery,
+import {
+  type BackendLastDecision,
+  type BackendMatchResponse,
+  type BackendMatchSnapshot,
+  BackendMatchSnapshotSchema,
+  type BackendUnsupportedSceneRecovery,
 } from "../src/match/api-v1/contract";
 import dribbleScene from "../tests/fixtures/match-api-v1/examples/scenes/dribble.json" with { type: "json" };
 import jumperScene from "../tests/fixtures/match-api-v1/examples/scenes/jumper.json" with { type: "json" };
@@ -83,6 +84,18 @@ function snapshotFromResponse(
     full_time_handoff: response.full_time_handoff,
     latest_operation: response.latest_operation ?? null,
   };
+}
+
+function validatedSnapshot(snapshot: BackendMatchSnapshot) {
+  const parsed = BackendMatchSnapshotSchema.safeParse(snapshot);
+  if (!parsed.success) {
+    throw new Error(
+      `Recovery test snapshot violates Match API v1: ${parsed.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ")}`,
+    );
+  }
+  return snapshot;
 }
 
 function openPlayResponse(matchId: string) {
@@ -198,14 +211,39 @@ function sceneResponse(
   actionId: string,
 ): BackendMatchResponse {
   const base = openPlayResponse("m2-i7-bridge");
-  const pendingAction = structuredClone(
-    scene,
-  ) as BackendMatchResponse["pending_action"];
-  if (!pendingAction) throw new Error("Fixture must define a pending action.");
-  pendingAction.id = actionId;
-  if (pendingAction.field_state) {
-    pendingAction.field_state.match_id = base.match.id;
+  const currentAction = base.pending_action;
+  const legacyAction = structuredClone(scene) as NonNullable<
+    BackendMatchResponse["pending_action"]
+  >;
+  if (!currentAction?.field_state || !legacyAction.field_state) {
+    throw new Error("Fixture must define current and scene field actions.");
   }
+  const isRandomEvent = [
+    "JUMPER",
+    "ARGUMENT_OPPONENT",
+    "ARGUMENT_TEAMMATE",
+    "BRAWL",
+    "BATHROOM",
+  ].includes(legacyAction.scene_type);
+  const fieldState = {
+    ...currentAction.field_state,
+    id: `field-${actionId}`,
+    match_id: base.match.id,
+    minute: legacyAction.minute,
+    action_type: legacyAction.action_type,
+    scene_family: isRandomEvent ? "RANDOM_EVENT" : legacyAction.scene_type,
+    ...(legacyAction.scene_type === "DRIBBLE"
+      ? { dribble_pattern: legacyAction.field_state.dribble_pattern }
+      : {}),
+  };
+  const pendingAction: NonNullable<BackendMatchResponse["pending_action"]> = {
+    ...legacyAction,
+    id: actionId,
+    action_sequence: currentAction.action_sequence,
+    field_state_id: fieldState.id,
+    context: fieldState.context,
+    field_state: fieldState,
+  };
   return {
     ...base,
     minute: pendingAction.minute,
@@ -809,46 +847,48 @@ test("hydrates the exact contact draft and reconciles one ambiguous kick receipt
   let actionRequests = 0;
   let committed = false;
   let committedDecision: Record<string, unknown> | null = null;
-  const committedSnapshot = (): BackendMatchSnapshot => ({
-    ...snapshotFromResponse(initial),
-    match: {
-      ...initial.match,
-      revision: initial.match.revision + 1,
-      match_status: "IN_PROGRESS",
-      pending_action: null,
-    },
-    pending_action: null,
-    field_state: null,
-    latest_operation: {
-      version: 1,
-      operation_id: "m2-i7-committed-kick",
-      operation: "processMatchAction",
-      status: "COMMITTED",
-      request_revision: initial.match.revision,
-      committed_revision: initial.match.revision + 1,
-      action_id: submittedAction.id,
-      playback: {
-        version: 1,
-        submitted_action: submittedAction,
-        submitted_field_state: submittedFieldState,
-        last_decision: lastDecisionFor(
-          submittedAction,
-          committedDecision ?? { choice: "KICK" },
-        ),
-        decision_result: {
-          description: "Successful pass.",
-          success: true,
-          outcome_type: "PASS_COMPLETED",
-          flight_path: [
-            { x: 50, y: 36, z: 0, t: 0 },
-            { x: 54, y: 49, z: 0, t: 2 },
-          ],
-          final_point: { x: 54, y: 49, z: 0, t: 2 },
-        },
-        events: initial.events,
+  const committedSnapshot = (): BackendMatchSnapshot =>
+    validatedSnapshot({
+      ...snapshotFromResponse(initial),
+      match: {
+        ...initial.match,
+        revision: initial.match.revision + 1,
+        match_status: "IN_PROGRESS",
+        pending_action: null,
       },
-    },
-  });
+      pending_action: null,
+      field_state: null,
+      latest_operation: {
+        version: 1,
+        operation_id: "m2-i7-committed-kick",
+        operation: "processMatchAction",
+        status: "COMMITTED",
+        request_revision: initial.match.revision,
+        committed_revision: initial.match.revision + 1,
+        action_id: submittedAction.id,
+        playback: {
+          version: 1,
+          submitted_action: submittedAction,
+          submitted_field_state: submittedFieldState,
+          last_decision: lastDecisionFor(
+            submittedAction,
+            committedDecision ?? { choice: "KICK" },
+          ),
+          decision_result: {
+            description: "Successful pass.",
+            success: true,
+            outcome_type: "PASS_COMPLETED",
+            flight_path: [
+              { x: 50, y: 36, z: 0.11, t: 0 },
+              { x: 54, y: 49, z: 0.11, t: 2 },
+            ],
+            flight_outcome: "PASS_CONTROL",
+            final_point: { x: 54, y: 49, z: 0.11, t: 2 },
+          },
+          events: initial.events,
+        },
+      },
+    });
 
   await routeSnapshot(page, matchId, () =>
     committed ? committedSnapshot() : snapshotFromResponse(initial),
