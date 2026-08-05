@@ -384,4 +384,17 @@ if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true") {
       store.markSceneReady();
     },
   });
+  Object.defineProperty(globalThis, "__OVERGOAL_E2E_READ_MATCH_SESSION__", {
+    configurable: true,
+    value: () => {
+      const state = useMatchSessionStore.getState();
+      return {
+        diagnostic: state.diagnostic,
+        matchId: state.match?.id ?? null,
+        pendingCommand: state.pendingCommand,
+        phase: state.phase,
+        revision: state.match?.revision ?? null,
+      };
+    },
+  });
 }

@@ -96,8 +96,12 @@ export function DribbleControls({
     if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE !== "true") return;
     const bridge = globalThis as typeof globalThis & {
       __OVERGOAL_E2E_DRIBBLE_ADVANCE__?: (second: number) => void;
+      __OVERGOAL_E2E_DRIBBLE_READ__?: () => {
+        elapsed: number;
+        trace: DribbleLaneTracePoint[];
+      };
     };
-    bridge.__OVERGOAL_E2E_DRIBBLE_ADVANCE__ = (second) => {
+    const advance = (second: number) => {
       const nextElapsed = Math.max(
         0,
         Math.min(pattern.duration_seconds, second),
@@ -109,8 +113,19 @@ export function DribbleControls({
       setElapsed(nextElapsed);
       if (nextElapsed >= pattern.duration_seconds) completeRun();
     };
+    const read = () => ({
+      elapsed: elapsedRef.current,
+      trace: traceRef.current.map((point) => ({ ...point })),
+    });
+    bridge.__OVERGOAL_E2E_DRIBBLE_ADVANCE__ = advance;
+    bridge.__OVERGOAL_E2E_DRIBBLE_READ__ = read;
     return () => {
-      delete bridge.__OVERGOAL_E2E_DRIBBLE_ADVANCE__;
+      if (bridge.__OVERGOAL_E2E_DRIBBLE_ADVANCE__ === advance) {
+        delete bridge.__OVERGOAL_E2E_DRIBBLE_ADVANCE__;
+      }
+      if (bridge.__OVERGOAL_E2E_DRIBBLE_READ__ === read) {
+        delete bridge.__OVERGOAL_E2E_DRIBBLE_READ__;
+      }
     };
   }, [pattern.duration_seconds]);
 

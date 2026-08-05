@@ -5,9 +5,8 @@ import * as THREE from "three";
 
 import { type BallAimDraft, buildBallAimDraft } from "../../match/kick-gesture";
 
-const MAX_CONNECTED_FOCUS_ATTEMPTS = 120;
-const FOCUS_RESTORE_TIMEOUT_MS = 10_000;
 const REQUIRED_STABLE_FOCUS_FRAMES = 2;
+const FOCUS_RETRY_INTERVAL_MS = 50;
 
 interface BallAimSurfaceProps {
   position: [number, number, number];
@@ -61,15 +60,14 @@ export function BallAimSurface({
     // Html mounts its DOM target through the R3F portal. Native autoFocus can
     // run before that target is attached when the contact dialog closes.
     let frame: number | null = null;
-    let timeout = 0;
-    let attempts = 0;
+    let retryTimer: number | null = null;
     let stableFrames = 0;
     let finished = false;
     let observer: MutationObserver | null = null;
 
     const cleanup = () => {
       if (frame !== null) cancelAnimationFrame(frame);
-      clearTimeout(timeout);
+      if (retryTimer !== null) clearTimeout(retryTimer);
       observer?.disconnect();
     };
     const finish = () => {
@@ -79,17 +77,24 @@ export function BallAimSurface({
       onFocusRestored?.();
     };
     const scheduleFocus = () => {
-      if (finished || frame !== null) return;
+      if (finished || frame !== null || retryTimer !== null) return;
       frame = requestAnimationFrame(restoreFocus);
+    };
+    const scheduleRetry = () => {
+      if (finished || frame !== null || retryTimer !== null) return;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        scheduleFocus();
+      }, FOCUS_RETRY_INTERVAL_MS);
     };
     const restoreFocus = () => {
       frame = null;
       const target = targetRef.current;
       if (!target?.isConnected) {
         stableFrames = 0;
+        scheduleRetry();
         return;
       }
-      attempts += 1;
       target.focus({ preventScroll: true });
       if (document.activeElement === target) {
         stableFrames += 1;
@@ -100,16 +105,11 @@ export function BallAimSurface({
       } else {
         stableFrames = 0;
       }
-      if (attempts < MAX_CONNECTED_FOCUS_ATTEMPTS) {
-        scheduleFocus();
-        return;
-      }
-      finish();
+      scheduleRetry();
     };
 
     observer = new MutationObserver(scheduleFocus);
     observer.observe(document.body, { childList: true, subtree: true });
-    timeout = window.setTimeout(finish, FOCUS_RESTORE_TIMEOUT_MS);
     scheduleFocus();
     return cleanup;
   }, [enabled, focusOnMount, onFocusRestored]);

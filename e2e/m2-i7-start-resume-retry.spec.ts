@@ -257,7 +257,36 @@ test("hydrates an ambiguous prematch start before allowing the exact retry", asy
   await page.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => requests.length).toBe(2);
   expect(requests[1]).toEqual(requests[0]);
-  await expect(page).toHaveURL(new RegExp(`/(?:match|game)/${matchId}$`, "u"));
+  await expect
+    .poll(() => {
+      return page.evaluate(() => {
+        const read = (
+          globalThis as typeof globalThis & {
+            __OVERGOAL_E2E_READ_MATCH_SESSION__?: () => {
+              diagnostic: unknown;
+              matchId: string | null;
+              pendingCommand: unknown;
+              phase: string;
+            };
+          }
+        ).__OVERGOAL_E2E_READ_MATCH_SESSION__;
+        if (!read) throw new Error("Match-session E2E bridge unavailable");
+        const state = read();
+        return {
+          diagnostic: state.diagnostic,
+          matchId: state.matchId,
+          pendingCommand: state.pendingCommand,
+          phase: state.phase,
+        };
+      });
+    })
+    .toEqual({
+      diagnostic: null,
+      matchId,
+      pendingCommand: null,
+      phase: "timeline_playback",
+    });
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("clears an owned start loader when prematch is left before the response", async ({

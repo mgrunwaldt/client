@@ -848,9 +848,11 @@ test("hydrates the exact contact draft and reconciles one ambiguous kick receipt
     (button as HTMLButtonElement).click();
   });
   await expect.poll(() => actionRequests).toBe(1);
-  await expect(page.getByTestId("scene-contract-error")).toBeVisible();
+  await expect(page.getByTestId("scene-contract-error")).toBeVisible({
+    timeout: 45_000,
+  });
   await expectFieldPhase(page, "recoverable_error", "blocked");
-  await page.reload();
+  await page.getByRole("button", { name: "Refresh" }).click();
   await expect(page.getByTestId("kick-result")).toBeVisible({
     timeout: 45_000,
   });

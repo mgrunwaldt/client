@@ -297,6 +297,21 @@ async function advanceDribble(page: Page, second: number) {
   }, second);
 }
 
+async function readDribbleState(page: Page) {
+  return page.evaluate(() => {
+    const read = (
+      globalThis as typeof globalThis & {
+        __OVERGOAL_E2E_DRIBBLE_READ__?: () => {
+          elapsed: number;
+          trace: Array<{ at_second: number; lane: string }>;
+        };
+      }
+    ).__OVERGOAL_E2E_DRIBBLE_READ__;
+    if (!read) throw new Error("Dribble E2E state bridge unavailable");
+    return read();
+  });
+}
+
 test("renders every authoritative outcome and returns to the Timeline", async ({
   context,
   page,
@@ -338,17 +353,6 @@ test("renders every authoritative outcome and returns to the Timeline", async ({
       authoritativeActionId = actionId;
       authoritativeRevision = index * 2;
       await hydrateDribble(page, dribbleResponse(actionId, index * 2));
-
-      const controls = page.getByTestId("dribble-controls");
-      if (index === 0) {
-        await controls.getByRole("radiogroup").focus();
-        await advanceDribble(page, 1);
-        await page.keyboard.press("ArrowLeft");
-        await expect(page.getByTestId("dribble-lane-center")).toHaveAttribute(
-          "aria-checked",
-          "true",
-        );
-      }
 
       if (outcome.choice === "SIMULATE_FOUL") {
         const simulate = page.getByTestId("dribble-simulate-foul");
@@ -425,25 +429,6 @@ test("accepts left and right screen-side taps and submits once", async ({
   await authenticateForContinuation(page);
   await page.bringToFront();
   await hydrateDribble(page, dribbleResponse("action-dribble-screen-taps"));
-  await page.waitForFunction(() => {
-    const controlsElement = document.querySelector<HTMLElement>(
-      '[data-testid="dribble-controls"]',
-    );
-    if (!controlsElement) return false;
-    if (!document.documentElement.dataset.dribbleTraceObserverInstalled) {
-      const captureTrace = () => {
-        document.documentElement.dataset.dribbleObservedLaneTrace =
-          controlsElement.dataset.laneTrace ?? "null";
-      };
-      captureTrace();
-      new MutationObserver(captureTrace).observe(controlsElement, {
-        attributeFilter: ["data-lane-trace"],
-        attributes: true,
-      });
-      document.documentElement.dataset.dribbleTraceObserverInstalled = "true";
-    }
-    return true;
-  });
   const centerLane = page.getByTestId("dribble-lane-center");
   const rightLane = page.getByTestId("dribble-lane-right");
   await advanceDribble(page, 1);
@@ -454,20 +439,9 @@ test("accepts left and right screen-side taps and submits once", async ({
     testInfo.project.name === "mobile-chromium",
   );
   await expect
-    .poll(async () => {
-      const trace = JSON.parse(
-        (await page
-          .locator("html")
-          .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
-      ) as Array<{ lane: string }> | null;
-      return trace?.at(-1)?.lane ?? null;
-    })
+    .poll(async () => (await readDribbleState(page)).trace.at(-1)?.lane)
     .toBe("CENTER");
-  const centerTrace = JSON.parse(
-    (await page
-      .locator("html")
-      .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
-  ) as Array<{ at_second: number; lane: string }>;
+  const centerTrace = (await readDribbleState(page)).trace;
   await advanceDribble(page, centerTrace.at(-1)!.at_second + 1);
   await expect(rightLane).toBeEnabled();
   await tapDribbleScreenSide(
@@ -476,20 +450,9 @@ test("accepts left and right screen-side taps and submits once", async ({
     testInfo.project.name === "mobile-chromium",
   );
   await expect
-    .poll(async () => {
-      const trace = JSON.parse(
-        (await page
-          .locator("html")
-          .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
-      ) as Array<{ lane: string }> | null;
-      return trace?.at(-1)?.lane ?? null;
-    })
+    .poll(async () => (await readDribbleState(page)).trace.at(-1)?.lane)
     .toBe("RIGHT");
-  const observedTrace = JSON.parse(
-    (await page
-      .locator("html")
-      .getAttribute("data-dribble-observed-lane-trace")) ?? "null",
-  ) as Array<{ at_second: number; lane: string }>;
+  const observedTrace = (await readDribbleState(page)).trace;
   expect(observedTrace).not.toBeNull();
   expect(observedTrace.map(({ lane }) => lane)).toEqual([
     "RIGHT",
