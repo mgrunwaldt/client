@@ -52,6 +52,7 @@ import {
 } from "../../match/field-camera";
 import {
   createFieldTransform,
+  FIELD_WORLD_SCALE,
   type FieldViewWindow,
   fixedAttackingView,
   followLegendView,
@@ -170,8 +171,8 @@ function distanceInFieldMeters(
   a: { x: number; y: number },
   b: { x: number; y: number },
 ) {
-  const dx = (a.x - b.x) * 0.68;
-  const dy = (a.y - b.y) * 1.05;
+  const dx = (a.x - b.x) * FIELD_WORLD_SCALE.x;
+  const dy = (a.y - b.y) * FIELD_WORLD_SCALE.z;
   return Math.hypot(dx, dy);
 }
 

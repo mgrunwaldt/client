@@ -1,5 +1,6 @@
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 
+import { BackendMatchResponseSchema } from "../src/match/api-v1/contract";
 import argumentOpponent from "../tests/fixtures/match-api-v1/examples/scenes/argument-opponent.json" with { type: "json" };
 import argumentTeammate from "../tests/fixtures/match-api-v1/examples/scenes/argument-teammate.json" with { type: "json" };
 import bathroom from "../tests/fixtures/match-api-v1/examples/scenes/bathroom.json" with { type: "json" };
@@ -50,9 +51,28 @@ function randomEventResponse(
   revision = 0,
 ) {
   const response = structuredClone(waitingOpenPlay);
-  const pendingAction = structuredClone(scene);
-  pendingAction.id = actionId;
-  return {
+  const currentAction = structuredClone(response.pending_action);
+  if (!currentAction?.field_state) {
+    throw new Error(
+      "The random-event harness requires a current field fixture.",
+    );
+  }
+  const fieldState = {
+    ...currentAction.field_state,
+    id: `field-${actionId}`,
+    minute: scene.minute,
+    action_type: scene.action_type,
+    scene_family: "RANDOM_EVENT",
+  };
+  const pendingAction = {
+    ...structuredClone(scene),
+    id: actionId,
+    action_sequence: currentAction.action_sequence,
+    field_state_id: fieldState.id,
+    context: fieldState.context,
+    field_state: fieldState,
+  };
+  const candidate = {
     ...response,
     minute: pendingAction.minute,
     prev_time: pendingAction.minute - 1,
@@ -78,6 +98,15 @@ function randomEventResponse(
       pending_action: pendingAction,
     },
   };
+  const parsed = BackendMatchResponseSchema.safeParse(candidate);
+  if (!parsed.success) {
+    throw new Error(
+      `Random-event test fixture violates the current Match API contract: ${parsed.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ")}`,
+    );
+  }
+  return candidate;
 }
 
 function resolvedRandomEvent(

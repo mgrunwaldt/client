@@ -27,7 +27,7 @@ import {
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "e3d7a735dfe93601fda3c7f5e9614f5c3e95fd01";
+const CONTRACT_SOURCE_REVISION = "32b1a73614c30e8b31defc01b67deb17850d4bcb";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
   "f9d507ec68fa799305ec5d74743738dda77aaaa2f91bc1ddce34cf59ed225712";
@@ -149,7 +149,7 @@ describe("Match API v1 test fixture mirror", () => {
       fixtures: unknown[];
     };
     expect(CONTRACT_SOURCE_REVISION).toBe(
-      "e3d7a735dfe93601fda3c7f5e9614f5c3e95fd01",
+      "32b1a73614c30e8b31defc01b67deb17850d4bcb",
     );
     expect(manifest.contract).toBe("openapi.json");
     expect(manifest.fixtures.length).toBeGreaterThan(20);
@@ -335,6 +335,36 @@ describe("Match API v1 test fixture mirror", () => {
           ).zoom = 1.5;
         },
       },
+      {
+        name: "missing current action sequence",
+        mutate: (value) => {
+          delete (value.pending_action as Record<string, unknown>)
+            .action_sequence;
+        },
+      },
+      {
+        name: "missing canonical kick control envelope",
+        mutate: (value) => {
+          delete (value.pending_action as Record<string, unknown>)
+            .control_envelope;
+        },
+      },
+      {
+        name: "unknown current scene type",
+        mutate: (value) => {
+          (value.pending_action as Record<string, unknown>).scene_type =
+            "FUTURE_SCENE";
+        },
+      },
+      {
+        name: "incomplete current choice contract",
+        mutate: (value) => {
+          delete (
+            (value.pending_action as Record<string, unknown>)
+              .available_choices as Array<Record<string, unknown>>
+          )[0].input_schema;
+        },
+      },
     ];
 
     for (const { mutate, name } of mutations) {
@@ -430,6 +460,43 @@ describe("Match API v1 test fixture mirror", () => {
     };
     expect(
       BackendMatchResponseSchema.safeParse(missingCanonicalTrajectory).success,
+    ).toBe(false);
+
+    const discontinuousAutomaticShot = structuredClone(original);
+    discontinuousAutomaticShot.decision_result = {
+      description: "The receiver shoots automatically.",
+      success: true,
+      outcome_type: "AUTOMATIC_TEAMMATE_GOAL",
+      flight_path: [
+        { x: 50, y: 40, z: 0.11, t: 0 },
+        { x: 52, y: 20, z: 0.11, t: 0.8 },
+      ],
+      flight_outcome: "PASS_CONTROL",
+      final_point: { x: 52, y: 20, z: 0.11, t: 0.8 },
+      automatic_follow_up: {
+        type: "TEAMMATE_SHOT",
+        actor_player_id: "team_1_ST_10",
+        opportunity: {
+          eligible: true,
+          score: 84,
+          distance_to_goal_m: 11,
+          nearest_defender_m: 3,
+          lane_blocked: false,
+          scene_pressure: 62,
+          receive_speed_mps: 8,
+        },
+        flight_path: [
+          { x: 60, y: 20, z: 0.11, t: 0 },
+          { x: 50, y: 0, z: 0.11, t: 0.7 },
+        ],
+        flight_outcome: "GOAL",
+        final_point: { x: 50, y: 0, z: 0.11, t: 0.7 },
+        contact: null,
+        frame_contacts: [],
+      },
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(discontinuousAutomaticShot).success,
     ).toBe(false);
 
     const divergentEmbeddedField = structuredClone(original);

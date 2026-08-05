@@ -1728,7 +1728,8 @@
           "flight_path": ["flight_outcome", "final_point"],
           "flight_outcome": ["flight_path", "final_point"],
           "final_point": ["flight_path", "flight_outcome"],
-          "automatic_follow_up": ["flight_path", "flight_outcome", "final_point"]
+          "automatic_follow_up": ["flight_path", "flight_outcome", "final_point"],
+          "kick_resolution": ["flight_path", "flight_outcome", "final_point"]
         },
         "allOf": [
           {
@@ -2243,12 +2244,16 @@
       },
       "AutomaticKickFollowUp": {
         "type": "object",
+        "description": "Authoritative teammate shot after a controlled pass. The first flight_path point restarts time at t=0 and its x/y/z coordinates must equal the parent DecisionResult final_point.",
         "required": ["type", "actor_player_id", "opportunity", "flight_path", "flight_outcome", "final_point", "contact", "frame_contacts"],
         "properties": {
           "type": { "const": "TEAMMATE_SHOT" },
           "actor_player_id": { "$ref": "#/components/schemas/Identifier" },
           "opportunity": { "$ref": "#/components/schemas/AutomaticShotOpportunity" },
-          "flight_path": { "$ref": "#/components/schemas/FlightPath" },
+          "flight_path": {
+            "allOf": [{ "$ref": "#/components/schemas/FlightPath" }],
+            "description": "Shot-local trajectory whose first point is t=0 at the exact x/y/z of the incoming pass final_point."
+          },
           "flight_outcome": { "type": "string", "minLength": 1 },
           "final_point": { "$ref": "#/components/schemas/FlightPoint" },
           "contact": { "oneOf": [{ "$ref": "#/components/schemas/KickContact" }, { "type": "null" }] },

@@ -1189,6 +1189,78 @@ export const BackendPendingActionSchema: z.ZodType<BackendPendingAction> = z
     }
   });
 
+const currentPlayableScene = z.enum([
+  "OPEN_PLAY",
+  "DRIBBLE",
+  "FREE_KICK",
+  "CORNER",
+  "PENALTY",
+  "JUMPER",
+  "BRAWL",
+  "ARGUMENT_OPPONENT",
+  "ARGUMENT_TEAMMATE",
+  "BATHROOM",
+]);
+
+const BackendCurrentPendingActionSchema = BackendPendingActionSchema.and(
+  z
+    .object({
+      action_sequence: z.number().int().min(1),
+      action_type: currentPlayableScene,
+      scene_type: currentPlayableScene,
+      source: z.enum(["SIMULATION", "FOLLOW_UP", "POSSESSION_CHAIN"]),
+      title: z.string().trim().min(1),
+      description: z.string().trim().min(1),
+      context: BackendCurrentFieldContextSchema,
+      field_state: BackendCurrentFieldStateSchema.optional(),
+      available_choices: z
+        .array(
+          z
+            .object({
+              id: z.string().trim().min(1),
+              label: z.string().trim().min(1),
+              description: z.string().trim().min(1),
+              input_schema: z.record(z.string(), z.unknown()),
+            })
+            .strict(),
+        )
+        .min(1),
+      origin: z
+        .object({
+          previous_action_id: identifier,
+          previous_outcome: z.string().trim().min(1),
+        })
+        .strict()
+        .nullable(),
+    })
+    .passthrough(),
+).superRefine((action, context) => {
+  if (
+    ["OPEN_PLAY", "FREE_KICK", "CORNER", "PENALTY"].includes(
+      action.scene_type,
+    ) &&
+    !action.control_envelope
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: `${action.scene_type} requires a kick control envelope.`,
+      path: ["control_envelope"],
+    });
+  }
+
+  if (
+    action.scene_type === "DRIBBLE" &&
+    action.field_state !== undefined &&
+    action.field_state.dribble_pattern === undefined
+  ) {
+    context.addIssue({
+      code: "custom",
+      message: "DRIBBLE requires an authoritative dribble pattern.",
+      path: ["field_state", "dribble_pattern"],
+    });
+  }
+});
+
 export const BackendMatchSchema: z.ZodType<BackendMatch> = z
   .object({
     id: identifier,
@@ -1662,6 +1734,22 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
         path: ["flight_path"],
       });
     }
+    if (result.automatic_follow_up && finalPoint) {
+      const automaticStart = result.automatic_follow_up.flight_path[0];
+      if (
+        automaticStart &&
+        (["x", "y", "z"] as const).some(
+          (axis) => Math.abs(automaticStart[axis] - finalPoint[axis]) > 1e-9,
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "An automatic teammate shot must start at the incoming pass final point.",
+          path: ["automatic_follow_up", "flight_path", 0],
+        });
+      }
+    }
 
     if (result.flight_outcome !== "TEAMMATE_CONTROL" && !result.receiver) {
       return;
@@ -1786,21 +1874,10 @@ function validateCurrentPendingAction(
 ) {
   if (!value) return;
   appendSchemaIssues(
-    z.number().int().min(1).safeParse(value.action_sequence),
+    BackendCurrentPendingActionSchema.safeParse(value),
     context,
-    [...path, "action_sequence"],
+    path,
   );
-  appendSchemaIssues(
-    BackendCurrentFieldContextSchema.safeParse(value.context),
-    context,
-    [...path, "context"],
-  );
-  if (value.field_state !== undefined) {
-    validateCurrentFieldState(value.field_state, context, [
-      ...path,
-      "field_state",
-    ]);
-  }
 }
 
 function validateCurrentDecisionResult(
