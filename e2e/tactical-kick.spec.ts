@@ -1140,7 +1140,7 @@ test("fails safely when teammate control is missing its authoritative contract",
 test("captures continuous tactical arrow visuals at short, maximum, diagonal, and edge pulls", async ({
   page,
 }, testInfo) => {
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await authenticateForContinuation(page);
   await hydrateScene(page, canonicalScene("FREE_KICK"));

@@ -961,6 +961,7 @@ test("hydrates the exact contact draft and reconciles one ambiguous kick receipt
       {
         attributeFilter: ["data-result-animating"],
         attributes: true,
+        childList: true,
         subtree: true,
       },
     );
