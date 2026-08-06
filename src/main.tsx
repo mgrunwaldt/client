@@ -10,6 +10,8 @@ import type { SchemaType } from "./dojo/bindings";
 import { setupWorld } from "./dojo/contracts.gen";
 import { dojoConfig } from "./dojo/dojoConfig";
 import StarknetProvider from "./dojo/starknet-provider";
+import { installGameFeedbackLifecycle } from "./platform/game-feedback";
+import { registerOvergoalPwa } from "./platform/pwa";
 
 interface BootstrapSurfaceProps {
   error?: string;
@@ -64,6 +66,9 @@ if (!rootElement) throw new Error("Root element not found");
 
 const root = createRoot(rootElement);
 let initializing = false;
+
+installGameFeedbackLifecycle();
+void registerOvergoalPwa();
 
 async function initializeApp() {
   if (initializing) return;

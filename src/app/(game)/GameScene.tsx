@@ -97,6 +97,10 @@ import {
   authoritativeTrajectoryPlayback,
   completeAuthoritativeFlightPath,
 } from "../../match/trajectory-playback";
+import {
+  outcomeFeedbackCue,
+  playGameFeedback,
+} from "../../platform/game-feedback";
 import { BallAimSurface } from "./BallAimSurface";
 import { DribbleControls } from "./DribbleControls";
 import { KickContactDialog } from "./KickContactDialog";
@@ -938,6 +942,7 @@ export default function GameScene({
   const activeRouteRef = useRef({ active, matchId: routeMatchId });
   const activeActionCommandRef = useRef<MatchCommand | null>(null);
   const playedOperationIdRef = useRef<string | null>(null);
+  const feedbackOperationIdRef = useRef<string | null>(null);
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
 
   useLayoutEffect(() => {
@@ -976,6 +981,7 @@ export default function GameScene({
     fieldRehydrationGenerationRef.current += 1;
     assetErrorBaselineRef.current = null;
     playedOperationIdRef.current = null;
+    feedbackOperationIdRef.current = null;
     return () => {
       const command = activeActionCommandRef.current;
       activeActionCommandRef.current = null;
@@ -1493,6 +1499,15 @@ export default function GameScene({
 
   const startBallPlayback = useCallback(
     (response: BackendMatchResponse, operationId: string | null = null) => {
+      const feedbackId =
+        operationId ??
+        `${response.match.id}:${response.match.revision}:${response.prev_time}`;
+      if (feedbackOperationIdRef.current !== feedbackId) {
+        feedbackOperationIdRef.current = feedbackId;
+        playGameFeedback(
+          outcomeFeedbackCue(response.decision_result?.outcome_type),
+        );
+      }
       if (operationId) playedOperationIdRef.current = operationId;
       ballFlightPlaybackRef.current = null;
       liveBallFlightPointRef.current = null;
@@ -1550,6 +1565,7 @@ export default function GameScene({
   }, [phase, resultPlayback, stagedKickResult, startBallPlayback]);
 
   const handleAimRelease = (draft: BallAimDraft) => {
+    playGameFeedback("aim-ready");
     setRestoreAimFocus(false);
     setSubmitError(null);
     setActiveAimDraft(null);
@@ -1620,6 +1636,7 @@ export default function GameScene({
     }
 
     try {
+      playGameFeedback("action");
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
@@ -1694,6 +1711,7 @@ export default function GameScene({
     }
 
     try {
+      playGameFeedback("action");
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
@@ -1770,6 +1788,7 @@ export default function GameScene({
     }
 
     try {
+      playGameFeedback("action");
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
@@ -1836,6 +1855,7 @@ export default function GameScene({
     }
 
     try {
+      playGameFeedback("action");
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
@@ -1893,6 +1913,7 @@ export default function GameScene({
     if (!decision || typeof decision !== "object") return;
 
     try {
+      playGameFeedback("action");
       setError(null);
       if (!beginActionCommand(pendingCommand)) return;
       activeActionCommandRef.current = pendingCommand;

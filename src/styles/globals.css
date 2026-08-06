@@ -24,6 +24,31 @@
   --card-name-content: "";
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+  background: #020816;
+}
+
+body {
+  margin: 0;
+  overscroll-behavior: none;
+}
+
+button,
+input {
+  touch-action: manipulation;
+}
+
+@media (display-mode: standalone) {
+  body {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 /* Tell Tailwind v4 about named colors */
 @theme {
   --color-border: hsl(var(--border));
