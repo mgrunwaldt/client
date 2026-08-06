@@ -943,6 +943,26 @@ function validateFlightTrajectory(
   }
 }
 
+function validateFlightContact(
+  flightPath: BackendFlightPoint[],
+  contact: BackendKickContact,
+  context: z.RefinementCtx,
+  contactPrefix: (string | number)[],
+) {
+  const matchesPath = flightPath.some((point) =>
+    (["x", "y", "z", "t"] as const).every(
+      (axis) => Math.abs(point[axis] - contact.at[axis]) <= 1e-9,
+    ),
+  );
+  if (!matchesPath) {
+    context.addIssue({
+      code: "custom",
+      message: "Contact time and position must match the trajectory.",
+      path: [...contactPrefix, "at"],
+    });
+  }
+}
+
 const BackendKickContactSchema: z.ZodType<BackendKickContact> = z
   .object({
     type: z.enum(["PLAYER", "GOALKEEPER", "POST", "CROSSBAR"]),
@@ -994,6 +1014,17 @@ const BackendAutomaticKickFollowUpSchema: z.ZodType<BackendAutomaticKickFollowUp
         ["flight_path"],
         ["final_point"],
       );
+      if (followUp.contact) {
+        validateFlightContact(followUp.flight_path, followUp.contact, context, [
+          "contact",
+        ]);
+      }
+      followUp.frame_contacts.forEach((contact, index) => {
+        validateFlightContact(followUp.flight_path, contact, context, [
+          "frame_contacts",
+          index,
+        ]);
+      });
     });
 
 export const BackendFieldStateSchema: z.ZodType<BackendFieldState> = z

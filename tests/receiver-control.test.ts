@@ -180,4 +180,32 @@ describe("authoritative receiver control", () => {
       false,
     );
   });
+
+  it("requires automatic-shot player and frame contacts to match its trajectory", () => {
+    const response = automaticKickResponse();
+    const followUp = response.decision_result!.automatic_follow_up!;
+    const contactPoint = followUp.flight_path.at(-1)!;
+    followUp.contact = {
+      type: "GOALKEEPER",
+      player_id: "team_2_GK_1",
+      at: { ...contactPoint },
+      speed_mps: 18,
+    };
+    followUp.frame_contacts = [
+      { type: "POST", at: { ...followUp.flight_path[1] } },
+    ];
+    expect(BackendMatchResponseSchema.safeParse(response).success).toBe(true);
+
+    const stalePlayerContact = structuredClone(response);
+    stalePlayerContact.decision_result!.automatic_follow_up!.contact!.at.t -= 0.35;
+    expect(
+      BackendMatchResponseSchema.safeParse(stalePlayerContact).success,
+    ).toBe(false);
+
+    const staleFrameContact = structuredClone(response);
+    staleFrameContact.decision_result!.automatic_follow_up!.frame_contacts[0].at.t -= 0.35;
+    expect(
+      BackendMatchResponseSchema.safeParse(staleFrameContact).success,
+    ).toBe(false);
+  });
 });
