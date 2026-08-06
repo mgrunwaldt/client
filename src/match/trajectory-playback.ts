@@ -3,8 +3,6 @@ import type {
   BackendFlightPoint,
 } from "./api-v1/contract";
 
-export const AUTOMATIC_SHOT_CONTROL_HOLD_SECONDS = 0.35;
-
 export type AuthoritativeTrajectoryPlayback = {
   finalPoint: BackendFlightPoint;
   path: BackendFlightPoint[];
@@ -27,18 +25,16 @@ export function authoritativeTrajectoryPlayback(
 
   const incomingEndTime =
     result.flight_path[result.flight_path.length - 1]?.t ?? 0;
-  const automaticStartTime =
-    incomingEndTime + AUTOMATIC_SHOT_CONTROL_HOLD_SECONDS;
   const automaticPath = automaticShot.flight_path.map((point) => ({
     ...point,
-    t: automaticStartTime + point.t,
+    t: incomingEndTime + point.t,
   }));
 
   return {
     path: [...result.flight_path, ...automaticPath],
     finalPoint: {
       ...automaticShot.final_point,
-      t: automaticStartTime + automaticShot.final_point.t,
+      t: incomingEndTime + automaticShot.final_point.t,
     },
   };
 }

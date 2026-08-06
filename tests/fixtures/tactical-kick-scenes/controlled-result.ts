@@ -69,7 +69,11 @@ export function automaticKickResponse() {
     },
     flight_path: [
       { ...decisionResult.final_point, t: 0 },
-      { x: 50, y: 8, z: 1.4, t: 0.35 },
+      {
+        ...controlledResultExpectation.ballPosition,
+        z: 0.11,
+        t: 0.35,
+      },
       { x: 50, y: -0.2, z: 0.11, t: 0.7 },
     ],
     flight_outcome: "OUT",

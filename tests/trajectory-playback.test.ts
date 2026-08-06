@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { BackendDecisionResult } from "../src/match/api-v1/contract";
-import {
-  authoritativeTrajectoryPlayback,
-  AUTOMATIC_SHOT_CONTROL_HOLD_SECONDS,
-} from "../src/match/trajectory-playback";
+import { authoritativeTrajectoryPlayback } from "../src/match/trajectory-playback";
 
 const passResult: BackendDecisionResult = {
   description: "Successful pass.",
@@ -53,6 +50,7 @@ describe("authoritativeTrajectoryPlayback", () => {
         },
         flight_path: [
           { x: 52, y: 20, z: 0.11, t: 0 },
+          { x: 51.8, y: 19.4, z: 0.11, t: 0.35 },
           { x: 50, y: -0.2, z: 0.11, t: 0.7 },
         ],
         flight_outcome: "GOAL",
@@ -63,12 +61,12 @@ describe("authoritativeTrajectoryPlayback", () => {
     };
 
     const playback = authoritativeTrajectoryPlayback(result);
-    const automaticStart =
-      passResult.final_point!.t + AUTOMATIC_SHOT_CONTROL_HOLD_SECONDS;
+    const automaticStart = passResult.final_point!.t;
 
     expect(playback?.path).toEqual([
       ...passResult.flight_path!,
       { x: 52, y: 20, z: 0.11, t: automaticStart },
+      { x: 51.8, y: 19.4, z: 0.11, t: automaticStart + 0.35 },
       { x: 50, y: -0.2, z: 0.11, t: automaticStart + 0.7 },
     ]);
     expect(playback?.finalPoint).toEqual({
