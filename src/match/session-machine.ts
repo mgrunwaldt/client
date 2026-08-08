@@ -72,6 +72,27 @@ export function createInitialMatchSession(): MatchSessionData {
   return { ...initialData };
 }
 
+function controlsFromAuthoritativeTactics(
+  match: BackendMatch,
+): Pick<MatchSessionData, "effort" | "playstyle"> | null {
+  const tactics = match.scheduled_tactics?.tactics ?? match.tactics;
+  if (!tactics) return null;
+  const effort = {
+    LOW: "low",
+    MEDIUM: "medium",
+    HIGH: "high",
+  } as const;
+  const playstyle = {
+    DEFENSIVE: "defense",
+    BALANCED: "balanced",
+    OFFENSIVE: "offensive",
+  } as const;
+  return {
+    effort: effort[tactics.effort],
+    playstyle: playstyle[tactics.playstyle],
+  };
+}
+
 function receiptIdentityMatchesCommand(
   receipt: BackendMatchOperationReceipt | null | undefined,
   command: MatchSessionData["pendingCommand"],
@@ -82,6 +103,7 @@ function receiptIdentityMatchesCommand(
     start: "startMatch",
     resume: "resumeMatch",
     action: "processMatchAction",
+    tactics: "updateMatchTactics",
   } as const;
   return (
     receipt.operation === operation[command.operation] &&
@@ -679,6 +701,7 @@ function applyAuthoritativeSnapshot(
       ? (payload.match.pending_action ?? null)
       : payload.pendingAction;
   const match = payload.match;
+  const authoritativeControls = controlsFromAuthoritativeTactics(match);
   const unsupportedRecovery = payload.unsupportedScene ?? null;
   const hydratedState = {
     ...state,
@@ -696,6 +719,7 @@ function applyAuthoritativeSnapshot(
     halftimeSummary: payload.halftimeSummary ?? state.halftimeSummary,
     fullTimeHandoff: payload.fullTimeHandoff ?? state.fullTimeHandoff,
     latestOperation: payload.latestOperation ?? null,
+    ...(authoritativeControls ?? {}),
   };
   if (unsupportedRecovery) {
     if (
@@ -805,6 +829,8 @@ function applyAuthoritativeSnapshot(
         payload.legendAvailability ?? state.legendAvailability,
       halftimeSummary: payload.halftimeSummary ?? state.halftimeSummary,
       fullTimeHandoff: payload.fullTimeHandoff ?? state.fullTimeHandoff,
+      latestOperation: payload.latestOperation ?? null,
+      ...(authoritativeControls ?? {}),
       diagnostic: null,
       error: null,
     },
@@ -923,6 +949,7 @@ export function matchSessionReducer(
         {
           ...state,
           ...event.payload,
+          ...(controlsFromAuthoritativeTactics(event.payload.match) ?? {}),
           pendingAction: null,
           fieldState: null,
           timelineEvents: [],

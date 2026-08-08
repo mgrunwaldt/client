@@ -1,15 +1,17 @@
 import "../../(game)/field-assets";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router";
 
 import LoadingScreen from "../../../components/loader/LoadingScreen";
 import { Button } from "../../../components/ui/button";
 import {
+  type BackendMatchSnapshot,
   createMatchCommand,
   fetchBackendMatch,
   type MatchCommand,
   resumeBackendMatch,
+  updateBackendMatchTactics,
 } from "../../../lib/backend-match";
 import {
   hasAuthoritativeMatchIdentity,
@@ -43,6 +45,18 @@ type MatchEvent = {
     | "opponent-chance";
 };
 
+const effortToApi = {
+  low: "LOW",
+  medium: "MEDIUM",
+  high: "HIGH",
+} as const;
+
+const playstyleToApi = {
+  defense: "DEFENSIVE",
+  balanced: "BALANCED",
+  offensive: "OFFENSIVE",
+} as const;
+
 function mapBackendEventType(event: {
   team: string;
   my_team_scored: boolean;
@@ -62,6 +76,8 @@ export default function MatchScreen() {
   const navigate = useNavigate();
   const params = useParams();
   const [reloadKey, setReloadKey] = useState(0);
+  const [tacticsPending, setTacticsPending] = useState(false);
+  const [tacticsError, setTacticsError] = useState<string | null>(null);
   const match = useMatchSessionStore((state) => state.match);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
@@ -79,8 +95,6 @@ export default function MatchScreen() {
   const playbackStatus = useMatchSessionStore((state) => state.playbackStatus);
   const effort = useMatchSessionStore((state) => state.effort);
   const playstyle = useMatchSessionStore((state) => state.playstyle);
-  const setEffort = useMatchSessionStore((state) => state.setEffort);
-  const setPlaystyle = useMatchSessionStore((state) => state.setPlaystyle);
   const setPlaybackMinute = useMatchSessionStore(
     (state) => state.setPlaybackMinute,
   );
@@ -133,6 +147,60 @@ export default function MatchScreen() {
   const timelinePresentationReady =
     authoritativeTimelineReady || presentingUnavailableSimulation;
 
+  const applySnapshot = useCallback(
+    (response: BackendMatchSnapshot) => {
+      const hydratedPendingAction =
+        response.pending_action &&
+        !response.pending_action.field_state &&
+        response.field_state
+          ? { ...response.pending_action, field_state: response.field_state }
+          : response.pending_action;
+      hydrateMatchSession({
+        match: response.match,
+        myTeam: response.my_team,
+        opponentTeam: response.opponent_team,
+        timelineEvents: response.timeline,
+        pendingAction: hydratedPendingAction,
+        unsupportedScene: response.unsupported_scene,
+        legendAvailability: response.legend_availability,
+        halftimeSummary: response.halftime_summary,
+        fullTimeHandoff: response.full_time_handoff,
+        latestOperation: response.latest_operation,
+      });
+    },
+    [hydrateMatchSession],
+  );
+
+  const updateTactics = async (
+    nextEffort: typeof effort,
+    nextPlaystyle: typeof playstyle,
+  ) => {
+    if (!match || tacticsPending) return;
+    setTacticsPending(true);
+    setTacticsError(null);
+    try {
+      const response = await updateBackendMatchTactics(match, {
+        version: 1,
+        effort: effortToApi[nextEffort],
+        playstyle: playstyleToApi[nextPlaystyle],
+      });
+      applySnapshot(response);
+    } catch (error) {
+      setTacticsError(
+        error instanceof Error ? error.message : "Could not save tactics.",
+      );
+    } finally {
+      setTacticsPending(false);
+    }
+  };
+
+  const setEffort = (nextEffort: typeof effort) => {
+    void updateTactics(nextEffort, playstyle);
+  };
+  const setPlaystyle = (nextPlaystyle: typeof playstyle) => {
+    void updateTactics(effort, nextPlaystyle);
+  };
+
   const targetMinute = pendingAction?.minute || match?.current_time || 0;
   const commandNeedsRouteReconciliation = Boolean(
     pendingCommand?.matchId === params.matchId &&
@@ -181,27 +249,7 @@ export default function MatchScreen() {
       try {
         const response = await fetchBackendMatch(matchId);
         if (cancelled) return;
-        const pendingAction =
-          response.pending_action &&
-          !response.pending_action.field_state &&
-          response.field_state
-            ? {
-                ...response.pending_action,
-                field_state: response.field_state,
-              }
-            : response.pending_action;
-        hydrateMatchSession({
-          match: response.match,
-          myTeam: response.my_team,
-          opponentTeam: response.opponent_team,
-          timelineEvents: response.timeline,
-          pendingAction,
-          unsupportedScene: response.unsupported_scene,
-          legendAvailability: response.legend_availability,
-          halftimeSummary: response.halftime_summary,
-          fullTimeHandoff: response.full_time_handoff,
-          latestOperation: response.latest_operation,
-        });
+        applySnapshot(response);
         succeeded = true;
       } catch (error) {
         retryableFailure = isRetryableHydrationFailure(error);
@@ -230,6 +278,7 @@ export default function MatchScreen() {
     };
   }, [
     authoritativeMatchIdentity,
+    applySnapshot,
     commandNeedsRouteReconciliation,
     hideTransitionLoader,
     hydrateMatchSession,
@@ -568,6 +617,8 @@ export default function MatchScreen() {
               setEffort={setEffort}
               playstyle={playstyle}
               setPlaystyle={setPlaystyle}
+              disabled={tacticsPending}
+              error={tacticsError}
             />
           )}
         </div>

@@ -13,6 +13,7 @@ import {
   MatchApiContractError,
   processBackendMatchAction,
   startBackendMatch,
+  updateBackendMatchTactics,
 } from "../src/lib/backend-match";
 import {
   BackendMatchResponseSchema,
@@ -384,6 +385,68 @@ describe("backend match client", () => {
     );
     expect(requestBody(fetchMock.mock.calls[1])).toMatchObject({
       match_decision: { power: 42 },
+    });
+  });
+
+  it("updates tactics with authoritative revision and idempotency headers", async () => {
+    const response = await readFixture<Record<string, unknown>>(
+      "server/match-snapshot-engine-7-response.json",
+    );
+    const match = response.match as Record<string, unknown>;
+    match.id = currentMatch.id;
+    match.revision = 8;
+    match.tactics = { version: 1, effort: "MEDIUM", playstyle: "BALANCED" };
+    match.scheduled_tactics = {
+      version: 1,
+      effective_minute: 13,
+      command_sequence: 1,
+      tactics: { version: 1, effort: "HIGH", playstyle: "OFFENSIVE" },
+    };
+    response.latest_operation = {
+      version: 1,
+      operation_id: "tactics-operation-1",
+      operation: "updateMatchTactics",
+      status: "COMMITTED",
+      request_revision: 7,
+      committed_revision: 8,
+      action_id: null,
+      playback: null,
+    };
+    fetchMock.mockResolvedValueOnce(jsonResponse(response));
+    const command = createMatchCommand(
+      "tactics",
+      { version: 1, effort: "HIGH", playstyle: "OFFENSIVE" },
+      {
+        matchId: currentMatch.id,
+        revision: 7,
+        idempotencyKey: "tactics-key",
+      },
+    );
+
+    const snapshot = await updateBackendMatchTactics(
+      currentMatch,
+      { version: 1, effort: "HIGH", playstyle: "OFFENSIVE" },
+      command,
+    );
+
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      `/api/match/${currentMatch.id}/tactics`,
+    );
+    expect(requestHeader(fetchMock.mock.calls[0], "If-Match-Revision")).toBe(
+      "7",
+    );
+    expect(requestHeader(fetchMock.mock.calls[0], "Idempotency-Key")).toBe(
+      "tactics-key",
+    );
+    expect(requestBody(fetchMock.mock.calls[0])).toEqual({
+      version: 1,
+      effort: "HIGH",
+      playstyle: "OFFENSIVE",
+    });
+    expect(snapshot.match.scheduled_tactics?.tactics).toEqual({
+      version: 1,
+      effort: "HIGH",
+      playstyle: "OFFENSIVE",
     });
   });
 

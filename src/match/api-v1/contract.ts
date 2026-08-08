@@ -329,12 +329,29 @@ export interface BackendMatch {
   current_time: number;
   prev_time: number;
   revision: number;
+  engine_version?: string;
+  ruleset_version?: string;
   match_status: string;
   pending_action: BackendPendingAction | null;
   legend_profile?: BackendLegendProfile;
   legend_player_id?: string;
   player_participation?: BackendPlayerParticipation;
+  tactics?: BackendMatchTactics;
+  scheduled_tactics?: BackendScheduledMatchTactics | null;
   [key: string]: unknown;
+}
+
+export interface BackendMatchTactics {
+  version: 1;
+  effort: "LOW" | "MEDIUM" | "HIGH";
+  playstyle: "DEFENSIVE" | "BALANCED" | "OFFENSIVE";
+}
+
+export interface BackendScheduledMatchTactics {
+  version: 1;
+  effective_minute: number;
+  command_sequence: number;
+  tactics: BackendMatchTactics;
 }
 
 export interface BackendTimelineEvent {
@@ -583,7 +600,8 @@ export interface BackendMatchOperationReceipt {
     | "startMatch"
     | "resumeMatch"
     | "abandonMatch"
-    | "processMatchAction";
+    | "processMatchAction"
+    | "updateMatchTactics";
   status: "COMMITTED";
   request_revision: number | null;
   committed_revision: number;
@@ -1292,6 +1310,24 @@ const BackendCurrentPendingActionSchema = BackendPendingActionSchema.and(
   }
 });
 
+export const BackendMatchTacticsSchema: z.ZodType<BackendMatchTactics> = z
+  .object({
+    version: z.literal(1),
+    effort: z.enum(["LOW", "MEDIUM", "HIGH"]),
+    playstyle: z.enum(["DEFENSIVE", "BALANCED", "OFFENSIVE"]),
+  })
+  .strict();
+
+export const BackendScheduledMatchTacticsSchema: z.ZodType<BackendScheduledMatchTactics> =
+  z
+    .object({
+      version: z.literal(1),
+      effective_minute: z.number().int().min(1).max(90),
+      command_sequence: z.number().int().min(1),
+      tactics: BackendMatchTacticsSchema,
+    })
+    .strict();
+
 export const BackendMatchSchema: z.ZodType<BackendMatch> = z
   .object({
     id: identifier,
@@ -1321,8 +1357,19 @@ export const BackendMatchSchema: z.ZodType<BackendMatch> = z
     player_participation: z
       .enum(["NOT_PARTICIPATING", "PARTICIPATING", "OBSERVING"])
       .optional(),
+    tactics: BackendMatchTacticsSchema.optional(),
+    scheduled_tactics: BackendScheduledMatchTacticsSchema.nullable().optional(),
   })
-  .passthrough();
+  .passthrough()
+  .superRefine((match, context) => {
+    if (match.engine_version === "match-engine/7" && !match.tactics) {
+      context.addIssue({
+        code: "custom",
+        message: "match-engine/7 requires authoritative tactics.",
+        path: ["tactics"],
+      });
+    }
+  });
 
 function requirePrematchLegendData(
   match: BackendMatch,
@@ -1992,7 +2039,12 @@ function validateCurrentEngineResponse(
   response: BackendMatchResponse | BackendMatchSnapshot,
   context: z.RefinementCtx,
 ) {
-  if (response.match.engine_version !== "match-engine/6") return;
+  if (
+    !["match-engine/6", "match-engine/7"].includes(
+      response.match.engine_version ?? "",
+    )
+  )
+    return;
   validateCurrentPendingAction(response.pending_action, context, [
     "pending_action",
   ]);
@@ -2026,6 +2078,7 @@ export const BackendMatchOperationReceiptSchema: z.ZodType<BackendMatchOperation
         "resumeMatch",
         "abandonMatch",
         "processMatchAction",
+        "updateMatchTactics",
       ]),
       status: z.literal("COMMITTED"),
       request_revision: z.number().int().min(0).nullable(),
@@ -2100,7 +2153,9 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
     }
     if (
       response.status === "FINISHED" &&
-      response.match.engine_version === "match-engine/5" &&
+      ["match-engine/5", "match-engine/6", "match-engine/7"].includes(
+        response.match.engine_version ?? "",
+      ) &&
       !response.full_time_handoff
     ) {
       context.addIssue({
@@ -2323,7 +2378,9 @@ export const BackendMatchSnapshotSchema: z.ZodType<BackendMatchSnapshot> = z
     }
     if (
       response.match.match_status === "FINISHED" &&
-      response.match.engine_version === "match-engine/5" &&
+      ["match-engine/5", "match-engine/6", "match-engine/7"].includes(
+        response.match.engine_version ?? "",
+      ) &&
       !response.full_time_handoff
     ) {
       context.addIssue({

@@ -227,9 +227,37 @@ test("creates and starts through the actual separate-origin Match API", async ({
   });
   await expect(page.getByText("LIVE", { exact: true }).first()).toBeVisible();
 
+  const tacticsResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === `/match/${created.id}/tactics`,
+  );
+  await page.getByRole("button", { name: "High" }).click();
+  const tacticsResponse = await tacticsResponsePromise;
+  expect(tacticsResponse.status()).toBe(200);
+  const tacticsSnapshot = (await tacticsResponse.json()) as {
+    match: {
+      revision: number;
+      scheduled_tactics: {
+        effective_minute: number;
+        tactics: { effort: string; playstyle: string };
+      };
+    };
+  };
+  expect(tacticsSnapshot.match.revision).toBe(2);
+  expect(tacticsSnapshot.match.scheduled_tactics).toMatchObject({
+    tactics: { effort: "HIGH", playstyle: "BALANCED" },
+  });
+  await expect(page.getByRole("button", { name: "High" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+
   const apiRequests = await Promise.all(apiRequestRecords);
   const protectedRequests = apiRequests.filter(({ pathname }) =>
-    /^\/(?:teams|createMatch|startMatch)$/u.test(pathname),
+    /^(?:\/(?:teams|createMatch|startMatch)|\/match\/[^/]+\/tactics)$/u.test(
+      pathname,
+    ),
   );
   expect(protectedRequests.length).toBeGreaterThanOrEqual(3);
   for (const request of protectedRequests) {
@@ -247,10 +275,16 @@ test("creates and starts through the actual separate-origin Match API", async ({
     protectedRequests.find(({ pathname }) => pathname === "/startMatch")
       ?.headers["if-match-revision"],
   ).toBe("0");
+  expect(
+    protectedRequests.find(({ pathname }) => pathname.endsWith("/tactics"))
+      ?.headers["if-match-revision"],
+  ).toBe("1");
 
   await expect.poll(() => preflightResponses.length).toBeGreaterThan(0);
   const protectedPreflights = preflightResponses.filter(({ pathname }) =>
-    /^\/(?:teams|createMatch|startMatch)$/u.test(pathname),
+    /^(?:\/(?:teams|createMatch|startMatch)|\/match\/[^/]+\/tactics)$/u.test(
+      pathname,
+    ),
   );
   expect(protectedPreflights.length).toBeGreaterThan(0);
   for (const response of protectedPreflights) {
@@ -307,6 +341,10 @@ test("recovers an injected persisted unknown scene through the real HTTPS API", 
   page,
 }) => {
   test.skip(!realSmoke, "Real Match API proof runs via its dedicated command.");
+  test.skip(
+    test.info().project.name === "mobile-chromium",
+    "The production recovery boundary is exercised once against the shared real-server fixture; mobile recovery is covered by the isolated browser suite.",
+  );
   test.setTimeout(180_000);
 
   if (!fixtureStateDirectory) {
@@ -452,7 +490,15 @@ test("recovers an injected persisted unknown scene through the real HTTPS API", 
       scene_type: "FUTURE_RANDOM_EVENT_V99",
     },
   });
-  expect(recovered.body?.decision_result).toBeUndefined();
+  expect(recovered.body?.decision_result).toMatchObject({
+    success: true,
+    outcome_type: "SKIPPED_NO_EFFECT",
+    unsupported_scene_recovery: {
+      action_id: injected.actionId,
+      outcome: "SKIPPED_NO_EFFECT",
+      scene_type: "FUTURE_RANDOM_EVENT_V99",
+    },
+  });
 
   const firstRecoveryRequests = await Promise.all(recoveryRequests);
   const authenticatedRecoveryRequests = firstRecoveryRequests.filter(

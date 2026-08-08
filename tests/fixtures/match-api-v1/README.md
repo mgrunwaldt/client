@@ -78,3 +78,11 @@ the full submitted field state. Current field/player/context schemas are closed,
 while historical v1-v5 reads retain their legacy schemas. Normalized free-kick y
 is clamped before metre derivation, and possession-chain receiver targets remain
 stable into the next-minute field state. The API prescribes no viewport pixels.
+
+M2-I9 advances live matches to `match-engine/7` and freezes engine/6. Engine/7 adds
+versioned authoritative Effort/Playstyle state to creation, persistence, snapshots,
+restart, and replay while retaining the closed spatial contract. The owner-only
+`POST /match/{id}/tactics` command accepts the closed version-1 tactics body with
+revision and idempotency headers. Accepted changes are scheduled for the next
+unsimulated minute, persist through restart, and appear in the ordered authoritative
+command stream used by replay.

@@ -27,10 +27,10 @@ import {
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "32b1a73614c30e8b31defc01b67deb17850d4bcb";
+const CONTRACT_SOURCE_REVISION = "6e3494f90157423a729666ffb2f17ec00041c067";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "f9d507ec68fa799305ec5d74743738dda77aaaa2f91bc1ddce34cf59ed225712";
+  "8caf940d575ffe925c243a2ab80fa68c552f1956685f3e062b04259b1907b845";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(
@@ -142,19 +142,19 @@ afterEach(async () => {
 });
 
 describe("Match API v1 test fixture mirror", () => {
-  it("matches the pinned I8 contract manifest and complete source mirror", async () => {
+  it("matches the pinned I9 contract manifest and complete source mirror", async () => {
     const manifestContents = await readFile(fixtureUrl("manifest.json"));
     const manifest = JSON.parse(manifestContents.toString()) as {
       contract: string;
       fixtures: unknown[];
     };
     expect(CONTRACT_SOURCE_REVISION).toBe(
-      "32b1a73614c30e8b31defc01b67deb17850d4bcb",
+      "6e3494f90157423a729666ffb2f17ec00041c067",
     );
     expect(manifest.contract).toBe("openapi.json");
     expect(manifest.fixtures.length).toBeGreaterThan(20);
     expect(sha256(manifestContents.toString())).toBe(FIXTURE_MANIFEST_SHA256);
-    expect(await collectFiles(fixtureUrl(""))).toHaveLength(61);
+    expect(await collectFiles(fixtureUrl(""))).toHaveLength(63);
   });
 
   it("seals and validates the complete Auth Boundary v1 fixture set", async () => {
@@ -225,12 +225,12 @@ describe("Match API v1 test fixture mirror", () => {
     });
   });
 
-  it("parses the closed engine/6 spatial field contract from backend fixtures", async () => {
+  it("parses the current engine/7 spatial and tactics contract", async () => {
     const progress = await readFixture<unknown>(
       "server/waiting-open-play-response.json",
     );
     const snapshot = await readFixture<unknown>(
-      "server/match-snapshot-engine-6-response.json",
+      "server/match-snapshot-engine-7-response.json",
     );
 
     const parsedProgress = BackendMatchResponseSchema.safeParse(progress);
@@ -256,7 +256,7 @@ describe("Match API v1 test fixture mirror", () => {
     );
   });
 
-  it("rejects missing, unknown, and malformed engine/6 spatial data", async () => {
+  it("rejects missing, unknown, and malformed engine/7 spatial data", async () => {
     const original = await readFixture<Record<string, unknown>>(
       "server/waiting-open-play-response.json",
     );
@@ -509,8 +509,8 @@ describe("Match API v1 test fixture mirror", () => {
     ).toBe(false);
   });
 
-  it("keeps engine/1 through engine/5 snapshot parsing compatible", async () => {
-    for (const engineVersion of [1, 2, 3, 4, 5]) {
+  it("keeps engine/1 through engine/6 snapshot parsing compatible", async () => {
+    for (const engineVersion of [1, 2, 3, 4, 5, 6]) {
       const snapshot = await readFixture<unknown>(
         `server/match-snapshot-engine-${engineVersion}-response.json`,
       );

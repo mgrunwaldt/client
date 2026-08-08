@@ -8,6 +8,7 @@ import {
   BackendMatchResponseSchema,
   type BackendMatchSnapshot,
   BackendMatchSnapshotSchema,
+  type BackendMatchTactics,
   type BackendTeam,
   BackendTeamListResponseSchema,
   MATCH_API_MAJOR_VERSION,
@@ -20,7 +21,7 @@ import {
 } from "./errors";
 
 export interface MatchCommand {
-  operation: "create" | "start" | "resume" | "action";
+  operation: "create" | "start" | "resume" | "action" | "tactics";
   idempotencyKey: string;
   matchId: string;
   revision: number | null;
@@ -255,6 +256,50 @@ export async function fetchBackendMatch(
   if (snapshot.match.id !== matchId) {
     throw new MatchApiContractError(
       `The match service returned match ${snapshot.match.id} for requested match ${matchId}.`,
+      {
+        apiVersion: MATCH_API_MAJOR_VERSION,
+        requestId: null,
+        retryAfterSeconds: null,
+      },
+    );
+  }
+  return snapshot;
+}
+
+export async function updateBackendMatchTactics(
+  match: BackendMatch,
+  tactics: BackendMatchTactics,
+  command?: MatchCommand,
+): Promise<BackendMatchSnapshot> {
+  const requestCommand =
+    command ||
+    createMatchCommand(
+      "tactics",
+      { ...tactics },
+      {
+        matchId: match.id,
+        revision: requireRevision(match),
+      },
+    );
+  if (requestCommand.revision === null) {
+    throw new Error("Match revision is required before updating tactics.");
+  }
+  const snapshot = await request(
+    `/match/${match.id}/tactics`,
+    BackendMatchSnapshotSchema,
+    {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": requestCommand.idempotencyKey,
+        "If-Match-Revision": String(requestCommand.revision),
+      },
+      body: JSON.stringify(requestCommand.payload),
+    },
+    true,
+  );
+  if (snapshot.match.id !== match.id) {
+    throw new MatchApiContractError(
+      `The tactics response returned match ${snapshot.match.id} for requested match ${match.id}.`,
       {
         apiVersion: MATCH_API_MAJOR_VERSION,
         requestId: null,

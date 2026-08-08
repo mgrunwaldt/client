@@ -146,7 +146,7 @@ function assertContractShape(openapi) {
   const expectedPaths = [
     '/health', '/live', '/ready', '/metrics', '/teams', '/team/{id}', '/createMatch', '/startMatch', '/resumeMatch',
     '/abandonMatch',
-    '/processMatchAction', '/match/{id}', '/match/{id}/timeline',
+    '/processMatchAction', '/match/{id}', '/match/{id}/tactics', '/match/{id}/timeline',
     '/auth/v1/challenges', '/auth/v1/sessions', '/auth/v1/session',
     '/auth/v1/session/refresh', '/auth/v1/session/rotate', '/auth/v1/sessions/revoke-all',
     '/auth/v1/recoveries', '/auth/v1/recoveries/pending', '/auth/v1/recoveries/{id}/complete'
@@ -221,11 +221,11 @@ function assertLifecycle(value, file) {
     throw new Error(`${file}: regulation FINISHED must be minute 90`);
   }
   if (status === 'FINISHED' && !terminalHandoff
-      && ['match-engine/5', 'match-engine/6'].includes(value.match?.engine_version)) {
+      && ['match-engine/5', 'match-engine/6', 'match-engine/7'].includes(value.match?.engine_version)) {
     throw new Error(`${file}: current-engine FINISHED requires full_time_handoff`);
   }
   if (status === 'HALFTIME' && !value.halftime_summary
-      && ['match-engine/5', 'match-engine/6'].includes(value.match?.engine_version)) {
+      && ['match-engine/5', 'match-engine/6', 'match-engine/7'].includes(value.match?.engine_version)) {
     throw new Error(`${file}: current-engine HALFTIME requires halftime_summary`);
   }
   if (status === 'WAITING_FOR_DECISION' && !value.pending_action) throw new Error(`${file}: waiting response requires pending_action`);

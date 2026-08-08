@@ -312,6 +312,38 @@
         }
       }
     },
+    "/match/{id}/tactics": {
+      "post": {
+        "operationId": "updateMatchTactics",
+        "tags": ["Matches"],
+        "summary": "Schedule authoritative tactics for the next unsimulated minute",
+        "description": "The versioned tactics command is owner-authorized, revision-checked, durably idempotent, and never changes an active scene.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ResourceId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/MatchRevision" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateMatchTacticsRequest" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Snapshot containing the scheduled authoritative tactics.",
+            "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchSnapshotResponse" } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      }
+    },
     "/match/{id}": {
       "get": {
         "operationId": "getMatch",
@@ -910,7 +942,38 @@
           "my_team": { "$ref": "#/components/schemas/Team" },
           "opponent_team": { "$ref": "#/components/schemas/Team" },
           "legend_profile": { "$ref": "#/components/schemas/LegendProfile" },
-          "ruleset": { "$ref": "#/components/schemas/Ruleset" }
+          "ruleset": { "$ref": "#/components/schemas/Ruleset" },
+          "tactics": { "$ref": "#/components/schemas/MatchTactics" }
+        },
+        "additionalProperties": false
+      },
+      "CurrentReplayInitialState": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ReplayInitialState" },
+          { "type": "object", "required": ["tactics"] }
+        ]
+      },
+      "MatchTactics": {
+        "type": "object",
+        "required": ["version", "effort", "playstyle"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "effort": { "type": "string", "enum": ["LOW", "MEDIUM", "HIGH"] },
+          "playstyle": { "type": "string", "enum": ["DEFENSIVE", "BALANCED", "OFFENSIVE"] }
+        },
+        "additionalProperties": false
+      },
+      "UpdateMatchTacticsRequest": {
+        "$ref": "#/components/schemas/MatchTactics"
+      },
+      "ScheduledMatchTactics": {
+        "type": "object",
+        "required": ["version", "effective_minute", "command_sequence", "tactics"],
+        "properties": {
+          "version": { "type": "integer", "const": 1 },
+          "effective_minute": { "type": "integer", "minimum": 1, "maximum": 90 },
+          "command_sequence": { "type": "integer", "minimum": 1 },
+          "tactics": { "$ref": "#/components/schemas/MatchTactics" }
         },
         "additionalProperties": false
       },
@@ -944,12 +1007,14 @@
           "legend_profile": { "$ref": "#/components/schemas/LegendProfile" },
           "legend_player_id": { "$ref": "#/components/schemas/Identifier" },
           "ruleset": { "$ref": "#/components/schemas/Ruleset" },
+          "tactics": { "$ref": "#/components/schemas/MatchTactics" },
+          "scheduled_tactics": { "oneOf": [{ "$ref": "#/components/schemas/ScheduledMatchTactics" }, { "type": "null" }] },
           "match_metadata": { "$ref": "#/components/schemas/MatchMetadata" },
           "seed": { "$ref": "#/components/schemas/SimulationSeed", "x-overgoal-m1-required": true },
           "engine_version": {
             "type": "string",
-            "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5", "match-engine/6"],
-            "description": "match-engine/6 supports live mutation. Persisted match-engine/1 through match-engine/5 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
+            "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5", "match-engine/6", "match-engine/7"],
+            "description": "match-engine/7 supports live mutation. Persisted match-engine/1 through match-engine/6 state is read/replay-only; live mutation fails as 409 INVALID_MATCH_TRANSITION.",
             "x-overgoal-m1-required": true
           },
           "ruleset_version": { "type": "string", "minLength": 1, "x-overgoal-m1-required": true },
@@ -982,7 +1047,7 @@
       },
       "CurrentMatchContext": {
         "type": "object",
-        "description": "Closed match-engine/6 field context. MatchContext remains the historical engine v1-v5 read schema.",
+        "description": "Closed current field context. MatchContext remains the historical engine v1-v6 read schema.",
         "required": [
           "seed", "distance_to_goal", "side_of_pitch", "pressure", "attack_phase",
           "numerical_advantage", "quality_band", "previous_outcome", "carrier_player_id"
@@ -1039,7 +1104,7 @@
             }
           }
         ],
-        "description": "Engine/6 match metadata with a closed possession-chain context when present."
+        "description": "Current match metadata with a closed possession-chain context when present."
       },
       "LegacyMatch": {
         "allOf": [
@@ -1050,21 +1115,24 @@
             "properties": {
               "engine_version": {
                 "type": "string",
-                "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5"]
+                "enum": ["match-engine/1", "match-engine/2", "match-engine/3", "match-engine/4", "match-engine/5", "match-engine/6"]
               }
             }
           }
         ],
-        "description": "Persisted read/replay match metadata for frozen engines 1 through 5."
+        "description": "Persisted read/replay match metadata for frozen engines 1 through 6."
       },
       "CurrentMatch": {
         "allOf": [
           { "$ref": "#/components/schemas/Match" },
           {
             "type": "object",
-            "required": ["engine_version"],
+            "required": ["engine_version", "tactics", "scheduled_tactics"],
             "properties": {
-              "engine_version": { "type": "string", "const": "match-engine/6" },
+              "engine_version": { "type": "string", "const": "match-engine/7" },
+              "tactics": { "$ref": "#/components/schemas/MatchTactics" },
+              "scheduled_tactics": { "oneOf": [{ "$ref": "#/components/schemas/ScheduledMatchTactics" }, { "type": "null" }] },
+              "initial_state": { "$ref": "#/components/schemas/CurrentReplayInitialState" },
               "pending_action": {
                 "oneOf": [{ "$ref": "#/components/schemas/CurrentPendingAction" }, { "type": "null" }]
               },
@@ -1072,14 +1140,14 @@
             }
           }
         ],
-        "description": "Live engine/6 match metadata with every embedded authoritative context on the closed current contract."
+        "description": "Live engine/7 match metadata with authoritative tactics and every embedded context on the closed current contract."
       },
       "FieldPlayer": {
         "type": "object",
         "required": ["id", "role", "x", "y"],
         "properties": {
           "id": { "$ref": "#/components/schemas/Identifier" },
-          "team_id": { "$ref": "#/components/schemas/Identifier", "description": "Stable team identity; engine/6 supplies it for every field player." },
+          "team_id": { "$ref": "#/components/schemas/Identifier", "description": "Stable team identity supplied for every current field player." },
           "team_side": { "type": "string", "enum": ["MY_TEAM", "OPPONENT_TEAM"], "description": "Authoritative side, independent of role or display label." },
           "role": { "type": "string", "minLength": 1 },
           "x": { "$ref": "#/components/schemas/Coordinate" },
@@ -1274,7 +1342,7 @@
       },
       "CurrentFieldState": {
         "type": "object",
-        "description": "Closed match-engine/6 field payload. FieldState remains the historical read schema for engines 1 through 5.",
+        "description": "Closed current field payload. FieldState remains the historical read schema for engines 1 through 6.",
         "required": [
           "id", "action_sequence", "match_id", "minute", "action_type", "scene_family",
           "my_team_positions", "opponent_positions", "legend_player_id", "carrier_player_id",
@@ -1439,14 +1507,14 @@
             }
           }
         ],
-        "description": "Engine/6 submitted-action payload with closed current context and embedded state."
+        "description": "Current submitted-action payload with closed context and embedded state."
       },
       "CurrentPendingAction": {
         "allOf": [
           { "$ref": "#/components/schemas/PendingAction" },
           { "$ref": "#/components/schemas/CurrentPendingActionBase" }
         ],
-        "description": "Engine/6 pending action. Scene choice rules remain shared while authoritative context/state are current and strict."
+        "description": "Current pending action. Scene choice rules remain shared while authoritative context/state are strict."
       },
       "TimelineEvent": {
         "type": "object",
@@ -1785,7 +1853,7 @@
             }
           }
         ],
-        "description": "Engine/6 decision result with strict authoritative player and follow-up context payloads."
+        "description": "Current decision result with strict authoritative player and follow-up context payloads."
       },
       "DribbleEncounter": {
         "type": "object",
@@ -1941,7 +2009,7 @@
       },
       "LegacyMatchOperationPlayback": {
         "type": "object",
-        "description": "Historical operation playback for frozen engines 1 through 5.",
+        "description": "Historical operation playback for frozen engines 1 through 6.",
         "required": ["version", "submitted_action", "submitted_field_state", "last_decision", "decision_result", "events"],
         "properties": {
           "version": { "type": "integer", "const": 1 },
@@ -1960,7 +2028,7 @@
       },
       "CurrentMatchOperationPlayback": {
         "type": "object",
-        "description": "Engine/6 operation playback. Every duplicated authoritative state/context path uses a closed current schema.",
+        "description": "Current operation playback. Every duplicated authoritative state/context path uses a closed schema.",
         "required": ["version", "submitted_action", "submitted_field_state", "last_decision", "decision_result", "events"],
         "properties": {
           "version": { "type": "integer", "const": 1 },
@@ -1990,12 +2058,12 @@
       },
       "CurrentMatchOperationReceipt": {
         "type": "object",
-        "description": "Engine/6 operation receipt selected by a containing current response.",
+        "description": "Current operation receipt selected by a containing current response.",
         "required": ["version", "operation_id", "operation", "status", "request_revision", "committed_revision", "action_id", "playback"],
         "properties": {
           "version": { "type": "integer", "const": 1 },
           "operation_id": { "$ref": "#/components/schemas/Identifier" },
-          "operation": { "type": "string", "enum": ["createMatch", "startMatch", "resumeMatch", "abandonMatch", "processMatchAction"] },
+          "operation": { "type": "string", "enum": ["createMatch", "startMatch", "resumeMatch", "abandonMatch", "processMatchAction", "updateMatchTactics"] },
           "status": { "type": "string", "const": "COMMITTED" },
           "request_revision": { "oneOf": [{ "type": "integer", "minimum": 0 }, { "type": "null" }] },
           "committed_revision": { "type": "integer", "minimum": 0 },
@@ -2069,7 +2137,7 @@
           { "$ref": "#/components/schemas/LegacyMatchProgressResponse" },
           { "$ref": "#/components/schemas/CurrentMatchProgressResponse" }
         ],
-        "description": "Version-selected progress graph. Engine/6 cannot fall through the legacy field/context alternatives."
+        "description": "Version-selected progress graph. Engine/7 cannot fall through the legacy field/context alternatives."
       },
       "CreateMatchRequest": {
         "type": "object",
@@ -2089,6 +2157,7 @@
             "additionalProperties": false
           },
           "ruleset": { "$ref": "#/components/schemas/Ruleset" },
+          "tactics": { "$ref": "#/components/schemas/MatchTactics" },
           "seed": {
             "allOf": [{ "$ref": "#/components/schemas/SimulationSeed" }],
             "description": "Optional client compatibility metadata recorded as requested_seed. The server generates the authoritative match seed.",
@@ -2102,7 +2171,7 @@
         "required": ["id", "match", "my_team", "opponent_team"],
         "properties": {
           "id": { "$ref": "#/components/schemas/Identifier" },
-          "match": { "$ref": "#/components/schemas/Match" },
+          "match": { "$ref": "#/components/schemas/CurrentMatch" },
           "my_team": { "$ref": "#/components/schemas/Team" },
           "opponent_team": { "$ref": "#/components/schemas/Team" },
           "latest_operation": { "$ref": "#/components/schemas/MatchOperationReceipt" }
@@ -2344,7 +2413,7 @@
             }
           }
         ],
-        "description": "Engine/6 kick resolution with a closed scene follow-up context."
+        "description": "Current kick resolution with a closed scene follow-up context."
       },
       "KickFoul": {
         "type": "object",
@@ -2455,7 +2524,13 @@
           "legend_availability": { "$ref": "#/components/schemas/LegendAvailability" },
           "halftime_summary": { "oneOf": [{ "$ref": "#/components/schemas/HalftimeSummary" }, { "type": "null" }] },
           "full_time_handoff": { "oneOf": [{ "$ref": "#/components/schemas/FullTimeHandoff" }, { "type": "null" }] },
-          "latest_operation": { "oneOf": [{ "$ref": "#/components/schemas/MatchOperationReceipt" }, { "type": "null" }] }
+          "latest_operation": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LegacyMatchOperationReceipt" },
+              { "$ref": "#/components/schemas/CurrentMatchOperationReceipt" },
+              { "type": "null" }
+            ]
+          }
         },
         "additionalProperties": false
       },
@@ -2490,7 +2565,7 @@
           { "$ref": "#/components/schemas/LegacyMatchSnapshotResponse" },
           { "$ref": "#/components/schemas/CurrentMatchSnapshotResponse" }
         ],
-        "description": "Version-selected snapshot graph. Engine/6 cannot validate through permissive historical state/context schemas."
+        "description": "Version-selected snapshot graph. Engine/7 cannot validate through permissive historical state/context schemas."
       },
       "TimelineResponse": {
         "type": "object",

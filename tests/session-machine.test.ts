@@ -4,6 +4,7 @@ import { createMatchCommand } from "../src/match/api-v1/adapter";
 import type {
   BackendMatch,
   BackendMatchResponse,
+  BackendMatchSnapshot,
   BackendPendingAction,
   BackendTeam,
   BackendTimelineEvent,
@@ -81,6 +82,49 @@ async function teams() {
 }
 
 describe("match session reducer", () => {
+  it("hydrates only backend-confirmed active or scheduled tactics", async () => {
+    const snapshot = await readFixture<BackendMatchSnapshot>(
+      "server/match-snapshot-engine-7-response.json",
+    );
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: snapshot.match,
+        myTeam: snapshot.my_team,
+        opponentTeam: snapshot.opponent_team,
+        timelineEvents: snapshot.timeline,
+        pendingAction: snapshot.pending_action,
+        legendAvailability: snapshot.legend_availability,
+      },
+    });
+    expect(state).toMatchObject({ effort: "medium", playstyle: "balanced" });
+
+    state = matchSessionReducer(state, {
+      type: "HYDRATED",
+      payload: {
+        match: {
+          ...snapshot.match,
+          revision: snapshot.match.revision + 1,
+          scheduled_tactics: {
+            version: 1,
+            effective_minute: 1,
+            command_sequence: 1,
+            tactics: {
+              version: 1,
+              effort: "HIGH",
+              playstyle: "OFFENSIVE",
+            },
+          },
+        },
+        myTeam: snapshot.my_team,
+        opponentTeam: snapshot.opponent_team,
+        timelineEvents: snapshot.timeline,
+        pendingAction: snapshot.pending_action,
+        legendAvailability: snapshot.legend_availability,
+      },
+    });
+    expect(state).toMatchObject({ effort: "high", playstyle: "offensive" });
+  });
   it("preserves the server-advertised recovery intent for an unknown future scene", async () => {
     const teamFixture = await teams();
     const knownAction =

@@ -9,6 +9,7 @@ export {
   processBackendMatchAction,
   resumeBackendMatch,
   startBackendMatch,
+  updateBackendMatchTactics,
 } from "../match/api-v1/adapter";
 export {
   type BackendActionTeam,
@@ -23,6 +24,7 @@ export {
   type BackendMatch,
   type BackendMatchResponse,
   type BackendMatchSnapshot,
+  type BackendMatchTactics,
   type BackendPendingAction,
   type BackendReceiverControl,
   type BackendTeam,
