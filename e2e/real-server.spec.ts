@@ -207,6 +207,23 @@ test("creates and starts through the actual separate-origin Match API", async ({
   expect(created.match.revision).toBe(0);
   await expect(page).toHaveURL(new RegExp(`/pre-match/${created.id}$`, "u"));
 
+  await page.evaluate(() => {
+    document.documentElement.dataset.initialTimelineMinute = "";
+    const observer = new MutationObserver(() => {
+      const timeline = document.querySelector(
+        '[data-testid="timeline-screen"]',
+      );
+      const minute = timeline?.getAttribute("data-playback-minute");
+      if (minute === null || minute === undefined) return;
+      document.documentElement.dataset.initialTimelineMinute = minute;
+      observer.disconnect();
+    });
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+  });
+
   const startResponsePromise = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
@@ -230,10 +247,12 @@ test("creates and starts through the actual separate-origin Match API", async ({
   expect(
     await timeline.evaluate((element) => ({
       effort: element.getAttribute("data-effort"),
-      minute: element.getAttribute("data-playback-minute"),
       playstyle: element.getAttribute("data-playstyle"),
     })),
-  ).toEqual({ effort: "medium", minute: "0", playstyle: "balanced" });
+  ).toEqual({ effort: "medium", playstyle: "balanced" });
+  expect(
+    await page.locator("html").getAttribute("data-initial-timeline-minute"),
+  ).toBe("0");
   await expect(page.getByText("LIVE", { exact: true }).first()).toBeVisible();
   await expect
     .poll(
@@ -247,6 +266,19 @@ test("creates and starts through the actual separate-origin Match API", async ({
       { message: "Timeline must advance without choosing tactics first" },
     )
     .toBe(true);
+
+  if (new URL(page.url()).pathname !== `/game/${created.id}`) {
+    await page.evaluate((pathname) => {
+      window.history.pushState({}, "", pathname);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }, `/game/${created.id}`);
+  }
+  await expect(page).toHaveURL(new RegExp(`/game/${created.id}$`, "u"));
+  const activeField = page.getByTestId("game-field");
+  await expect(activeField).toHaveAttribute("data-render-ready", "true", {
+    timeout: 15_000,
+  });
+  await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
 
   const tacticsResponse = await browserApiRequest(
     page,
