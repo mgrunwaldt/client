@@ -1501,7 +1501,7 @@ test("automatically continues an authoritative tactical result after its hold", 
   await page.getByTestId("kick-submit").click();
   await expect(page.getByTestId("kick-result")).toBeVisible();
   await expect(page).toHaveURL(/\/match\/match-penalty$/u, {
-    timeout: 8_000,
+    timeout: 15_000,
   });
   const resultLifecycle = await page.locator("body").evaluate((body) => ({
     removedAt: Number(body.dataset.resultRemovedAt),

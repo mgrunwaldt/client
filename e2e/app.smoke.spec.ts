@@ -16,6 +16,17 @@ const headlessGpuDiagnostic =
   /^warning: \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, GL_CLOSE_PATH_NV, High\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/;
 const knownFbxDiagnostic =
   /^warning: THREE\.FBXLoader: (?:%s map is not supported in three\.js, skipping texture\.|unknown material type|Vertex has more than 4 skinning weights assigned to vertex\.)/;
+const knownBlockedServiceWorkerDiagnostic =
+  /^warning: Service Worker registration blocked by Playwright$/;
+
+function isKnownBrowserDiagnostic(message: string) {
+  return (
+    headlessGpuDiagnostic.test(message) ||
+    knownFbxDiagnostic.test(message) ||
+    knownBlockedServiceWorkerDiagnostic.test(message)
+  );
+}
+
 const typedWaitingOpenPlayResponse = structuredClone(
   waitingOpenPlayResponse,
 ) as unknown as BackendMatchResponse;
@@ -99,7 +110,9 @@ test("mounts the login route without a fatal page error", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("Dojo Initialization Error")).toHaveCount(0);
   expect(gameAssetRequests).toEqual([]);
-  expect(browserDiagnostics).toEqual([]);
+  expect(
+    browserDiagnostics.filter((message) => !isKnownBrowserDiagnostic(message)),
+  ).toEqual([]);
 });
 
 test("shows a nonblank fallback while the login route chunk loads", async ({
@@ -151,8 +164,7 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
   await expect(page.getByText("Loading Field")).toBeVisible();
   await page.waitForTimeout(3_000);
   const unexpectedDiagnostics = browserDiagnostics.filter(
-    (message) =>
-      !headlessGpuDiagnostic.test(message) && !knownFbxDiagnostic.test(message),
+    (message) => !isKnownBrowserDiagnostic(message),
   );
   expect(unexpectedDiagnostics).toEqual([]);
 });

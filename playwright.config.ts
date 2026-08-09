@@ -36,6 +36,10 @@ export default defineConfig({
   use: {
     baseURL,
     ignoreHTTPSErrors: true,
+    // Browser routing cannot observe requests fulfilled by a service worker.
+    // Keep production PWA behavior covered by its contract tests while E2E
+    // retains deterministic control over chunks, assets, and API failures.
+    serviceWorkers: "block",
     contextOptions: {
       reducedMotion: "reduce",
     },
