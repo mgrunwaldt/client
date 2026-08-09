@@ -280,6 +280,36 @@ describe("M2-I7 session recovery", () => {
       },
     });
 
+    const refreshedHalftime = matchSessionReducer(
+      {
+        ...createInitialMatchSession(),
+        acknowledgedResult: state.acknowledgedResult,
+      },
+      {
+        type: "HYDRATED",
+        payload: {
+          match: {
+            ...committedMatch,
+            match_status: "HALFTIME",
+            current_time: 45,
+            prev_time: 0,
+            my_team_score: 2,
+          },
+          myTeam: teams.my_team,
+          opponentTeam: teams.opponent_team,
+          timelineEvents: [],
+          latestOperation: acknowledgedReceipt,
+        },
+      },
+    );
+    expect(refreshedHalftime).toMatchObject({
+      phase: "halftime",
+      playbackMinute: 45,
+      playbackStatus: "idle",
+      resultPlayback: null,
+      decisionResult: null,
+    });
+
     state = matchSessionReducer(state, {
       type: "HYDRATED",
       payload: {
