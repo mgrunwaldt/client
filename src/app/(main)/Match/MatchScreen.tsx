@@ -349,18 +349,20 @@ export default function MatchScreen() {
       return;
     }
 
-    if (playbackMinute >= targetMinute) {
+    const currentMinute = useMatchSessionStore.getState().playbackMinute;
+    if (currentMinute >= targetMinute) {
       if (pendingAction) markSceneReady();
       return;
     }
 
     const interval = window.setInterval(() => {
-      setPlaybackMinute(
-        Math.min(
-          targetMinute,
-          useMatchSessionStore.getState().playbackMinute + 1,
-        ),
-      );
+      const minute = useMatchSessionStore.getState().playbackMinute;
+      const nextMinute = Math.min(targetMinute, minute + 1);
+      setPlaybackMinute(nextMinute);
+      if (nextMinute >= targetMinute && pendingAction) {
+        markSceneReady();
+        window.clearInterval(interval);
+      }
     }, 1000);
 
     return () => window.clearInterval(interval);
@@ -368,7 +370,6 @@ export default function MatchScreen() {
     match?.id,
     params.matchId,
     pendingAction,
-    playbackMinute,
     playbackStatus,
     setPlaybackMinute,
     markSceneReady,
@@ -584,6 +585,8 @@ export default function MatchScreen() {
       data-session-phase={phase}
       data-session-loading={loading}
       data-playback-minute={playbackMinute}
+      data-effort={effort}
+      data-playstyle={playstyle}
       className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white"
     >
       <div className="z-10 flex h-full w-full max-w-4xl flex-col items-center justify-between gap-4 pb-4">
