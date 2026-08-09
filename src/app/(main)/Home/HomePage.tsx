@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import LoadingScreen from "../../../components/loader/LoadingScreen";
 import Scene from "../../../components/webgl/Scene";
+import { useMatchSessionStore } from "../../../match/session-store";
 // import { useNavigate } from "react-router";
 // import { useStarknetConnect } from "../../../dojo/hooks/useStarknetConnect";
 // import useAppStore from "../../../zustand/store";
@@ -16,6 +17,16 @@ export default function HomePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [sceneLoaded, setSceneLoaded] = useState(false);
   const loadingProgress = sceneLoaded ? 100 : 0;
+  const terminalMatchId = useMatchSessionStore((state) =>
+    state.match?.match_status === "FINISHED" ? state.match.id : null,
+  );
+  const resetMatchSession = useMatchSessionStore(
+    (state) => state.resetMatchSession,
+  );
+
+  useEffect(() => {
+    if (terminalMatchId) resetMatchSession();
+  }, [resetMatchSession, terminalMatchId]);
 
   // Track when all assets are loaded
   useEffect(() => {

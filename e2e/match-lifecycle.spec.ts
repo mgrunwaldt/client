@@ -422,6 +422,33 @@ test.describe("administrative results", () => {
       await expect(
         page.getByRole("button", { name: /administrative|abandon/i }),
       ).toHaveCount(0);
+      if (adminCase.side === "MY_TEAM") {
+        await page.getByRole("button", { name: "Back to home" }).click();
+        await expect(page).toHaveURL("/");
+        await expect(page.getByRole("button", { name: "Play" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Retry" })).toHaveCount(
+          0,
+        );
+        await expect
+          .poll(() =>
+            page.evaluate(() => {
+              const bridge = globalThis as typeof globalThis & {
+                __OVERGOAL_E2E_READ_MATCH_SESSION__?: () => {
+                  matchId: string | null;
+                  phase: string;
+                };
+              };
+              return bridge.__OVERGOAL_E2E_READ_MATCH_SESSION__?.();
+            }),
+          )
+          .toEqual({
+            diagnostic: null,
+            matchId: null,
+            pendingCommand: null,
+            phase: "idle",
+            revision: null,
+          });
+      }
     });
   }
 });
