@@ -1167,7 +1167,10 @@ export function matchSessionReducer(
           {
             preservePlayback: false,
             resultPlayback: restoreResult,
-            playbackMinute: event.payload.match.prev_time,
+            playbackMinute: restoreResult
+              ? (receipt.playback?.last_decision?.minute ??
+                event.payload.match.prev_time)
+              : undefined,
           },
         );
         return {
