@@ -516,6 +516,26 @@ describe("match session store hydration", () => {
       playbackStatus: "field_ready",
       phase: "result_playback",
     });
+
+    useMatchSessionStore.getState().acknowledgeDecisionResult();
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      playbackMinute: 12,
+      playbackStatus: "timeline_playing",
+      phase: "timeline_playback",
+    });
+
+    useMatchSessionStore.getState().setPlaybackMinute(44);
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      playbackMinute: 44,
+      phase: "timeline_playback",
+    });
+
+    useMatchSessionStore.getState().setPlaybackMinute(45);
+    expect(useMatchSessionStore.getState()).toMatchObject({
+      playbackMinute: 45,
+      playbackStatus: "idle",
+      phase: "halftime",
+    });
   });
 
   it("uses the authoritative top-level field state when the action omits its embedded copy", async () => {

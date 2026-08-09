@@ -1387,6 +1387,12 @@ export function matchSessionReducer(
       ) {
         return withPhase({ ...state, playbackMinute: minute }, "finished");
       }
+      if (
+        state.match.match_status === "HALFTIME" &&
+        minute >= state.match.current_time
+      ) {
+        return withPhase({ ...state, playbackMinute: minute }, "halftime");
+      }
       return { ...state, playbackMinute: minute };
     }
     case "SCENE_READY":
@@ -1425,6 +1431,10 @@ export function matchSessionReducer(
         state.legendAvailability,
       );
       if (!phase) return unsupportedStatus(state, state.match.match_status);
+      const playbackPhase =
+        phase === "halftime" && state.playbackMinute < state.match.current_time
+          ? "timeline_playback"
+          : phase;
       return withPhase(
         {
           ...state,
@@ -1432,7 +1442,7 @@ export function matchSessionReducer(
           decisionResult: null,
           resultPlayback: null,
         },
-        phase,
+        playbackPhase,
       );
     }
     case "ERROR_RECORDED":
