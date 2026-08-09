@@ -41,6 +41,9 @@ export default function MatchResultScreen() {
   const hydrateMatchSession = useMatchSessionStore(
     (state) => state.hydrateMatchSession,
   );
+  const resetMatchSession = useMatchSessionStore(
+    (state) => state.resetMatchSession,
+  );
   const beginHydrationLoading = useMatchSessionStore(
     (state) => state.beginHydrationLoading,
   );
@@ -64,6 +67,10 @@ export default function MatchResultScreen() {
   const ready = Boolean(
     authoritativeIdentity && match?.match_status === "FINISHED" && handoff,
   );
+  const returnToHome = () => {
+    resetMatchSession();
+    navigate("/", { replace: true });
+  };
 
   useEffect(() => {
     if (!matchId || (ready && reloadKey === 0)) return;
@@ -177,7 +184,7 @@ export default function MatchResultScreen() {
           <Button
             variant="ghost"
             className="font-orbitron mt-3 min-h-11 w-full text-cyan-100 uppercase"
-            onClick={() => navigate("/")}
+            onClick={returnToHome}
           >
             Back to home
           </Button>
@@ -307,7 +314,7 @@ export default function MatchResultScreen() {
         </div>
         <Button
           className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 tracking-[0.2em] text-cyan-100 uppercase"
-          onClick={() => navigate("/")}
+          onClick={returnToHome}
         >
           Back to home
         </Button>
