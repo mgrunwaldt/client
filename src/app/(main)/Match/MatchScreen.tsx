@@ -57,6 +57,9 @@ const playstyleToApi = {
   offensive: "OFFENSIVE",
 } as const;
 
+const INITIAL_TIMELINE_HOLD_MS = 1_500;
+const TIMELINE_MINUTE_INTERVAL_MS = 1_000;
+
 function mapBackendEventType(event: {
   team: string;
   my_team_scored: boolean;
@@ -124,6 +127,9 @@ export default function MatchScreen() {
   );
   const hideTransitionLoader = useMatchSessionStore(
     (state) => state.hideTransitionLoader,
+  );
+  const transitionLoaderVisible = useMatchSessionStore(
+    (state) => state.transitionLoader.visible,
   );
   const fieldTransitionTimeout = useRef<number | null>(null);
   const resumeLock = useRef(false);
@@ -349,28 +355,47 @@ export default function MatchScreen() {
       return;
     }
 
+    if (transitionLoaderVisible) {
+      return;
+    }
+
     const currentMinute = useMatchSessionStore.getState().playbackMinute;
     if (currentMinute >= targetMinute) {
       if (pendingAction) markSceneReady();
       return;
     }
 
-    const interval = window.setInterval(() => {
+    let interval: number | null = null;
+    const advanceMinute = () => {
       const minute = useMatchSessionStore.getState().playbackMinute;
       const nextMinute = Math.min(targetMinute, minute + 1);
       setPlaybackMinute(nextMinute);
-      if (nextMinute >= targetMinute && pendingAction) {
+      if (nextMinute < targetMinute) return true;
+      if (pendingAction) {
         markSceneReady();
-        window.clearInterval(interval);
       }
-    }, 1000);
+      return false;
+    };
 
-    return () => window.clearInterval(interval);
+    const firstTick = window.setTimeout(() => {
+      if (!advanceMinute()) return;
+      interval = window.setInterval(() => {
+        if (advanceMinute() || interval === null) return;
+        window.clearInterval(interval);
+        interval = null;
+      }, TIMELINE_MINUTE_INTERVAL_MS);
+    }, INITIAL_TIMELINE_HOLD_MS);
+
+    return () => {
+      window.clearTimeout(firstTick);
+      if (interval !== null) window.clearInterval(interval);
+    };
   }, [
     match?.id,
     params.matchId,
     pendingAction,
     playbackStatus,
+    transitionLoaderVisible,
     setPlaybackMinute,
     markSceneReady,
     targetMinute,

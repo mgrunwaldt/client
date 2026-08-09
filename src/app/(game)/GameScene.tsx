@@ -290,18 +290,13 @@ function FieldRenderReadiness({
       invalidateReadiness();
     };
     const handleContextRestored = () => invalidateReadiness();
-    const handleViewportChange = () => invalidateReadiness();
 
     canvas.addEventListener("webglcontextlost", handleContextLost);
     canvas.addEventListener("webglcontextrestored", handleContextRestored);
-    window.addEventListener("resize", handleViewportChange);
-    window.addEventListener("orientationchange", handleViewportChange);
 
     return () => {
       canvas.removeEventListener("webglcontextlost", handleContextLost);
       canvas.removeEventListener("webglcontextrestored", handleContextRestored);
-      window.removeEventListener("resize", handleViewportChange);
-      window.removeEventListener("orientationchange", handleViewportChange);
     };
   }, [gl, invalidateReadiness]);
 
@@ -334,6 +329,17 @@ function FieldRenderReadiness({
         hasCompleteDrawingBuffer,
       signature,
     });
+
+    // A hidden prewarmed canvas can switch to demand-driven rendering after a
+    // route transition. Keep advancing valid frames until the readiness gate
+    // has observed the complete painted sequence it requires.
+    if (
+      !readiness.current.ready &&
+      coversViewport &&
+      hasCompleteDrawingBuffer
+    ) {
+      requestRender();
+    }
 
     if (reportedReady.current && !readiness.current.ready) {
       reportedReady.current = false;
@@ -952,7 +958,8 @@ export default function GameScene({
     setResolvedSceneFieldState(null);
     setAnimatedBallFlightPoint(null);
     setIsResultAnimating(false);
-    setReadySceneKey("");
+    // The hidden prewarmed field becomes active by gaining a route match id.
+    // Preserve its readiness; renderSceneKey invalidates actual scene changes.
     kickSubmissionGateRef.current = createKickSubmissionGate();
     dribbleSubmissionGateRef.current = createDribbleSubmissionGate();
     randomEventSubmissionGateRef.current = createRandomEventSubmissionGate();
@@ -2143,7 +2150,7 @@ export default function GameScene({
       data-render-ready={isCanvasReady ? "true" : "false"}
       data-kick-contract-supported={kickControlEnvelope ? "true" : "false"}
       className={`fixed inset-0 overflow-hidden bg-[#0a4739] ${
-        active ? "z-40 opacity-100" : "pointer-events-none -z-10 opacity-0"
+        active ? "z-40 opacity-100" : "pointer-events-none z-0 opacity-[0.001]"
       }`}
       aria-hidden={!active}
     >
