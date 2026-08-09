@@ -225,33 +225,49 @@ test("creates and starts through the actual separate-origin Match API", async ({
   await expect(page).toHaveURL(new RegExp(`/match/${created.id}$`, "u"), {
     timeout: 60_000,
   });
+  const timeline = page.getByTestId("timeline-screen");
+  await timeline.waitFor({ state: "visible" });
+  expect(
+    await timeline.evaluate((element) => ({
+      effort: element.getAttribute("data-effort"),
+      minute: element.getAttribute("data-playback-minute"),
+      playstyle: element.getAttribute("data-playstyle"),
+    })),
+  ).toEqual({ effort: "medium", minute: "0", playstyle: "balanced" });
   await expect(page.getByText("LIVE", { exact: true }).first()).toBeVisible();
+  await expect
+    .poll(
+      async () => {
+        if (new URL(page.url()).pathname === `/game/${created.id}`) return true;
+        const minute = await timeline
+          .getAttribute("data-playback-minute")
+          .catch(() => null);
+        return minute !== null && Number(minute) > 0;
+      },
+      { message: "Timeline must advance without choosing tactics first" },
+    )
+    .toBe(true);
 
-  const tacticsResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === `/match/${created.id}/tactics`,
+  const tacticsResponse = await browserApiRequest(
+    page,
+    `/match/${created.id}/tactics`,
+    {
+      body: { effort: "HIGH", playstyle: "BALANCED", version: 1 },
+      headers: {
+        Authorization: `Bearer ${sessionPayload.session_credential}`,
+        "Idempotency-Key": "real-smoke-tactics-0001",
+        "If-Match-Revision": "1",
+      },
+      method: "POST",
+    },
   );
-  await page.getByRole("button", { name: "High" }).click();
-  const tacticsResponse = await tacticsResponsePromise;
-  expect(tacticsResponse.status()).toBe(200);
-  const tacticsSnapshot = (await tacticsResponse.json()) as {
-    match: {
-      revision: number;
-      scheduled_tactics: {
-        effective_minute: number;
-        tactics: { effort: string; playstyle: string };
-      };
-    };
-  };
-  expect(tacticsSnapshot.match.revision).toBe(2);
-  expect(tacticsSnapshot.match.scheduled_tactics).toMatchObject({
-    tactics: { effort: "HIGH", playstyle: "BALANCED" },
+  expect(tacticsResponse.status).toBe(200);
+  expect(tacticsResponse.body?.match).toMatchObject({
+    revision: 2,
+    scheduled_tactics: {
+      tactics: { effort: "HIGH", playstyle: "BALANCED" },
+    },
   });
-  await expect(page.getByRole("button", { name: "High" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
 
   const apiRequests = await Promise.all(apiRequestRecords);
   const protectedRequests = apiRequests.filter(({ pathname }) =>
@@ -279,7 +295,6 @@ test("creates and starts through the actual separate-origin Match API", async ({
     protectedRequests.find(({ pathname }) => pathname.endsWith("/tactics"))
       ?.headers["if-match-revision"],
   ).toBe("1");
-
   await expect.poll(() => preflightResponses.length).toBeGreaterThan(0);
   const protectedPreflights = preflightResponses.filter(({ pathname }) =>
     /^(?:\/(?:teams|createMatch|startMatch)|\/match\/[^/]+\/tactics)$/u.test(

@@ -48,6 +48,7 @@ import {
   createFieldCameraPose,
   type FieldCameraPose,
 } from "../../match/field-camera";
+import { reportFieldPresentationReadiness } from "../../match/field-presentation-readiness";
 import {
   createFieldTransform,
   FIELD_WORLD_SCALE,
@@ -288,41 +289,19 @@ function FieldRenderReadiness({
       event.preventDefault();
       invalidateReadiness();
     };
-    const handleLifecycleChange = () => invalidateReadiness();
-    const resizeObserver = new ResizeObserver(handleLifecycleChange);
-    let dprQuery: MediaQueryList | null = null;
-
-    const watchDpr = () => {
-      dprQuery?.removeEventListener("change", handleDprChange);
-      dprQuery = window.matchMedia(
-        `(resolution: ${window.devicePixelRatio}dppx)`,
-      );
-      dprQuery.addEventListener("change", handleDprChange);
-    };
-    const handleDprChange = () => {
-      handleLifecycleChange();
-      watchDpr();
-    };
+    const handleContextRestored = () => invalidateReadiness();
+    const handleViewportChange = () => invalidateReadiness();
 
     canvas.addEventListener("webglcontextlost", handleContextLost);
-    canvas.addEventListener("webglcontextrestored", handleLifecycleChange);
-    resizeObserver.observe(canvas);
-    window.addEventListener("resize", handleLifecycleChange);
-    window.addEventListener("orientationchange", handleLifecycleChange);
-    window.visualViewport?.addEventListener("resize", handleLifecycleChange);
-    watchDpr();
+    canvas.addEventListener("webglcontextrestored", handleContextRestored);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("orientationchange", handleViewportChange);
 
     return () => {
       canvas.removeEventListener("webglcontextlost", handleContextLost);
-      canvas.removeEventListener("webglcontextrestored", handleLifecycleChange);
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", handleLifecycleChange);
-      window.removeEventListener("orientationchange", handleLifecycleChange);
-      window.visualViewport?.removeEventListener(
-        "resize",
-        handleLifecycleChange,
-      );
-      dprQuery?.removeEventListener("change", handleDprChange);
+      canvas.removeEventListener("webglcontextrestored", handleContextRestored);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("orientationchange", handleViewportChange);
     };
   }, [gl, invalidateReadiness]);
 
@@ -1367,6 +1346,14 @@ export default function GameScene({
     isCanvasReady &&
     !assetsActive &&
     (assetsTotal === 0 || assetsLoaded >= assetsTotal);
+
+  useEffect(() => {
+    if (!match?.id) return;
+    const snapshot = { matchId: match.id, sceneKey: renderSceneKey };
+    reportFieldPresentationReadiness(snapshot, isFieldInteractionReady);
+    return () => reportFieldPresentationReadiness(snapshot, false);
+  }, [isFieldInteractionReady, match?.id, renderSceneKey]);
+
   const canAim =
     authoritativeRouteReady &&
     isFieldInteractionReady &&

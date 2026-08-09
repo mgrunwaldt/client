@@ -18,6 +18,7 @@ import {
   hasAuthoritativeMatchIdentity,
   hasAuthoritativePrematchState,
 } from "../../../match/authoritative-route-state";
+import { waitForFieldPresentation } from "../../../match/field-presentation-readiness";
 import { preloadMatchExperience } from "../../../match/match-preload";
 import {
   beginHydration,
@@ -320,6 +321,12 @@ export default function PreMatchScreen() {
           subtitle: update.detail,
         });
       });
+      updateTransitionLoader({
+        stage: "Match scene",
+        progress: 95,
+        subtitle: "Rendering the field before the live timeline opens.",
+      });
+      await waitForFieldPresentation(matchId);
       if (requestGeneration !== startRequestGeneration.current) return;
       if (!startCompleted.current) return;
       updateTransitionLoader({
