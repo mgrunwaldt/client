@@ -1,0 +1,118 @@
+import { describe, expect, it } from "vitest";
+
+import {
+  ballFaceContactFromPercent,
+  ballFacePercentFromContact,
+  buildCanonicalKickDecision,
+  clampContactToRadius,
+  clampKickPower,
+  createKickSubmissionGate,
+  type KickControlEnvelope,
+  parseKickControlEnvelope,
+  visibleKickPowerRatio,
+} from "../src/match/kick-input";
+
+const envelope = {
+  version: 1,
+  input_mapping_version: "kick-v1",
+  minimum_power: 0.2,
+  maximum_power: 0.8,
+  maximum_curve: 0.8,
+  maximum_lift: 0.8,
+  contact_radius: 0.7,
+} satisfies KickControlEnvelope;
+
+describe("canonical kick input", () => {
+  it("maps the ball face to canonical Cartesian coordinates", () => {
+    expect(ballFaceContactFromPercent({ x: 0, y: 100 })).toEqual({
+      x: -1,
+      y: -1,
+    });
+    expect(ballFaceContactFromPercent({ x: 100, y: 0 })).toEqual({
+      x: 1,
+      y: 1,
+    });
+    expect(ballFacePercentFromContact({ x: 0.4, y: -0.6 })).toEqual({
+      x: 70,
+      y: 80,
+    });
+  });
+
+  it("clamps power and contact to the server envelope without deriving intent", () => {
+    expect(
+      buildCanonicalKickDecision(envelope, { x: 3, y: -4 }, 1, {
+        x: 1,
+        y: 1,
+      }),
+    ).toEqual({
+      choice: "KICK",
+      kick_input: {
+        version: 1,
+        aim: { x: 0.6, y: -0.8 },
+        power: 0.8,
+        contact: {
+          x: 0.4949747468305832,
+          y: 0.4949747468305832,
+        },
+      },
+    });
+  });
+
+  it("uses the envelope's minimum power and rejects zero aim", () => {
+    expect(
+      buildCanonicalKickDecision(envelope, { x: 0, y: -8 }, 0, {
+        x: 0,
+        y: 0,
+      }).kick_input.power,
+    ).toBe(0.2);
+    expect(() =>
+      buildCanonicalKickDecision(envelope, { x: 0, y: 0 }, 0.5, {
+        x: 0,
+        y: 0,
+      }),
+    ).toThrow("non-zero aim");
+  });
+
+  it("renders the server-clamped power on the global arrow range", () => {
+    const fullEnvelope = { ...envelope, maximum_power: 1 };
+
+    expect(clampKickPower(envelope, 1)).toBe(0.8);
+    expect(visibleKickPowerRatio(envelope, 0.8)).toBe(0.8);
+    expect(visibleKickPowerRatio(envelope, 1)).toBe(0.8);
+    expect(visibleKickPowerRatio(envelope, 0)).toBe(0.2);
+    expect(visibleKickPowerRatio(fullEnvelope, 1)).toBe(1);
+  });
+
+  it("validates server-authored envelopes and preserves radius boundaries", () => {
+    expect(parseKickControlEnvelope(envelope)).toEqual(envelope);
+    expect(clampContactToRadius({ x: -0.2, y: 0.3 }, 0.7)).toEqual({
+      x: -0.2,
+      y: 0.3,
+    });
+  });
+
+  it.each([
+    ["contract version", { ...envelope, version: 2 }],
+    ["input mapping", { ...envelope, input_mapping_version: "kick-v2" }],
+    ["negative minimum", { ...envelope, minimum_power: -0.1 }],
+    ["maximum above one", { ...envelope, maximum_power: 1.1 }],
+    ["inverted power range", { ...envelope, minimum_power: 0.9 }],
+    ["negative curve", { ...envelope, maximum_curve: -0.1 }],
+    ["lift above one", { ...envelope, maximum_lift: 1.1 }],
+    ["zero contact radius", { ...envelope, contact_radius: 0 }],
+    ["contact radius above one", { ...envelope, contact_radius: 1.1 }],
+    ["wrong numeric type", { ...envelope, maximum_power: "0.8" }],
+    ["unknown field", { ...envelope, selection_quality: 0.9 }],
+  ])("rejects an unsupported %s envelope", (_label, unsupported) => {
+    expect(parseKickControlEnvelope(unsupported)).toBeNull();
+  });
+
+  it("accepts exactly one submission per action and allows transport retry", () => {
+    const gate = createKickSubmissionGate();
+    expect(gate.begin("kick-1")).toBe(true);
+    expect(gate.begin("kick-1")).toBe(false);
+    expect(gate.begin("kick-2")).toBe(true);
+    gate.reset("kick-2");
+    expect(gate.begin("kick-2")).toBe(true);
+  });
+});

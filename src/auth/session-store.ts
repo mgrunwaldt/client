@@ -92,8 +92,10 @@ export const useAuthSessionStore = create<AuthSessionStore>((set) => ({
       error: null,
     }),
   setUnauthenticated: () => set({ ...initialState, status: "unauthenticated" }),
+  // Preserve the old in-memory credential until logout has revoked it. The
+  // layout is hidden by this status while the switch is in progress.
   beginAccountSwitch: () =>
-    set({ ...initialState, status: "account_switching" }),
+    set((state) => ({ ...state, status: "account_switching", error: null })),
   setError: (error) => set({ ...initialState, status: "error", error }),
   clear: () => set(initialState),
 }));

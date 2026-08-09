@@ -1,13 +1,20 @@
 # Auth Boundary v1 Client Integration
 
-The client uses Auth Boundary v1 only through `src/auth/api.ts`. Production
-browser traffic is same-origin and uses the server-managed
+The client uses Auth Boundary v1 only through `src/auth/api.ts`. A same-origin
+`VITE_MATCH_API_BASE_URL` (normally `/api`) uses the server-managed
 `__Host-overgoal_session` cookie; JavaScript never reads or persists that
 credential. `GET /auth/v1/session` retains only
 `response_context.cookie_csrf_token` in memory. Cookie mutations send that
-value as `X-CSRF-Token`; browser fetch supplies `Origin` naturally. Bearer
-transport is supported only by the same in-memory store and does not retain a
-cookie CSRF value.
+value as `X-CSRF-Token`; browser fetch supplies `Origin` naturally.
+
+A distinct HTTPS API origin uses bearer transport only. The client sends
+`Overgoal-Session-Transport: bearer` only when it creates the session, always
+uses `credentials: "omit"` for that origin, and keeps the returned
+`session_credential` in memory. Match API requests then carry
+`Authorization: Bearer ...` without a cookie CSRF value. A browser reload has
+no bearer to hydrate by design and requires a fresh wallet sign-in. Plain HTTP
+is allowed only for localhost development; malformed direct URLs produce a
+safe configuration diagnostic before a request is attempted.
 
 The login sequence is `POST /auth/v1/challenges`, wallet `signMessage` over
 the server-supplied SNIP-12 `typed_data`, then `POST /auth/v1/sessions` with
@@ -23,7 +30,7 @@ account's match state is never exposed after an account switch.
 ## Server Envelope Confirmation
 
 The client boundary follows the Match API v1 OpenAPI and fixtures pinned at
-`9918cbc1beb502f0675895b9fbe64d77a96127dc`:
+`d5393cf3ff6efa4d9c893e0534284b08b2f98d2c`:
 
 ```ts
 POST /auth/v1/challenges

@@ -1,19 +1,13 @@
 import { execFile as execFileCallback, spawn } from "node:child_process";
-import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 const usesProcessGroups = process.platform !== "win32";
 const execFile = promisify(execFileCallback);
-const packageJsonPath = fileURLToPath(
-  new URL("../package.json", import.meta.url),
-);
+const pnpmCli = process.env.npm_execpath;
 
-function packageManagerVersion(packageManager) {
-  const version = packageManager?.match(/^pnpm@([^+]+)/u)?.[1];
-  if (!version) throw new Error("package.json must pin pnpm in packageManager");
-  return version;
+if (!pnpmCli) {
+  throw new Error("Signal cleanup verification must run through pnpm");
 }
 
 function waitForExit(child, timeoutMs) {
@@ -125,9 +119,7 @@ function childGroupFromOutput(output, name) {
   return Number(match[1]);
 }
 
-const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-const pnpmVersion = packageManagerVersion(packageJson.packageManager);
-const packageTest = spawn("corepack", [`pnpm@${pnpmVersion}`, "test:browser"], {
+const packageTest = spawn(process.execPath, [pnpmCli, "test:browser"], {
   detached: usesProcessGroups,
   env: {
     ...process.env,

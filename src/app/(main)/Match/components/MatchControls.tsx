@@ -11,6 +11,8 @@ interface MatchControlsProps {
   setEffort: (effort: EffortLevel) => void;
   playstyle: Playstyle;
   setPlaystyle: (style: Playstyle) => void;
+  disabled?: boolean;
+  error?: string | null;
 }
 
 export const MatchControls: React.FC<MatchControlsProps> = ({
@@ -18,6 +20,8 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
   setEffort,
   playstyle,
   setPlaystyle,
+  disabled = false,
+  error = null,
 }) => {
   return (
     <div className="flex w-full max-w-2xl flex-col gap-4">
@@ -31,6 +35,9 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
         <div className="grid grid-cols-3 gap-3">
           {/* Low - Red */}
           <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={effort === "low"}
             onClick={() => setEffort("low")}
             className={cn(
               "group relative flex h-24 flex-col items-center justify-center gap-3 rounded-md border py-4 transition-all hover:scale-105",
@@ -53,6 +60,9 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
           </button>
 
           <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={effort === "medium"}
             onClick={() => setEffort("medium")}
             className={cn(
               "group relative flex h-24 flex-col items-center justify-center gap-3 rounded-md border py-4 transition-all hover:scale-105",
@@ -75,6 +85,9 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
           </button>
 
           <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={effort === "high"}
             onClick={() => setEffort("high")}
             className={cn(
               "group relative flex h-24 flex-col items-center justify-center gap-3 rounded-md border py-4 transition-all hover:scale-105",
@@ -108,9 +121,12 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
         <div className="grid grid-cols-3 gap-3">
           {/* Defense */}
           <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={playstyle === "defense"}
             onClick={() => setPlaystyle("defense")}
             className={cn(
-              "group border-overgoal-blue relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
+              "border-overgoal-blue group relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
               playstyle === "defense"
                 ? "border-overgoal-blue"
                 : "hover:border-overgoal-blue border-gray-800 opacity-60 hover:opacity-100",
@@ -132,9 +148,12 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
 
           {/* Balanced */}
           <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={playstyle === "balanced"}
             onClick={() => setPlaystyle("balanced")}
             className={cn(
-              "group border-overgoal-blue relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
+              "border-overgoal-blue group relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
               playstyle === "balanced"
                 ? "border-overgoal-blue"
                 : "hover:border-overgoal-blue border-gray-800 opacity-60 hover:opacity-100",
@@ -156,9 +175,12 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
 
           {/* Offensive */}
           <button
+            type="button"
+            disabled={disabled}
+            aria-pressed={playstyle === "offensive"}
             onClick={() => setPlaystyle("offensive")}
             className={cn(
-              "group border-overgoal-blue relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
+              "border-overgoal-blue group relative flex h-20 flex-col items-center justify-center gap-2 rounded-md border py-1 transition-all hover:scale-105",
               playstyle === "offensive"
                 ? "border-overgoal-blue"
                 : "hover:border-overgoal-blue border-gray-800 opacity-60 hover:opacity-100",
@@ -178,6 +200,9 @@ export const MatchControls: React.FC<MatchControlsProps> = ({
             <img src="/icons/Offense.png" alt="" className="h-10 w-10" />
           </button>
         </div>
+      </div>
+      <div aria-live="polite" className="min-h-5 px-1 text-xs text-cyan-100/70">
+        {disabled ? "Saving tactics..." : error}
       </div>
     </div>
   );

@@ -1,0 +1,59 @@
+{
+  "minute": 12,
+  "status": "WAITING_FOR_DECISION",
+  "prev_time": 0,
+  "pending_action": {
+    "id": "action-open-1", "action_sequence": 1, "minute": 12, "action_type": "OPEN_PLAY", "scene_type": "OPEN_PLAY", "action_team": "MY_TEAM", "source": "SIMULATION",
+    "title": "Open Play", "description": "Your Legend receives the ball in open play.", "field_state_id": "field-open-1",
+    "available_choices": [
+      { "id": "KICK", "label": "Kick", "description": "Aim the ball.", "input_schema": { "required": ["choice", "kick_input"], "kick_input_version": 1 } }
+    ],
+    "control_envelope": { "version": 1, "input_mapping_version": "kick-v1", "minimum_power": 0.16, "maximum_power": 0.94, "maximum_curve": 0.882, "maximum_lift": 0.893, "contact_radius": 0.953 },
+    "context": { "seed": 12001, "distance_to_goal": 24.5, "side_of_pitch": "RIGHT", "pressure": 63, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null, "carrier_player_id": "team_1_RB_2" },
+    "origin": null, "contract_version": 2,
+    "field_state": {
+      "id": "field-open-1", "action_sequence": 1, "match_id": "match-fixture-1", "minute": 12, "action_type": "OPEN_PLAY", "scene_family": "OPEN_PLAY",
+      "my_team_positions": [{ "id": "team_1_RB_2", "team_id": "team_1", "team_side": "MY_TEAM", "role": "RB", "x": 72, "y": 36.91, "is_legend": true, "has_ball": true, "collision_shape": { "radius_m": 0.42, "height_m": 2, "receive_radius_m": 0.85 } }],
+      "opponent_positions": [{ "id": "team_2_CB_3", "team_id": "team_2", "team_side": "OPPONENT_TEAM", "role": "CB", "x": 65, "y": 28, "collision_shape": { "radius_m": 0.42, "height_m": 2, "receive_radius_m": 0.85 } }],
+      "legend_player_id": "team_1_RB_2", "carrier_player_id": "team_1_RB_2", "distance_to_goal": 24.5, "ball_x": 72, "ball_y": 36.2,
+      "geometry": { "version": "regulation-68x105-v1", "pitch_width_m": 68, "pitch_length_m": 105, "goal_width_m": 7.32, "goal_height_m": 2.44, "goal_depth_m": 2, "goal_post_radius_m": 0.06, "ball_radius_m": 0.11, "opponent_goal": { "line_y": 0, "left_post_x": 44.62, "right_post_x": 55.38 }, "opponent_penalty_area": { "min_x": 20.35, "max_x": 79.65, "min_y": 0, "max_y": 15.71, "penalty_spot": { "x": 50, "y": 10.48 } } },
+      "context": { "seed": 12001, "distance_to_goal": 24.5, "side_of_pitch": "RIGHT", "pressure": 63, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null, "carrier_player_id": "team_1_RB_2" },
+      "coordinate_system": { "version": "field-coordinate-system/1", "x": { "unit": "PERCENT_OF_PITCH_WIDTH", "minimum": 0, "maximum": 100, "direction": "LEFT_TO_RIGHT" }, "y": { "unit": "PERCENT_OF_PITCH_LENGTH", "minimum": 0, "maximum": 100, "direction": "OPPONENT_GOAL_TO_OWN_GOAL" }, "z": { "unit": "METRE", "origin": "PITCH_PLANE", "direction": "UP" }, "attacking_direction": "NEGATIVE_Y", "world_transform": { "version": "pitch-world-affine/1", "unit": "METRE", "world_x": { "source_axis": "x", "source_origin": 50, "metres_per_unit": 0.68 }, "world_y": { "source_axis": "z", "source_origin": 0, "metres_per_unit": 1 }, "world_z": { "source_axis": "y", "source_origin": 50, "metres_per_unit": 1.05 } }, "anchors": { "player_xy": "FEET_MIDPOINT", "ball_xy": "GROUND_PROJECTION", "ball_z": "BALL_CENTER", "label_xy": "PLAYER_FEET_MIDPOINT" } },
+      "sequence": { "version": 1, "sequence_id": "field-open-1", "anchor_player_id": "team_1_RB_2", "attacking_target": { "type": "OPPONENT_GOAL_CENTER", "x": 50, "y": 0, "goalkeeper_player_id": null }, "camera": { "policy_version": "attacking-top-down/1", "projection": "ORTHOGRAPHIC_TOP_DOWN", "locked": true, "mode": "FOLLOW_LEGEND", "view_window": { "left": 22, "top": -3.09, "width": 100, "height": 50 } } }
+    }
+  },
+  "field_state": {
+    "id": "field-open-1", "action_sequence": 1, "match_id": "match-fixture-1", "minute": 12, "action_type": "OPEN_PLAY", "scene_family": "OPEN_PLAY",
+    "my_team_positions": [{ "id": "team_1_RB_2", "team_id": "team_1", "team_side": "MY_TEAM", "role": "RB", "x": 72, "y": 36.91, "is_legend": true, "has_ball": true, "collision_shape": { "radius_m": 0.42, "height_m": 2, "receive_radius_m": 0.85 } }],
+    "opponent_positions": [{ "id": "team_2_CB_3", "team_id": "team_2", "team_side": "OPPONENT_TEAM", "role": "CB", "x": 65, "y": 28, "collision_shape": { "radius_m": 0.42, "height_m": 2, "receive_radius_m": 0.85 } }],
+    "legend_player_id": "team_1_RB_2", "carrier_player_id": "team_1_RB_2", "distance_to_goal": 24.5, "ball_x": 72, "ball_y": 36.2,
+    "geometry": { "version": "regulation-68x105-v1", "pitch_width_m": 68, "pitch_length_m": 105, "goal_width_m": 7.32, "goal_height_m": 2.44, "goal_depth_m": 2, "goal_post_radius_m": 0.06, "ball_radius_m": 0.11, "opponent_goal": { "line_y": 0, "left_post_x": 44.62, "right_post_x": 55.38 }, "opponent_penalty_area": { "min_x": 20.35, "max_x": 79.65, "min_y": 0, "max_y": 15.71, "penalty_spot": { "x": 50, "y": 10.48 } } },
+    "context": { "seed": 12001, "distance_to_goal": 24.5, "side_of_pitch": "RIGHT", "pressure": 63, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null, "carrier_player_id": "team_1_RB_2" },
+    "coordinate_system": { "version": "field-coordinate-system/1", "x": { "unit": "PERCENT_OF_PITCH_WIDTH", "minimum": 0, "maximum": 100, "direction": "LEFT_TO_RIGHT" }, "y": { "unit": "PERCENT_OF_PITCH_LENGTH", "minimum": 0, "maximum": 100, "direction": "OPPONENT_GOAL_TO_OWN_GOAL" }, "z": { "unit": "METRE", "origin": "PITCH_PLANE", "direction": "UP" }, "attacking_direction": "NEGATIVE_Y", "world_transform": { "version": "pitch-world-affine/1", "unit": "METRE", "world_x": { "source_axis": "x", "source_origin": 50, "metres_per_unit": 0.68 }, "world_y": { "source_axis": "z", "source_origin": 0, "metres_per_unit": 1 }, "world_z": { "source_axis": "y", "source_origin": 50, "metres_per_unit": 1.05 } }, "anchors": { "player_xy": "FEET_MIDPOINT", "ball_xy": "GROUND_PROJECTION", "ball_z": "BALL_CENTER", "label_xy": "PLAYER_FEET_MIDPOINT" } },
+    "sequence": { "version": 1, "sequence_id": "field-open-1", "anchor_player_id": "team_1_RB_2", "attacking_target": { "type": "OPPONENT_GOAL_CENTER", "x": 50, "y": 0, "goalkeeper_player_id": null }, "camera": { "policy_version": "attacking-top-down/1", "projection": "ORTHOGRAPHIC_TOP_DOWN", "locked": true, "mode": "FOLLOW_LEGEND", "view_window": { "left": 22, "top": -3.09, "width": 100, "height": 50 } } }
+  },
+  "action": "OPEN_PLAY",
+  "action_team": "MY_TEAM",
+  "events": [{ "match_id": "match-fixture-1", "event_id": 1, "action": "OPEN_PLAY", "minute": 12, "team": "MY_TEAM", "description": "Your Legend receives the ball in open play.", "my_team_score": 0, "opponent_team_score": 0, "my_team_scored": false, "opponent_team_scored": false, "player_participates": true, "halftime": false, "match_end": false, "meta": null }],
+  "pending_settlement_events": [],
+  "unsupported_scene": null,
+  "legend_availability": { "version": 1, "status": "AVAILABLE", "availability": "AVAILABLE", "participation": "PARTICIPATING", "interactive_controls": true, "unavailable_since_minute": null },
+  "halftime_summary": null,
+  "full_time_handoff": null,
+  "match": {
+    "id": "match-fixture-1", "my_team_id": "team_1", "opponent_team_id": "team_2", "my_team_score": 0, "opponent_team_score": 0,
+    "current_time": 12, "prev_time": 0, "match_status": "WAITING_FOR_DECISION", "event_counter": 1, "revision": 0,
+    "seed": "fixture-seed-1", "engine_version": "match-engine/6", "ruleset_version": "nss-match-v2/1",
+    "initial_state": { "my_team": { "id": "team_1", "name": "Dojo United", "offense": 78, "defense": 75, "intensity": 80, "set_pieces": 74, "chemistry": 79, "formation": "4-3-3" }, "opponent_team": { "id": "team_2", "name": "Cartridge City", "offense": 85, "defense": 68, "intensity": 72, "set_pieces": 77, "chemistry": 70, "formation": "4-2-3-1" }, "legend_profile": { "stamina": 78, "energy": 78, "shoot": 74, "dribble": 76, "speed": 77, "passing": 73, "heading": 69, "defense": 58, "intelligence": 72, "yellow_cards": 0, "red_card": false, "simulation_attempts": 0, "substitutions": 0 }, "ruleset": { "rebound_play_enabled": true } },
+    "pending_action": {
+      "id": "action-open-1", "action_sequence": 1, "minute": 12, "action_type": "OPEN_PLAY", "scene_type": "OPEN_PLAY", "action_team": "MY_TEAM", "source": "SIMULATION",
+      "title": "Open Play", "description": "Your Legend receives the ball in open play.", "field_state_id": "field-open-1",
+      "available_choices": [
+        { "id": "KICK", "label": "Kick", "description": "Aim the ball.", "input_schema": { "required": ["choice", "kick_input"], "kick_input_version": 1 } }
+      ],
+      "control_envelope": { "version": 1, "input_mapping_version": "kick-v1", "minimum_power": 0.16, "maximum_power": 0.94, "maximum_curve": 0.882, "maximum_lift": 0.893, "contact_radius": 0.953 },
+      "context": { "seed": 12001, "distance_to_goal": 24.5, "side_of_pitch": "RIGHT", "pressure": 63, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null, "carrier_player_id": "team_1_RB_2" },
+      "origin": null, "contract_version": 2
+    }
+  }
+}

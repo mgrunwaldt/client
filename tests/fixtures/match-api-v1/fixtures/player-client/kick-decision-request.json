@@ -1,0 +1,5 @@
+{
+  "match_id": "match-fixture-1",
+  "action_id": "action-open-1",
+  "match_decision": { "choice": "KICK", "kick_input": { "version": 1, "aim": { "x": 0.2, "y": -0.98 }, "power": 0.72, "contact": { "x": 0.84, "y": -0.35 } } }
+}

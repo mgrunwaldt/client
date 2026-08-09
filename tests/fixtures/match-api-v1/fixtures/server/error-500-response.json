@@ -1,0 +1,7 @@
+{
+  "error": "Internal server error.",
+  "code": "INTERNAL_ERROR",
+  "status": 500,
+  "retryable": true,
+  "recovery_action": "RETRY_SAME_REQUEST"
+}

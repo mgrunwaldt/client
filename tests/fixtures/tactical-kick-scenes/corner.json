@@ -1,0 +1,608 @@
+{
+  "match": {
+    "id": "match-corner",
+    "my_team_id": "team_1",
+    "opponent_team_id": "team_2",
+    "my_team_score": 0,
+    "opponent_team_score": 0,
+    "next_match_action": "CORNER",
+    "next_match_action_minute": 1,
+    "current_time": 31,
+    "prev_time": 30,
+    "match_status": "WAITING_FOR_DECISION",
+    "player_participation": "PARTICIPATING",
+    "action_team": "MY_TEAM",
+    "event_counter": 0,
+    "action_counter": 1,
+    "decision_counter": 0,
+    "revision": 0,
+    "field_state_id": "field_86ea9368ea2e89106ae014790ff95efa",
+    "pending_action": {
+      "id": "action_98601d86a3b169a52631cba8b69213b5",
+      "action_sequence": 1,
+      "minute": 31,
+      "action_type": "CORNER",
+      "scene_type": "CORNER",
+      "action_team": "MY_TEAM",
+      "source": "SIMULATION",
+      "title": "Corner",
+      "description": "Your team has a corner to attack.",
+      "field_state_id": "field_86ea9368ea2e89106ae014790ff95efa",
+      "available_choices": [
+        {
+          "id": "KICK",
+          "label": "Kick",
+          "description": "Aim the delivery or direct attempt with direction, power, and contact point.",
+          "input_schema": {
+            "required": ["choice", "kick_input"],
+            "kick_input_version": 1
+          }
+        }
+      ],
+      "control_envelope": {
+        "version": 1,
+        "input_mapping_version": "kick-v1",
+        "minimum_power": 0.16,
+        "maximum_power": 0.939,
+        "maximum_curve": 0.881,
+        "maximum_lift": 0.891,
+        "contact_radius": 0.952
+      },
+      "context": {
+        "seed": 42000,
+        "distance_to_goal": 4,
+        "side_of_pitch": "RIGHT",
+        "pressure": 62,
+        "attack_phase": "SETTLED",
+        "numerical_advantage": 0,
+        "quality_band": "PROGRESSIVE",
+        "previous_outcome": null,
+        "carrier_player_id": "team_1_RB_2"
+      },
+      "origin": null,
+      "contract_version": 2
+    },
+    "legend_profile": {
+      "stamina": 78,
+      "energy": 78,
+      "shoot": 74,
+      "dribble": 76,
+      "speed": 77,
+      "passing": 73,
+      "heading": 69,
+      "defense": 58,
+      "intelligence": 72,
+      "yellow_cards": 0,
+      "red_card": false,
+      "simulation_attempts": 0,
+      "substitutions": 0
+    },
+    "legend_player_id": "team_1_RB_2",
+    "ruleset": {
+      "rebound_play_enabled": true
+    },
+    "seed": "visual-engine6-corner",
+    "engine_version": "match-engine/6",
+    "ruleset_version": "nss-match-v2/1",
+    "initial_state": {
+      "my_team": {
+        "id": "team_1",
+        "name": "Dojo United",
+        "offense": 78,
+        "defense": 75,
+        "intensity": 80,
+        "set_pieces": 74,
+        "chemistry": 79,
+        "formation": "4-3-3"
+      },
+      "opponent_team": {
+        "id": "team_2",
+        "name": "Cartridge City",
+        "offense": 85,
+        "defense": 68,
+        "intensity": 72,
+        "set_pieces": 77,
+        "chemistry": 70,
+        "formation": "4-2-3-1"
+      },
+      "legend_profile": {
+        "stamina": 78,
+        "energy": 78,
+        "shoot": 74,
+        "dribble": 76,
+        "speed": 77,
+        "passing": 73,
+        "heading": 69,
+        "defense": 58,
+        "intelligence": 72,
+        "yellow_cards": 0,
+        "red_card": false,
+        "simulation_attempts": 0,
+        "substitutions": 0
+      },
+      "ruleset": {
+        "rebound_play_enabled": true
+      }
+    },
+    "match_metadata": {
+      "attack_chain_depth": 0,
+      "last_scene_origin": "SIMULATION",
+      "requested_seed": null
+    },
+    "lifecycle": {
+      "version": 1,
+      "config_version": "match-lifecycle-config/1",
+      "halftime": null,
+      "full_time": null
+    },
+    "legend_availability": {
+      "version": 1,
+      "status": "AVAILABLE",
+      "availability": "AVAILABLE",
+      "participation": "NOT_PARTICIPATING",
+      "interactive_controls": true,
+      "unavailable_since_minute": null
+    }
+  },
+  "status": "WAITING_FOR_DECISION",
+  "minute": 31,
+  "prev_time": 30,
+  "action": "CORNER",
+  "action_team": "MY_TEAM",
+  "events": [],
+  "pending_action": {
+    "id": "action_98601d86a3b169a52631cba8b69213b5",
+    "action_sequence": 1,
+    "minute": 31,
+    "action_type": "CORNER",
+    "scene_type": "CORNER",
+    "action_team": "MY_TEAM",
+    "source": "SIMULATION",
+    "title": "Corner",
+    "description": "Your team has a corner to attack.",
+    "field_state_id": "field_86ea9368ea2e89106ae014790ff95efa",
+    "available_choices": [
+      {
+        "id": "KICK",
+        "label": "Kick",
+        "description": "Aim the delivery or direct attempt with direction, power, and contact point.",
+        "input_schema": {
+          "required": ["choice", "kick_input"],
+          "kick_input_version": 1
+        }
+      }
+    ],
+    "control_envelope": {
+      "version": 1,
+      "input_mapping_version": "kick-v1",
+      "minimum_power": 0.16,
+      "maximum_power": 0.939,
+      "maximum_curve": 0.881,
+      "maximum_lift": 0.891,
+      "contact_radius": 0.952
+    },
+    "context": {
+      "seed": 42000,
+      "distance_to_goal": 4,
+      "side_of_pitch": "RIGHT",
+      "pressure": 62,
+      "attack_phase": "SETTLED",
+      "numerical_advantage": 0,
+      "quality_band": "PROGRESSIVE",
+      "previous_outcome": null,
+      "carrier_player_id": "team_1_RB_2"
+    },
+    "origin": null,
+    "contract_version": 2
+  },
+  "field_state": {
+    "id": "field_86ea9368ea2e89106ae014790ff95efa",
+    "match_id": "match-corner",
+    "minute": 31,
+    "action_type": "CORNER",
+    "scene_family": "CORNER",
+    "my_team_positions": [
+      {
+        "id": "team_1_GK_1",
+        "role": "GK",
+        "collision_shape": {
+          "radius_m": 0.75,
+          "height_m": 2.44,
+          "receive_radius_m": 0.75
+        },
+        "x": 49.60757607854903,
+        "y": 94.48153000949394,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_RB_2",
+        "role": "RB",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 99.63235294117646,
+        "y": 2.619047619047619,
+        "is_legend": true,
+        "has_ball": true,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_RCB_3",
+        "role": "NEAR_POST",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 55.2,
+        "y": 4.8,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_LCB_4",
+        "role": "PENALTY_SPOT",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 50,
+        "y": 10.2,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_LB_5",
+        "role": "FAR_POST",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 44.8,
+        "y": 6.4,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_DM_6",
+        "role": "EDGE_BOX",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 42,
+        "y": 16.8,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_RCM_7",
+        "role": "RCM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 68.41149820920408,
+        "y": 47.048694880594994,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_LCM_8",
+        "role": "LCM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 36.221300892740054,
+        "y": 43.588203443968226,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_RW_9",
+        "role": "RW",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 86.11304097158614,
+        "y": 19.49367746902807,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_ST_10",
+        "role": "ST",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 55.22546476565082,
+        "y": 8.729328072314994,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      },
+      {
+        "id": "team_1_LW_11",
+        "role": "LW",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 24.367484383674007,
+        "y": 20.63126458149581,
+        "team_id": "team_1",
+        "team_side": "MY_TEAM"
+      }
+    ],
+    "opponent_positions": [
+      {
+        "id": "team_2_GK_1",
+        "role": "GK",
+        "collision_shape": {
+          "radius_m": 0.75,
+          "height_m": 2.44,
+          "receive_radius_m": 0.75
+        },
+        "x": 50,
+        "y": 1.35,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_RB_2",
+        "role": "MARKER_1",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 52.2,
+        "y": 5.9,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_RCB_3",
+        "role": "MARKER_2",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 53,
+        "y": 11.299999999999999,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_LCB_4",
+        "role": "MARKER_3",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 41.8,
+        "y": 7.5,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_LB_5",
+        "role": "MARKER_4",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 45,
+        "y": 17.900000000000002,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_RDM_6",
+        "role": "RDM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 59.7741793588023,
+        "y": 42.5583095751614,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_LDM_7",
+        "role": "LDM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 44.217613715979766,
+        "y": 38.85189304974905,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_RAM_8",
+        "role": "RAM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 77.0337342906031,
+        "y": 65.05517138502604,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_CAM_9",
+        "role": "CAM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 53.97339849166901,
+        "y": 65.70186762510843,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_LAM_10",
+        "role": "LAM",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 28.160787924587286,
+        "y": 64.54083109310872,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      },
+      {
+        "id": "team_2_ST_11",
+        "role": "ST",
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        },
+        "x": 55.324038126149816,
+        "y": 95.09528791041868,
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM"
+      }
+    ],
+    "legend_player_id": "team_1_RB_2",
+    "carrier_player_id": "team_1_RB_2",
+    "distance_to_goal": 11,
+    "ball_x": 99.63235294117646,
+    "ball_y": 0.23809523809523808,
+    "geometry": {
+      "version": "regulation-68x105-v1",
+      "pitch_width_m": 68,
+      "pitch_length_m": 105,
+      "goal_width_m": 7.32,
+      "goal_height_m": 2.44,
+      "goal_depth_m": 2,
+      "goal_post_radius_m": 0.06,
+      "ball_radius_m": 0.11,
+      "opponent_goal": {
+        "line_y": 0,
+        "left_post_x": 44.62,
+        "right_post_x": 55.38
+      },
+      "opponent_penalty_area": {
+        "min_x": 20.35,
+        "max_x": 79.65,
+        "min_y": 0,
+        "max_y": 15.71,
+        "penalty_spot": {
+          "x": 50,
+          "y": 10.48
+        }
+      }
+    },
+    "context": {
+      "seed": 42000,
+      "distance_to_goal": 4,
+      "side_of_pitch": "RIGHT",
+      "pressure": 62,
+      "attack_phase": "SETTLED",
+      "numerical_advantage": 0,
+      "quality_band": "PROGRESSIVE",
+      "previous_outcome": null,
+      "carrier_player_id": "team_1_RB_2"
+    },
+    "action_sequence": 1,
+    "coordinate_system": {
+      "version": "field-coordinate-system/1",
+      "x": {
+        "unit": "PERCENT_OF_PITCH_WIDTH",
+        "minimum": 0,
+        "maximum": 100,
+        "direction": "LEFT_TO_RIGHT"
+      },
+      "y": {
+        "unit": "PERCENT_OF_PITCH_LENGTH",
+        "minimum": 0,
+        "maximum": 100,
+        "direction": "OPPONENT_GOAL_TO_OWN_GOAL"
+      },
+      "z": {
+        "unit": "METRE",
+        "origin": "PITCH_PLANE",
+        "direction": "UP"
+      },
+      "attacking_direction": "NEGATIVE_Y",
+      "world_transform": {
+        "version": "pitch-world-affine/1",
+        "unit": "METRE",
+        "world_x": {
+          "source_axis": "x",
+          "source_origin": 50,
+          "metres_per_unit": 0.68
+        },
+        "world_y": {
+          "source_axis": "z",
+          "source_origin": 0,
+          "metres_per_unit": 1
+        },
+        "world_z": {
+          "source_axis": "y",
+          "source_origin": 50,
+          "metres_per_unit": 1.05
+        }
+      },
+      "anchors": {
+        "player_xy": "FEET_MIDPOINT",
+        "ball_xy": "GROUND_PROJECTION",
+        "ball_z": "BALL_CENTER",
+        "label_xy": "PLAYER_FEET_MIDPOINT"
+      }
+    },
+    "sequence": {
+      "version": 1,
+      "sequence_id": "field_86ea9368ea2e89106ae014790ff95efa",
+      "anchor_player_id": "team_1_RB_2",
+      "attacking_target": {
+        "type": "OPPONENT_GOAL_CENTER",
+        "x": 50,
+        "y": 0,
+        "goalkeeper_player_id": "team_2_GK_1"
+      },
+      "camera": {
+        "policy_version": "attacking-top-down/1",
+        "projection": "ORTHOGRAPHIC_TOP_DOWN",
+        "locked": true,
+        "mode": "CORNER_ATTACKING_THIRD",
+        "view_window": {
+          "left": 9.632352941176464,
+          "top": -6,
+          "width": 100,
+          "height": 50
+        }
+      }
+    }
+  }
+}

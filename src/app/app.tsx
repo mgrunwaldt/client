@@ -1,15 +1,26 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import {
+  BrowserRouter,
+  matchPath,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router";
 
 // Import layout components
+import { useAuthSessionStore } from "../auth/session-store";
 import { AuthenticatedLayout } from "../components/layout/AuthenticatedLayout";
 import MatchTransitionLoader from "../match/MatchTransitionLoader";
+import { useMatchSessionStore } from "../match/session-store";
 // Import all routes
 import {
   calendar,
   career,
   claim,
   connectionTest,
+  game,
+  legacyGame,
   login,
   main,
   market,
@@ -87,10 +98,16 @@ function RouteLoadingSurface() {
 function PersistentGameSceneHost() {
   const location = useLocation();
   const pathname = location.pathname;
+  const gameRouteMatch = matchPath({ path: game, end: true }, pathname);
+  const gameMatchId = gameRouteMatch?.params.matchId ?? null;
+  const hasRenderableField = useMatchSessionStore((state) =>
+    Boolean(state.pendingAction?.field_state ?? state.fieldState),
+  );
+  const authStatus = useAuthSessionStore((state) => state.status);
   const shouldMount =
-    pathname === "/game" ||
-    pathname.startsWith("/match/") ||
-    pathname.startsWith("/pre-match/");
+    (Boolean(gameRouteMatch) && authStatus === "authenticated") ||
+    (hasRenderableField &&
+      (pathname.startsWith("/match/") || pathname.startsWith("/pre-match/")));
 
   if (!shouldMount) {
     return null;
@@ -98,9 +115,31 @@ function PersistentGameSceneHost() {
 
   return (
     <Suspense fallback={<RouteLoadingSurface />}>
-      <GameScene active={pathname === "/game"} />
+      <GameScene active={Boolean(gameRouteMatch)} matchId={gameMatchId} />
     </Suspense>
   );
+}
+
+function LegacyGameRedirect() {
+  const match = useMatchSessionStore((state) => state.match);
+  const phase = useMatchSessionStore((state) => state.phase);
+  const hasField = useMatchSessionStore((state) =>
+    Boolean(state.pendingAction?.field_state ?? state.fieldState),
+  );
+  if (!match) return <Navigate to={main} replace />;
+  if (phase === "created" || phase === "starting") {
+    return <Navigate to={`/pre-match/${match.id}`} replace />;
+  }
+  if (phase === "finished") {
+    return <Navigate to={`/match-result/${match.id}`} replace />;
+  }
+  if (
+    hasField &&
+    ["scene_ready", "submitting", "result_playback"].includes(phase)
+  ) {
+    return <Navigate to={`/game/${match.id}`} replace />;
+  }
+  return <Navigate to={`/match/${match.id}`} replace />;
 }
 
 function App() {
@@ -114,13 +153,14 @@ function App() {
           <Route path={login} element={<LoginScreen />} />
           <Route path={claim} element={<ClaimScreen />} />
           <Route path={postLoginScreen} element={<PostLoginScreen />} />
-          <Route
-            path={"/game"}
-            element={<div className="h-dvh w-full bg-black" />}
-          />
 
           {/* All authenticated routes under AuthenticatedLayout */}
           <Route element={<AuthenticatedLayout />}>
+            <Route
+              path={game}
+              element={<div className="h-dvh w-full bg-black" />}
+            />
+            <Route path={legacyGame} element={<LegacyGameRedirect />} />
             <Route path={main} element={<HomePage />} />
             <Route path={preMatchNonMatch} element={<PreNonMatchScreen />} />
             <Route path={preMatch} element={<PreMatchScreen />} />

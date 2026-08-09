@@ -1,0 +1,16 @@
+{
+  "id": "action-free-kick-1", "minute": 28, "action_type": "FREE_KICK", "scene_type": "FREE_KICK", "action_team": "MY_TEAM", "source": "SIMULATION",
+  "title": "Free Kick", "description": "Your Legend wins a dangerous free kick.", "field_state_id": "field-free-kick-1",
+  "available_choices": [{ "id": "KICK", "label": "Kick", "description": "Aim the delivery or direct attempt.", "input_schema": { "required": ["choice", "kick_input"], "kick_input_version": 1 } }],
+  "control_envelope": { "version": 1, "input_mapping_version": "kick-v1", "minimum_power": 0.16, "maximum_power": 0.94, "maximum_curve": 0.882, "maximum_lift": 0.893, "contact_radius": 0.953 },
+  "context": { "seed": 28001, "distance_to_goal": 20, "side_of_pitch": "LEFT", "pressure": 55, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null, "carrier_player_id": "team_1_ST_10" },
+  "origin": null, "contract_version": 2,
+  "field_state": {
+    "id": "field-free-kick-1", "match_id": "match-fixture-1", "minute": 28, "action_type": "FREE_KICK", "scene_family": "FREE_KICK",
+    "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 32, "y": 22.38, "is_legend": true, "has_ball": true, "collision_shape": { "radius_m": 0.42, "height_m": 2, "receive_radius_m": 0.85 } }],
+    "opponent_positions": [{ "id": "team_2_CB_3", "role": "WALL", "x": 32, "y": 11.29, "collision_shape": { "radius_m": 0.36, "height_m": 2, "receive_radius_m": 0.36 } }],
+    "legend_player_id": "team_1_ST_10", "carrier_player_id": "team_1_ST_10", "distance_to_goal": 20, "ball_x": 32, "ball_y": 20,
+    "geometry": { "version": "regulation-68x105-v1", "pitch_width_m": 68, "pitch_length_m": 105, "goal_width_m": 7.32, "goal_height_m": 2.44, "goal_depth_m": 2, "goal_post_radius_m": 0.06, "ball_radius_m": 0.11, "opponent_goal": { "line_y": 0, "left_post_x": 44.62, "right_post_x": 55.38 }, "opponent_penalty_area": { "min_x": 20.35, "max_x": 79.65, "min_y": 0, "max_y": 15.71, "penalty_spot": { "x": 50, "y": 10.48 } } },
+    "context": { "seed": 28001, "distance_to_goal": 20, "side_of_pitch": "LEFT", "pressure": 55, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": null, "carrier_player_id": "team_1_ST_10" }
+  }
+}

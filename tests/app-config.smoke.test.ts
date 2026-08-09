@@ -30,5 +30,9 @@ describe("player client bootstrap", () => {
     expect(loadedConfig?.config.plugins).toHaveLength(3);
     expect(indexHtml).toContain('src="/src/main.tsx"');
     expect(transformedEntry.code).toContain("createRoot");
+    expect(entry.indexOf("createRoot(rootElement)")).toBeLessThan(
+      entry.indexOf("await init<SchemaType>"),
+    );
+    expect(entry).toContain("<BootstrapSurface />");
   });
 });

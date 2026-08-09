@@ -1,0 +1,5 @@
+{
+  "match_id": "match-fixture-1",
+  "action_id": "action-future-1",
+  "match_decision": { "choice": "CONTINUE_WITHOUT_EVENT" }
+}

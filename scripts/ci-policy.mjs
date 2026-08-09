@@ -31,6 +31,11 @@ const EXPECTED_PACKAGE_MANAGER =
 
 const EXPECTED_STEPS = [
   {
+    name: "Verify browser shards",
+    run: 'test "$BROWSER_SHARD_RESULT" = "success"',
+    env: { BROWSER_SHARD_RESULT: "${{ needs.client-browser.result }}" },
+  },
+  {
     name: "Checkout",
     uses: "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
   },
@@ -60,7 +65,6 @@ const EXPECTED_STEPS = [
     name: "Install Chromium",
     run: "pnpm exec playwright install --with-deps chromium",
   },
-  { name: "Browser smoke", run: "pnpm test:browser" },
   {
     name: "Browser stale-listener proof",
     run: "pnpm test:browser:stale-port",
@@ -70,6 +74,37 @@ const EXPECTED_STEPS = [
     run: "pnpm test:browser:signal",
   },
   { name: "Production build", run: "pnpm build" },
+];
+
+const EXPECTED_BROWSER_STEPS = [
+  {
+    name: "Checkout",
+    uses: "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683",
+  },
+  {
+    name: "Install pnpm",
+    uses: "pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda",
+    with: { run_install: false },
+  },
+  {
+    name: "Configure Node",
+    uses: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
+    with: { "node-version": EXPECTED_NODE_VERSION, cache: "pnpm" },
+  },
+  { name: "Install dependencies", run: "pnpm install --frozen-lockfile" },
+  {
+    name: "Install Chromium",
+    run: "pnpm exec playwright install --with-deps chromium",
+  },
+  {
+    name: "Browser shard",
+    run: "pnpm test:browser",
+    env: {
+      OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS: 1,
+      OVERGOAL_PLAYWRIGHT_SHARD_INDEX: "${{ matrix.shard }}",
+      OVERGOAL_PLAYWRIGHT_SHARD_TOTAL: 8,
+    },
+  },
 ];
 
 const EXPECTED_WORKFLOW = {
@@ -84,10 +119,22 @@ const EXPECTED_WORKFLOW = {
     "cancel-in-progress": true,
   },
   jobs: {
+    "client-browser": {
+      name: "client-browser-${{ matrix.shard }}-of-8",
+      "runs-on": "ubuntu-24.04",
+      "timeout-minutes": 20,
+      strategy: {
+        "fail-fast": false,
+        matrix: { shard: [1, 2, 3, 4, 5, 6, 7, 8] },
+      },
+      steps: EXPECTED_BROWSER_STEPS,
+    },
     [REQUIRED_CHECK]: {
       name: REQUIRED_CHECK,
       "runs-on": "ubuntu-24.04",
       "timeout-minutes": 30,
+      needs: "client-browser",
+      if: "${{ always() }}",
       steps: EXPECTED_STEPS,
     },
   },

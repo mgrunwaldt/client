@@ -69,8 +69,17 @@ cp .env.example .env.production.local
 For local development, keep `VITE_MATCH_API_BASE_URL=/api` and
 `VITE_MATCH_API_PROXY_TARGET=http://localhost:3100`. Vite proxies `/api/*`
 to the backend, so the browser uses one origin even when the client is served
-over HTTPS. Use `VITE_MATCH_API_BASE_URL` only for a deployed backend URL that
-already supports the required browser security policy.
+over HTTPS.
+
+For a deployed reverse proxy, keep `/api`. The client uses the server-managed
+cookie and retains only its CSRF token in memory. A direct staging or production
+API URL must be HTTPS, for example
+`VITE_MATCH_API_BASE_URL=https://match.staging.overgoal.example/api`. Direct
+origins deliberately use bearer transport: the browser requests it with
+`Overgoal-Session-Transport: bearer`, sends no credentialed CORS requests, and
+keeps the returned bearer token in memory only. An invalid direct URL is
+reported as an API configuration error instead of silently falling back to a
+different endpoint. Plain HTTP remains valid only for localhost development.
 
 All `VITE_` values are included in browser code. Do not put private keys,
 tokens, or production secrets in `.env` files or `VITE_` variables. The client
@@ -117,9 +126,10 @@ pnpm preview
 `pnpm preview` serves the production build over HTTP by default. With generated
 certificates and `VITE_LOCAL_HTTPS=true` in `.env.production.local`,
 `pnpm preview:https` serves it over HTTPS. Vite preview does not proxy `/api`;
-set `VITE_MATCH_API_BASE_URL` to a reachable deployed backend before running
-`pnpm build`, or use `pnpm dev` for local proxying. Vite embeds public variables
-at build time; changing them after `pnpm build` does not update the bundle.
+configure a same-origin reverse proxy or set `VITE_MATCH_API_BASE_URL` to a
+reachable direct HTTPS backend before running `pnpm build`. Vite embeds public
+variables at build time; changing them after `pnpm build` does not update the
+bundle.
 
 ## Quality Gates
 
@@ -144,6 +154,9 @@ pnpm typecheck
 pnpm test:unit
 pnpm exec playwright install --with-deps chromium
 pnpm test:browser
+OVERGOAL_REAL_SERVER_ROOT=/path/to/match_server \
+  OVERGOAL_REAL_SERVER_NODE=/path/to/node-v24.18.0 \
+  pnpm test:browser:real-server
 pnpm test:browser:stale-port
 pnpm test:browser:signal
 pnpm build
@@ -155,8 +168,8 @@ checked-in, test-only Match API v1 mirror at `tests/fixtures/match-api-v1`.
 The mirror includes canonical `openapi.json`; AJV 2020-12 with `ajv-formats`
 checks all declared payloads against its schemas, route associations, and
 declared formats. Its canonical source is
-`overgoal/match_server` revision
-`9918cbc1beb502f0675895b9fbe64d77a96127dc`. The mirror includes the final
+`mgrunwaldt/match_server` revision
+`d140b818a2c10d86476fcf34befd56616560f8a5`. The mirror includes the final
 Auth Boundary v1 challenge/proof requests and challenge/session responses;
 tests validate their route associations, schemas, two-field proof shape, file
 hashes, and aggregate tree seal. Runtime source must not import these fixtures.
@@ -170,6 +183,20 @@ The browser smoke builds the normal production bundle, including Dojo SDK
 initialization and `DojoSdkProvider`, starts an owned Vite preview on an
 OS-assigned port, exports that URL as `PLAYWRIGHT_BASE_URL`, and verifies the
 routes in desktop Chromium plus a Pixel 5 viewport with real touch dispatch.
+The normal suite runs each discovered test in its own Playwright process. This
+prevents Three.js/WebGL state from one scene corrupting later visual or input
+tests. `OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS` can group 1 through 16 cases only
+as an explicit diagnostic override; release CI uses the isolated default of one.
+Release CI partitions the stable inventory across eight independent GitHub
+Actions runners with `OVERGOAL_PLAYWRIGHT_SHARD_INDEX` and
+`OVERGOAL_PLAYWRIGHT_SHARD_TOTAL`. Every case still owns its browser process;
+the workflow pins `OVERGOAL_PLAYWRIGHT_CASES_PER_PROCESS=1` rather than relying
+only on the runner default. Case selection uses the complete suite title, file,
+line, and project identity so overlapping leaf titles cannot select each other.
+The protected aggregate check fails when any shard fails. These controls mean
+the shards reduce wall-clock time without sharing WebGL state or listeners. The
+post-suite HTTPS cross-origin smoke runs once in shard 1 rather than being
+duplicated across all eight runners.
 Startup, early preview exit, and failed teardown fail the command. Signal mode
 selects one desktop-only worker rather than duplicating its 60-second hold in
 the mobile project. `pnpm test:browser:stale-port` occupies a separate
@@ -179,6 +206,33 @@ Corepack/pnpm package script, terminates its active process group while
 Playwright is running, then proves the runner PID, package-script, preview, and
 Playwright process groups are gone and the preview port can be rebound. The
 smoke confirms application mounting and fatal-error handling only.
+
+`pnpm test:browser:real-server` is the distinct M2-I2 deployment smoke. It
+requires a trusted Match API checkout with its existing Node 24 dependencies;
+the command does not install or rebuild either package. The runner validates
+that checkout's declared exact Node runtime and LOCAL_CI production-repository
+launcher, refuses to kill or reuse occupied listeners, and uses only ports
+`4176` (production client preview) and `3444` (actual Match API). If either port
+is already occupied, stop that listener before running the smoke.
+
+The runner creates private ephemeral TLS, SQLite, wallet, and auth-material
+state outside both repositories. It drives the real signed LOCAL_CI
+challenge/session path, then create/start through the first Timeline state over
+`https://127.0.0.1:3444`. The production bundle embeds that direct API URL,
+Vite preview has no proxy, and browser assertions require the exact CORS origin,
+preflight, opaque bearer, absence of cookies, command headers, and Match API v1
+responses. Cleanup terminates only runner-owned process groups and deletes all
+ephemeral credentials and build output, including on signals or child failure.
+
+The same smoke also proves unknown-scene recovery against the real backend. Its
+launcher-only fixture channel accepts strictly validated sequential JSON commands in
+that private temporary state directory and mutates the already-created SQLite
+match through the launcher's repository instance. It is not an HTTP route,
+never ships in the production bundle, and is enabled only by the smoke runner.
+The browser then uses the normal authenticated Match API endpoints to verify an
+unauthenticated recovery rejection, recovery with revision and idempotency
+headers, exact-retry idempotency, and a reloaded snapshot without an unsupported
+scene or fabricated result.
 
 The build keeps every JavaScript chunk below Vite's 500 kB warning boundary
 and verifies that the login static graph excludes the game route. The Chromium

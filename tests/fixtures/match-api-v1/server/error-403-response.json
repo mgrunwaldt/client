@@ -1,5 +1,0 @@
-{
-  "error": "Request transport is not allowed.",
-  "code": "FORBIDDEN",
-  "status": 403
-}

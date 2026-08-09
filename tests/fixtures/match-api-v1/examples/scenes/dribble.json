@@ -1,0 +1,274 @@
+{
+  "id": "action-dribble-1",
+  "minute": 12,
+  "action_type": "DRIBBLE",
+  "scene_type": "DRIBBLE",
+  "action_team": "MY_TEAM",
+  "source": "SIMULATION",
+  "title": "Dribble",
+  "description": "Your Legend attacks the defender 1v1.",
+  "field_state_id": "field-dribble-1",
+  "available_choices": [
+    {
+      "id": "DRIBBLE_RUN",
+      "label": "Continue Dribble",
+      "description": "Survive the lane sequence.",
+      "input_schema": {
+        "required": ["choice", "lane_trace"],
+        "lane_trace_values": ["LEFT", "CENTER", "RIGHT"],
+        "lane_trace_point_fields": ["at_second", "lane"]
+      }
+    },
+    {
+      "id": "SIMULATE_FOUL",
+      "label": "Simulate Foul",
+      "description": "Try to win a foul.",
+      "input_schema": {
+        "required": ["choice", "lane_trace", "simulate_at_second"],
+        "lane_trace_values": ["LEFT", "CENTER", "RIGHT"],
+        "lane_trace_point_fields": ["at_second", "lane"]
+      }
+    }
+  ],
+  "context": {
+    "seed": 12002,
+    "distance_to_goal": 22,
+    "side_of_pitch": "CENTER",
+    "pressure": 74,
+    "attack_phase": "TRANSITION",
+    "numerical_advantage": 1,
+    "quality_band": "RISKY",
+    "previous_outcome": null,
+    "carrier_player_id": "team_1_ST_10"
+  },
+  "origin": null,
+  "contract_version": 2,
+  "action_sequence": 1,
+  "field_state": {
+    "id": "field-dribble-1",
+    "match_id": "match-fixture-1",
+    "minute": 12,
+    "action_sequence": 1,
+    "action_type": "DRIBBLE",
+    "scene_family": "DRIBBLE",
+    "my_team_positions": [
+      {
+        "id": "team_1_ST_10",
+        "team_id": "team_1",
+        "team_side": "MY_TEAM",
+        "role": "ST",
+        "x": 50,
+        "y": 44,
+        "is_legend": true,
+        "has_ball": true,
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        }
+      }
+    ],
+    "opponent_positions": [
+      {
+        "id": "team_2_CB_3",
+        "team_id": "team_2",
+        "team_side": "OPPONENT_TEAM",
+        "role": "CB",
+        "x": 50,
+        "y": 30,
+        "collision_shape": {
+          "radius_m": 0.42,
+          "height_m": 2,
+          "receive_radius_m": 0.85
+        }
+      }
+    ],
+    "legend_player_id": "team_1_ST_10",
+    "carrier_player_id": "team_1_ST_10",
+    "distance_to_goal": 22,
+    "ball_x": 50,
+    "ball_y": 41.2,
+    "context": {
+      "seed": 12002,
+      "distance_to_goal": 22,
+      "side_of_pitch": "CENTER",
+      "pressure": 74,
+      "attack_phase": "TRANSITION",
+      "numerical_advantage": 1,
+      "quality_band": "RISKY",
+      "previous_outcome": null,
+      "carrier_player_id": "team_1_ST_10"
+    },
+    "coordinate_system": {
+      "version": "field-coordinate-system/1",
+      "x": {
+        "unit": "PERCENT_OF_PITCH_WIDTH",
+        "minimum": 0,
+        "maximum": 100,
+        "direction": "LEFT_TO_RIGHT"
+      },
+      "y": {
+        "unit": "PERCENT_OF_PITCH_LENGTH",
+        "minimum": 0,
+        "maximum": 100,
+        "direction": "OPPONENT_GOAL_TO_OWN_GOAL"
+      },
+      "z": { "unit": "METRE", "origin": "PITCH_PLANE", "direction": "UP" },
+      "attacking_direction": "NEGATIVE_Y",
+      "world_transform": {
+        "version": "pitch-world-affine/1",
+        "unit": "METRE",
+        "world_x": {
+          "source_axis": "x",
+          "source_origin": 50,
+          "metres_per_unit": 0.68
+        },
+        "world_y": {
+          "source_axis": "z",
+          "source_origin": 0,
+          "metres_per_unit": 1
+        },
+        "world_z": {
+          "source_axis": "y",
+          "source_origin": 50,
+          "metres_per_unit": 1.05
+        }
+      },
+      "anchors": {
+        "player_xy": "FEET_MIDPOINT",
+        "ball_xy": "GROUND_PROJECTION",
+        "ball_z": "BALL_CENTER",
+        "label_xy": "PLAYER_FEET_MIDPOINT"
+      }
+    },
+    "geometry": {
+      "version": "regulation-68x105-v1",
+      "pitch_width_m": 68,
+      "pitch_length_m": 105,
+      "goal_width_m": 7.32,
+      "goal_height_m": 2.44,
+      "goal_depth_m": 2,
+      "goal_post_radius_m": 0.06,
+      "ball_radius_m": 0.11,
+      "opponent_goal": {
+        "line_y": 0,
+        "left_post_x": 44.62,
+        "right_post_x": 55.38
+      },
+      "opponent_penalty_area": {
+        "min_x": 20.35,
+        "max_x": 79.65,
+        "min_y": 0,
+        "max_y": 15.71,
+        "penalty_spot": { "x": 50, "y": 10.48 }
+      }
+    },
+    "sequence": {
+      "version": 1,
+      "sequence_id": "field-dribble-1",
+      "anchor_player_id": "team_1_ST_10",
+      "attacking_target": {
+        "type": "OPPONENT_GOAL_CENTER",
+        "x": 50,
+        "y": 0,
+        "goalkeeper_player_id": null
+      },
+      "camera": {
+        "policy_version": "attacking-top-down/1",
+        "projection": "ORTHOGRAPHIC_TOP_DOWN",
+        "locked": true,
+        "mode": "FOLLOW_LEGEND",
+        "view_window": { "left": 0, "top": 4, "width": 100, "height": 50 }
+      }
+    },
+    "dribble_pattern": {
+      "version": 1,
+      "input_mapping_version": "dribble-lanes-v1",
+      "duration_seconds": 8,
+      "starting_lane": "RIGHT",
+      "lanes": ["LEFT", "CENTER", "RIGHT"],
+      "lane_switch_seconds": 0.58,
+      "parameters": {
+        "speed": 77,
+        "dribble": 76,
+        "stamina": 78,
+        "energy": 70,
+        "energy_ratio": 89.74,
+        "pressure": 74,
+        "switching_score": 79.26,
+        "defender_count": 4,
+        "lane_forgiveness": 0.23,
+        "pressure_lane_radius": 0.38,
+        "pressure_window_seconds": 0.82,
+        "close_down_resistance": 79.26,
+        "resulting_attack_gain_m": 11.66,
+        "simulation_chance_percent": 53,
+        "simulation_attempts_before_scene": 0
+      },
+      "defender_waves": [
+        {
+          "id": "wave-1",
+          "at_second": 0.9,
+          "lane": "LEFT",
+          "speed": 58,
+          "foul_chance": 39.56,
+          "booking_chance": 22.08
+        },
+        {
+          "id": "wave-2",
+          "at_second": 2.97,
+          "lane": "RIGHT",
+          "speed": 67,
+          "foul_chance": 42.08,
+          "booking_chance": 25.68
+        },
+        {
+          "id": "wave-3",
+          "at_second": 5.03,
+          "lane": "CENTER",
+          "speed": 62,
+          "foul_chance": 40.68,
+          "booking_chance": 23.68
+        },
+        {
+          "id": "wave-4",
+          "at_second": 7.1,
+          "lane": "RIGHT",
+          "speed": 71,
+          "foul_chance": 43.2,
+          "booking_chance": 27.28
+        }
+      ],
+      "pressure_windows": [
+        {
+          "id": "pressure-1",
+          "wave_index": 0,
+          "lane": "LEFT",
+          "start_second": 0.49,
+          "end_second": 1.31
+        },
+        {
+          "id": "pressure-2",
+          "wave_index": 1,
+          "lane": "RIGHT",
+          "start_second": 2.56,
+          "end_second": 3.38
+        },
+        {
+          "id": "pressure-3",
+          "wave_index": 2,
+          "lane": "CENTER",
+          "start_second": 4.62,
+          "end_second": 5.44
+        },
+        {
+          "id": "pressure-4",
+          "wave_index": 3,
+          "lane": "RIGHT",
+          "start_second": 6.69,
+          "end_second": 7.51
+        }
+      ]
+    }
+  }
+}

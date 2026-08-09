@@ -1,0 +1,8 @@
+{
+  "error": "Service is not ready",
+  "code": "NOT_READY",
+  "status": 503,
+  "request_id": "request-fixture-0002",
+  "retryable": true,
+  "recovery_action": "RETRY_SAME_REQUEST"
+}

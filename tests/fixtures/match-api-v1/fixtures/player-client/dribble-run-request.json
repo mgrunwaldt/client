@@ -1,0 +1,13 @@
+{
+  "match_id": "match-fixture-1",
+  "action_id": "action-dribble-1",
+  "match_decision": {
+    "choice": "DRIBBLE_RUN",
+    "lane_trace": [
+      { "at_second": 0, "lane": "RIGHT" },
+      { "at_second": 2, "lane": "CENTER" },
+      { "at_second": 4, "lane": "LEFT" },
+      { "at_second": 6, "lane": "CENTER" }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "error": "Authentication is required.",
+  "code": "UNAUTHORIZED",
+  "status": 401,
+  "retryable": false,
+  "recovery_action": "REAUTHENTICATE"
+}

@@ -185,8 +185,10 @@ describe("auth session client", () => {
         my_team_score: 0,
         opponent_team_score: 0,
         current_time: 0,
+        prev_time: 0,
         revision: 1,
         match_status: "NOT_STARTED",
+        pending_action: null,
       },
       myTeam: { id: "team_1", name: "A", offense: 1, defense: 1, intensity: 1 },
       opponentTeam: {
@@ -210,5 +212,31 @@ describe("auth session client", () => {
       bearerCredential: null,
     });
     expect(useMatchSessionStore.getState().match).toBeNull();
+  });
+
+  it("revokes a bearer session before clearing it during an account switch", async () => {
+    useAuthSessionStore.getState().setAuthenticated({
+      walletAddress: "0x123",
+      chainId: "0x534e",
+      session: {},
+      transport: "bearer",
+      bearerCredential: "bearer-to-revoke",
+    });
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    useAuthSessionStore.getState().beginAccountSwitch();
+    expect(useAuthSessionStore.getState()).toMatchObject({
+      status: "account_switching",
+      bearerCredential: "bearer-to-revoke",
+    });
+    await logoutAuthSession();
+
+    expect(headers(fetchMock.mock.calls[0]).get("Authorization")).toBe(
+      "Bearer bearer-to-revoke",
+    );
+    expect(useAuthSessionStore.getState()).toMatchObject({
+      status: "unknown",
+      bearerCredential: null,
+    });
   });
 });

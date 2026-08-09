@@ -1,10 +1,17 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL;
+const certificateSpki = process.env.OVERGOAL_E2E_CERTIFICATE_SPKI;
 
 if (!baseURL) {
   throw new Error(
     "PLAYWRIGHT_BASE_URL is required; run browser tests with pnpm test:browser.",
+  );
+}
+
+if (!certificateSpki) {
+  throw new Error(
+    "OVERGOAL_E2E_CERTIFICATE_SPKI is required; run browser tests with pnpm test:browser.",
   );
 }
 
@@ -19,6 +26,8 @@ if (
 
 export default defineConfig({
   testDir: "./e2e",
+  snapshotPathTemplate:
+    "{testDir}/{testFilePath}-snapshots/{arg}-{platform}-{projectName}{ext}",
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
@@ -27,8 +36,18 @@ export default defineConfig({
   use: {
     baseURL,
     ignoreHTTPSErrors: true,
+    // Browser routing cannot observe requests fulfilled by a service worker.
+    // Keep production PWA behavior covered by its contract tests while E2E
+    // retains deterministic control over chunks, assets, and API failures.
+    serviceWorkers: "block",
+    contextOptions: {
+      reducedMotion: "reduce",
+    },
     launchOptions: {
-      args: ["--enable-unsafe-swiftshader"],
+      args: [
+        "--enable-unsafe-swiftshader",
+        `--ignore-certificate-errors-spki-list=${certificateSpki}`,
+      ],
     },
     trace: "retain-on-failure",
   },

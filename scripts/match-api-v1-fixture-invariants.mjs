@@ -298,15 +298,22 @@ export function assertCanonicalFixtureRelations({
   file,
   schemaName,
   value,
+  allowLegacyOpenPlayDribbleChoice = false,
 }) {
+  const effectiveChoiceMatrix = allowLegacyOpenPlayDribbleChoice
+    ? new Map(choiceMatrix).set("OPEN_PLAY", {
+        ...choiceMatrix.get("OPEN_PLAY"),
+        choiceIds: ["KICK", "DRIBBLE"],
+      })
+    : choiceMatrix;
   const branchSchemaNames = new Set(
-    [...choiceMatrix.values()].map((branch) => branch.schemaName),
+    [...effectiveChoiceMatrix.values()].map((branch) => branch.schemaName),
   );
   if (branchSchemaNames.has(schemaName)) {
     assertPendingAction(
       value,
       value.field_state,
-      choiceMatrix,
+      effectiveChoiceMatrix,
       file,
       schemaName,
     );
@@ -314,7 +321,7 @@ export function assertCanonicalFixtureRelations({
   }
 
   if (schemaName === "MatchProgressResponse") {
-    assertProgressResponse(value, choiceMatrix, file);
+    assertProgressResponse(value, effectiveChoiceMatrix, file);
     return;
   }
 

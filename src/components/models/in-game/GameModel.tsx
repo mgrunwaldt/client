@@ -76,7 +76,7 @@ export default function GameModel(props: GameModelProps) {
   ]);
 
   // Bind animations
-  const { actions } = useAnimations(
+  const { actions, mixer } = useAnimations(
     [
       defensiveIdleAnims[0],
       jogForwardAnims[0],
@@ -86,6 +86,21 @@ export default function GameModel(props: GameModelProps) {
     ],
     group,
   );
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const applyMotionPreference = () => {
+      mixer.timeScale = reducedMotion.matches ? 0 : 1;
+      if (reducedMotion.matches) mixer.setTime(0);
+    };
+
+    applyMotionPreference();
+    reducedMotion.addEventListener("change", applyMotionPreference);
+    return () => {
+      reducedMotion.removeEventListener("change", applyMotionPreference);
+      mixer.timeScale = 1;
+    };
+  }, [mixer]);
 
   const [currentAction, setCurrentAction] = useState("DefensiveIdle");
 

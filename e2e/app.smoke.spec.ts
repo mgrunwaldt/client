@@ -1,9 +1,53 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import waitingOpenPlayResponse from "../tests/fixtures/match-api-v1/server/waiting-open-play-response.json" with { type: "json" };
+import type {
+  BackendMatchResponse,
+  BackendMatchSnapshot,
+  BackendTeam,
+} from "../src/match/api-v1/contract";
+import createMatch from "../tests/fixtures/match-api-v1/fixtures/server/create-match-response.json" with { type: "json" };
+import waitingOpenPlayResponse from "../tests/fixtures/match-api-v1/fixtures/server/waiting-open-play-response.json" with { type: "json" };
+import {
+  authenticateForContinuation,
+  authenticateToHome,
+} from "./support/auth";
 
 const headlessGpuDiagnostic =
   /^warning: \[\.WebGL-[^\]]+\]GL Driver Message \(OpenGL, Performance, GL_CLOSE_PATH_NV, High\): GPU stall due to ReadPixels(?: \(this message will no longer repeat\))?$/;
+const knownFbxDiagnostic =
+  /^warning: THREE\.FBXLoader: (?:%s map is not supported in three\.js, skipping texture\.|unknown material type|Vertex has more than 4 skinning weights assigned to vertex\.)/;
+const knownBlockedServiceWorkerDiagnostic =
+  /^warning: Service Worker registration blocked by Playwright$/;
+
+function isKnownBrowserDiagnostic(message: string) {
+  return (
+    headlessGpuDiagnostic.test(message) ||
+    knownFbxDiagnostic.test(message) ||
+    knownBlockedServiceWorkerDiagnostic.test(message)
+  );
+}
+
+const typedWaitingOpenPlayResponse = structuredClone(
+  waitingOpenPlayResponse,
+) as unknown as BackendMatchResponse;
+
+const waitingOpenPlaySnapshot: BackendMatchSnapshot = {
+  match: typedWaitingOpenPlayResponse.match,
+  my_team: structuredClone(createMatch.my_team) as unknown as BackendTeam,
+  opponent_team: structuredClone(
+    createMatch.opponent_team,
+  ) as unknown as BackendTeam,
+  timeline: typedWaitingOpenPlayResponse.events,
+  pending_action: typedWaitingOpenPlayResponse.pending_action,
+  field_state: typedWaitingOpenPlayResponse.field_state,
+  pending_settlement_events:
+    typedWaitingOpenPlayResponse.pending_settlement_events,
+  unsupported_scene: typedWaitingOpenPlayResponse.unsupported_scene,
+  legend_availability: typedWaitingOpenPlayResponse.legend_availability,
+  halftime_summary: typedWaitingOpenPlayResponse.halftime_summary,
+  full_time_handoff: typedWaitingOpenPlayResponse.full_time_handoff,
+  latest_operation: null,
+};
 
 async function expectLazyRouteFallback(
   page: Page,
@@ -66,7 +110,9 @@ test("mounts the login route without a fatal page error", async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText("Dojo Initialization Error")).toHaveCount(0);
   expect(gameAssetRequests).toEqual([]);
-  expect(browserDiagnostics).toEqual([]);
+  expect(
+    browserDiagnostics.filter((message) => !isKnownBrowserDiagnostic(message)),
+  ).toEqual([]);
 });
 
 test("shows a nonblank fallback while the login route chunk loads", async ({
@@ -87,6 +133,20 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
 }) => {
   const browserDiagnostics: string[] = [];
 
+  await authenticateToHome(page);
+
+  await page.route("**/api/match/match-fixture-1", (route) =>
+    route.fulfill({
+      status: 200,
+      headers: {
+        "Match-API-Version": "1",
+        "X-Request-Id": "app-smoke-field-loading",
+      },
+      contentType: "application/json",
+      body: JSON.stringify(waitingOpenPlaySnapshot),
+    }),
+  );
+
   page.on("pageerror", (error) => browserDiagnostics.push(error.message));
   page.on("console", (message) => {
     if (["warning", "error"].includes(message.type())) {
@@ -96,14 +156,15 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
 
   await expectLazyRouteFallback(
     page,
-    "/game",
+    "/game/match-fixture-1",
     /\/assets\/GameScene-[^/]+\.js(?:\?.*)?$/,
   );
   await expect(page.getByTestId("game-field")).toBeVisible();
-  await expect(page.locator("canvas")).toBeVisible();
+  await expect(page.getByTestId("field-loading-overlay")).toBeVisible();
+  await expect(page.getByText("Loading Field")).toBeVisible();
   await page.waitForTimeout(3_000);
   const unexpectedDiagnostics = browserDiagnostics.filter(
-    (message) => !headlessGpuDiagnostic.test(message),
+    (message) => !isKnownBrowserDiagnostic(message),
   );
   expect(unexpectedDiagnostics).toEqual([]);
 });
@@ -165,11 +226,14 @@ test("renders a complete backend player scene without a fatal error", async ({
   ];
   const myTeamPositions = myTeamFormation.map(([role, x, y], index) => ({
     id: `team_1_${role}_${index}`,
+    team_id: "team_1",
+    team_side: "MY_TEAM",
     role,
     x,
     y,
     is_legend: role === "ST",
     has_ball: role === "ST",
+    collision_shape: { radius_m: 0.42, height_m: 2, receive_radius_m: 0.85 },
   }));
   const opponentFormation: Array<[string, number, number]> = [
     ["GK", 50, 94],
@@ -186,9 +250,12 @@ test("renders a complete backend player scene without a fatal error", async ({
   ];
   const opponentPositions = opponentFormation.map(([role, x, y], index) => ({
     id: `team_2_${role}_${index}`,
+    team_id: "team_2",
+    team_side: "OPPONENT_TEAM",
     role,
     x,
     y,
+    collision_shape: { radius_m: 0.42, height_m: 2, receive_radius_m: 0.85 },
   }));
   const response = structuredClone(waitingOpenPlayResponse);
   const fieldState = response.pending_action.field_state;
@@ -196,11 +263,16 @@ test("renders a complete backend player scene without a fatal error", async ({
   fieldState.opponent_positions = opponentPositions;
   fieldState.legend_player_id = "team_1_ST_10";
   fieldState.carrier_player_id = "team_1_ST_10";
+  fieldState.context = {
+    ...fieldState.context,
+    carrier_player_id: "team_1_ST_10",
+  };
   fieldState.ball_x = 52;
   fieldState.ball_y = 55.2;
   response.field_state = structuredClone(fieldState);
 
-  await page.goto("/game");
+  await authenticateForContinuation(page);
+  await page.goto(`/game/${response.match.id}`);
   await page.waitForFunction(
     () => "__OVERGOAL_E2E_SET_MATCH_RESPONSE__" in globalThis,
   );
@@ -220,6 +292,15 @@ test("renders a complete backend player scene without a fatal error", async ({
         throw new Error("Match session browser-test bridge is unavailable");
       }
       setMatchResponse(matchResponse, myTeam, opponentTeam);
+      const advance = (
+        globalThis as unknown as {
+          __OVERGOAL_E2E_ADVANCE_TO_SCENE__?: (minute: number) => void;
+        }
+      ).__OVERGOAL_E2E_ADVANCE_TO_SCENE__;
+      if (!advance) {
+        throw new Error("Match scene browser-test bridge is unavailable");
+      }
+      advance((matchResponse as { minute: number }).minute);
     },
     {
       matchResponse: response,

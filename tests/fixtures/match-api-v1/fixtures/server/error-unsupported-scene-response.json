@@ -1,0 +1,31 @@
+{
+  "error": "Unsupported scene must be skipped using the advertised recovery intent",
+  "code": "UNSUPPORTED_SCENE_RECOVERY_REQUIRED",
+  "status": 409,
+  "request_id": "request-fixture-unsupported-1",
+  "retryable": false,
+  "recovery_action": "USE_RECOVERY_INTENT",
+  "recoverable": true,
+  "unsupported_scene": {
+    "version": 1,
+    "status": "RECOVERY_REQUIRED",
+    "code": "UNSUPPORTED_SCENE_TYPE",
+    "scene_type": "FUTURE_RANDOM_EVENT_V99",
+    "contract_version": 99,
+    "supported_contract_version": null,
+    "action_id": "action-future-1",
+    "action_sequence": 4,
+    "minute": 53,
+    "recovery": {
+      "choice": "CONTINUE_WITHOUT_EVENT",
+      "label": "Continue Without Event",
+      "description": "Skip unsupported event content without applying gameplay or settlement effects.",
+      "input_schema": {
+        "type": "object",
+        "required": ["choice"],
+        "allowed": ["choice"],
+        "additional_properties": false
+      }
+    }
+  }
+}

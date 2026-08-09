@@ -11,9 +11,14 @@ import {
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Physics } from "@react-three/rapier";
 import {
-  type MouseEvent as ReactMouseEvent,
+  Component,
+  type ReactNode,
+  type RefObject,
   Suspense,
+  useCallback,
   useEffect,
+  useEffectEvent,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -26,161 +31,151 @@ import GameModel from "../../components/models/in-game/GameModel";
 import Stadium from "../../components/models/in-game/Stadium";
 import {
   type BackendFieldPlayer,
+  type BackendFieldState,
   type BackendMatchResponse,
   createMatchCommand,
+  fetchBackendMatch,
+  type MatchCommand,
   processBackendMatchAction,
 } from "../../lib/backend-match";
+import { BALL_MODEL_REGISTRATION } from "../../match/ball-registration";
+import {
+  createDribbleSubmissionGate,
+  type DribbleDecision,
+  parseDribblePattern,
+} from "../../match/dribble-input";
+import {
+  createFieldCameraPose,
+  type FieldCameraPose,
+} from "../../match/field-camera";
+import {
+  createFieldTransform,
+  FIELD_WORLD_SCALE,
+  type FieldViewWindow,
+  fixedAttackingView,
+  followLegendView,
+} from "../../match/field-transform";
+import {
+  buildCanonicalKickDecision,
+  createKickSubmissionGate,
+  isCanonicalKickScene,
+  parseKickControlEnvelope,
+} from "../../match/kick-input";
+import {
+  advancePlayerRotation,
+  rotationTowardsFieldTarget,
+} from "../../match/player-orientation";
+import { PLAYER_MODEL_REGISTRATION } from "../../match/player-registration";
+import {
+  createRandomEventDecision,
+  createRandomEventSubmissionGate,
+  isRandomEventAction,
+  isRandomEventSceneType,
+  parseRandomEventAction,
+} from "../../match/random-event";
+import {
+  authoritativeContinuationFieldState,
+  authoritativeFacingTarget,
+} from "../../match/receiver-control";
+import {
+  beginHydration,
+  createReconnectHydrationGate,
+  isRetryableHydrationFailure,
+  requestReconnectHydration,
+  settleHydration,
+} from "../../match/reconnect-hydration";
+import {
+  isDebugResultContinuationEnabled,
+  RESULT_HOLD_MS,
+} from "../../match/result-continuation";
+import {
+  actionCommandMatchesDecision,
+  matchCommandsExactly,
+} from "../../match/session-recovery";
 import { useMatchSessionStore } from "../../match/session-store";
+import {
+  authoritativeTrajectoryPlayback,
+  completeAuthoritativeFlightPath,
+} from "../../match/trajectory-playback";
+import {
+  outcomeFeedbackCue,
+  playGameFeedback,
+} from "../../platform/game-feedback";
+import { BallAimSurface } from "./BallAimSurface";
+import { DribbleControls } from "./DribbleControls";
+import { KickContactDialog } from "./KickContactDialog";
+import {
+  RandomEventResultDetails,
+  RandomEventScene,
+  UnsupportedEventRecovery,
+} from "./RandomEventScene";
+import {
+  createRenderReadinessState,
+  invalidateRenderReadiness,
+  observeRenderFrame,
+} from "./render-readiness";
 
-const FIELD_Y = 111;
-const BALL_Y = 111.25;
-const LATERAL_SCALE = 0.72;
-const LENGTH_SCALE = 2.8;
-const PLAYER_RENDER_Z_OFFSET = -13.5;
-const VISIBLE_FIELD_CENTER_Y = 28.5;
-const STADIUM_Z_CALIBRATION = -10;
-const OPPONENT_NEAR_BALL_DISTANCE = 10;
-const PLAYER_TRAJECTORY_TRACK_DISTANCE = 10;
-const RECEIVER_CONTROL_BALL_OFFSET_Y = 1.1;
+const FIELD_SURFACE_Y = 0;
+const DEFAULT_BALL_RADIUS_M = BALL_MODEL_REGISTRATION.radiusM;
+const OPPONENT_NEAR_BALL_DISTANCE_M = 7;
+const PLAYER_TRAJECTORY_TRACK_DISTANCE_M = 7;
 const PLAYER_TRACK_TURN_SPEED = 9;
-const DEFAULT_STRIKE_POINT = { x: 74, y: 58 };
-const DEFAULT_CAMERA_POSITION: [number, number, number] = [0, 358, 234];
-const DEFAULT_CAMERA_ROTATION: [number, number, number] = [-0.7, 0, 0];
-const DEFAULT_CAMERA_ZOOM = 8;
+const DEFAULT_STRIKE_CONTACT = { x: 0.45, y: -0.15 };
 const DEFAULT_CAMERA_WINDOW = {
   maxFieldY: 30,
   minFieldX: 25,
   maxFieldX: 75,
 };
-const DYNAMIC_PLAYER_SCREEN_NDC_Y = -0.6;
+const E2E_RENDER_PROBES =
+  import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true";
+const WORLD_FIELD_TRANSFORM = createFieldTransform({
+  viewport: { width: 1, height: 1 },
+  view: fixedAttackingView(),
+});
 
-function fieldToWorld(x: number, y: number): [number, number, number] {
-  return [
-    (x - 50) * LATERAL_SCALE,
-    FIELD_Y,
-    (y - VISIBLE_FIELD_CENTER_Y) * LENGTH_SCALE + STADIUM_Z_CALIBRATION,
-  ];
+type FieldCanvasErrorBoundaryProps = {
+  children: ReactNode;
+  onError: (error: unknown) => void;
+  resetKey: string;
+};
+
+class FieldCanvasErrorBoundary extends Component<
+  FieldCanvasErrorBoundaryProps,
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    this.props.onError(error);
+  }
+
+  componentDidUpdate(previousProps: Readonly<FieldCanvasErrorBoundaryProps>) {
+    if (this.state.failed && previousProps.resetKey !== this.props.resetKey) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
 }
 
-function renderWorldToField(x: number, z: number) {
-  return {
-    x: clamp(x / LATERAL_SCALE + 50, 0, 100),
-    y: clamp(
-      (z - PLAYER_RENDER_Z_OFFSET - STADIUM_Z_CALIBRATION) / LENGTH_SCALE +
-        VISIBLE_FIELD_CENTER_Y,
-      0,
-      100,
-    ),
-  };
+function fieldToWorld(x: number, y: number, z = 0): [number, number, number] {
+  const world = WORLD_FIELD_TRANSFORM.fieldToWorld({ x, y, z });
+  return [world.x, world.y, world.z];
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function distanceInField(
+function distanceInFieldMeters(
   a: { x: number; y: number },
   b: { x: number; y: number },
 ) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
+  const dx = (a.x - b.x) * FIELD_WORLD_SCALE.x;
+  const dy = (a.y - b.y) * FIELD_WORLD_SCALE.z;
   return Math.hypot(dx, dy);
-}
-
-function roundPoint(value: number) {
-  return Math.round(value * 10) / 10;
-}
-
-function vectorPower(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
-) {
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const magnitude = Math.sqrt(dx * dx + dy * dy);
-  return clamp(Math.round(magnitude * 2.4), 10, 100);
-}
-
-function contactCurve(point: { x: number; y: number }) {
-  return clamp(Math.round((point.x - 50) * 2), -100, 100);
-}
-
-function inferKickIntent(
-  ballFieldPosition: { x: number; y: number },
-  vector: { x: number; y: number },
-  power: number,
-) {
-  if (vector.x <= 1 || vector.x >= 99 || vector.y <= 1 || vector.y >= 99) {
-    return "OUT";
-  }
-  if (vector.y <= 12 && vector.x >= 36 && vector.x <= 64 && power >= 28) {
-    return "SHOT_ON_GOAL";
-  }
-  if (vector.y <= 28) {
-    return "CROSS";
-  }
-  if (vector.y < ballFieldPosition.y - 10) {
-    return "DANGEROUS_PASS";
-  }
-  if (vector.y < ballFieldPosition.y) {
-    return "FORWARD_PASS";
-  }
-  return "KEEP_BALL";
-}
-
-function inferSelectionQuality(
-  power: number,
-  curve: number,
-  intentHint: string,
-) {
-  const curvePenalty = Math.min(Math.abs(curve) * 0.25, 18);
-  const powerBonus = Math.max(0, 24 - Math.abs(power - 72));
-  const targetBonus = ["SHOT_ON_GOAL", "DANGEROUS_PASS", "CROSS"].includes(
-    intentHint,
-  )
-    ? 6
-    : 3;
-  return clamp(
-    Math.round(58 + powerBonus * 0.4 - curvePenalty * 0.3 + targetBonus),
-    45,
-    88,
-  );
-}
-
-function buildKickPayload(
-  releasedAimDraft: BallAimDraft,
-  strikePoint: { x: number; y: number },
-  ballFieldPosition: { x: number; y: number },
-) {
-  const endFieldPoint = renderWorldToField(
-    releasedAimDraft.dragStart.x + releasedAimDraft.shotVector.x,
-    releasedAimDraft.dragStart.z + releasedAimDraft.shotVector.z,
-  );
-  const power = vectorPower(ballFieldPosition, endFieldPoint);
-  const curve = contactCurve(strikePoint);
-  const intentHint = inferKickIntent(ballFieldPosition, endFieldPoint, power);
-
-  return {
-    choice: "KICK",
-    end_x: roundPoint(endFieldPoint.x),
-    end_y: roundPoint(endFieldPoint.y),
-    contact_x: roundPoint(strikePoint.x),
-    contact_y: roundPoint(strikePoint.y),
-    power,
-    curve,
-    selection_quality: inferSelectionQuality(power, curve, intentHint),
-    intent_hint: intentHint,
-    seed: Date.now(),
-  };
-}
-
-function distanceBetween(
-  a: { x: number; y: number },
-  b: { x: number; y: number },
-) {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 function sampleFlightPath(
@@ -196,12 +191,13 @@ function sampleFlightPath(
       return {
         x: previous.x + (current.x - previous.x) * alpha,
         y: previous.y + (current.y - previous.y) * alpha,
+        z: previous.z + (current.z - previous.z) * alpha,
       };
     }
   }
 
   const lastPoint = path[path.length - 1];
-  return lastPoint ? { x: lastPoint.x, y: lastPoint.y } : null;
+  return lastPoint ? { x: lastPoint.x, y: lastPoint.y, z: lastPoint.z } : null;
 }
 
 function minDistanceToFlightPath(
@@ -210,35 +206,14 @@ function minDistanceToFlightPath(
 ) {
   let best = Number.POSITIVE_INFINITY;
   path.forEach((point) => {
-    best = Math.min(best, distanceInField(player, point));
+    best = Math.min(best, distanceInFieldMeters(player, point));
   });
   return best;
 }
 
-function resolveControlledBallPosition(
-  response: BackendMatchResponse,
-  fallbackPoint: { x: number; y: number } | null,
-) {
-  const decisionResult = response.decision_result;
-  if (
-    decisionResult?.flight_outcome === "TEAMMATE_CONTROL" &&
-    decisionResult.receiver
-  ) {
-    return {
-      x: decisionResult.receiver.x,
-      y: Math.min(
-        100,
-        decisionResult.receiver.y + RECEIVER_CONTROL_BALL_OFFSET_Y,
-      ),
-    };
-  }
-
-  return fallbackPoint;
-}
-
 type StagedKickResult = {
   response: BackendMatchResponse;
-  submittedPayload: ReturnType<typeof buildKickPayload>;
+  sceneType: string;
 };
 
 function shouldUseDefaultCamera(player: BackendFieldPlayer | null) {
@@ -253,164 +228,148 @@ function shouldUseDefaultCamera(player: BackendFieldPlayer | null) {
   );
 }
 
-function projectPointAtCameraZ(
-  camera: THREE.OrthographicCamera,
-  point: THREE.Vector3,
-  x: number,
-  z: number,
-) {
-  camera.position.set(x, DEFAULT_CAMERA_POSITION[1], z);
-  camera.rotation.set(...DEFAULT_CAMERA_ROTATION);
-  camera.zoom = DEFAULT_CAMERA_ZOOM;
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld();
-  return point.clone().project(camera).y;
-}
-
-function findDynamicCameraZ(
-  baseCamera: THREE.OrthographicCamera,
-  playerWorldPosition: [number, number, number],
-) {
-  const probe = baseCamera.clone() as THREE.OrthographicCamera;
-  probe.left = baseCamera.left;
-  probe.right = baseCamera.right;
-  probe.top = baseCamera.top;
-  probe.bottom = baseCamera.bottom;
-  probe.near = baseCamera.near;
-  probe.far = baseCamera.far;
-
-  const playerPoint = new THREE.Vector3(...playerWorldPosition);
-  let bestZ = DEFAULT_CAMERA_POSITION[2];
-  let bestDistance = Number.POSITIVE_INFINITY;
-  let previousZ = playerWorldPosition[2] - 800;
-  let previousDelta =
-    projectPointAtCameraZ(
-      probe,
-      playerPoint,
-      playerWorldPosition[0],
-      previousZ,
-    ) - DYNAMIC_PLAYER_SCREEN_NDC_Y;
-  let bracket: [number, number] | null = null;
-
-  const updateBest = (z: number, delta: number) => {
-    const distance = Math.abs(delta);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      bestZ = z;
-    }
-  };
-
-  updateBest(previousZ, previousDelta);
-
-  for (
-    let z = playerWorldPosition[2] - 760;
-    z <= playerWorldPosition[2] + 800;
-    z += 40
-  ) {
-    const delta =
-      projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], z) -
-      DYNAMIC_PLAYER_SCREEN_NDC_Y;
-    updateBest(z, delta);
-
-    if (previousDelta === 0 || delta === 0 || previousDelta * delta < 0) {
-      bracket = [previousZ, z];
-      break;
-    }
-
-    previousZ = z;
-    previousDelta = delta;
-  }
-
-  if (!bracket) {
-    return bestZ;
-  }
-
-  let [low, high] = bracket;
-  for (let index = 0; index < 24; index += 1) {
-    const mid = (low + high) / 2;
-    const delta =
-      projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], mid) -
-      DYNAMIC_PLAYER_SCREEN_NDC_Y;
-    updateBest(mid, delta);
-
-    if (delta === 0) {
-      return mid;
-    }
-
-    const lowDelta =
-      projectPointAtCameraZ(probe, playerPoint, playerWorldPosition[0], low) -
-      DYNAMIC_PLAYER_SCREEN_NDC_Y;
-    if (lowDelta * delta <= 0) {
-      high = mid;
-    } else {
-      low = mid;
-    }
-  }
-
-  return bestZ;
-}
-
 function FieldCameraController({
-  legendPlayer,
-  legendWorldPosition,
+  pose,
   cameraLocked,
+  framingKey,
 }: {
-  legendPlayer: BackendFieldPlayer | null;
-  legendWorldPosition: [number, number, number] | null;
+  pose: FieldCameraPose;
   cameraLocked: boolean;
+  framingKey: string;
 }) {
   const camera = useThree((state) => state.camera) as THREE.OrthographicCamera;
-  const size = useThree((state) => state.size);
+  const framedKeyRef = useRef("");
 
-  useEffect(() => {
-    if (cameraLocked) {
+  useLayoutEffect(() => {
+    if (framedKeyRef.current === framingKey) {
       return;
     }
-
-    camera.rotation.set(...DEFAULT_CAMERA_ROTATION);
-    camera.zoom = DEFAULT_CAMERA_ZOOM;
-
-    if (!legendWorldPosition || shouldUseDefaultCamera(legendPlayer)) {
-      camera.position.set(...DEFAULT_CAMERA_POSITION);
-      camera.updateProjectionMatrix();
-      camera.updateMatrixWorld();
-      return;
-    }
-
-    const dynamicCameraZ = findDynamicCameraZ(camera, legendWorldPosition);
-    camera.position.set(
-      legendWorldPosition[0],
-      DEFAULT_CAMERA_POSITION[1],
-      dynamicCameraZ,
-    );
+    if (cameraLocked && framedKeyRef.current) return;
+    camera.position.set(...pose.position);
+    camera.rotation.set(...pose.rotation);
+    camera.left = pose.frustum.left;
+    camera.right = pose.frustum.right;
+    camera.top = pose.frustum.top;
+    camera.bottom = pose.frustum.bottom;
+    camera.zoom = 1;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
-  }, [
-    camera,
-    cameraLocked,
-    legendPlayer,
-    legendWorldPosition,
-    size.height,
-    size.width,
-  ]);
+    framedKeyRef.current = framingKey;
+  }, [camera, cameraLocked, framingKey, pose]);
 
   return null;
 }
 
-function rotationTowardsFieldTarget(
-  source: { x: number; y: number },
-  target: { x: number; y: number },
-) {
-  const [sourceX, , sourceZ] = fieldToWorld(source.x, source.y);
-  const [targetX, , targetZ] = fieldToWorld(target.x, target.y);
-  return Math.atan2(targetX - sourceX, targetZ - sourceZ);
-}
+function FieldRenderReadiness({
+  sceneKey,
+  onReadinessChange,
+}: {
+  sceneKey: string;
+  onReadinessChange: (sceneKey: string, ready: boolean) => void;
+}) {
+  const gl = useThree((state) => state.gl);
+  const requestRender = useThree((state) => state.invalidate);
+  const readiness = useRef(createRenderReadinessState());
+  const reportedReady = useRef(false);
+  const drawingBufferSize = useRef(new THREE.Vector2());
 
-function normalizeAngle(angle: number) {
-  let normalized = angle;
-  while (normalized > Math.PI) normalized -= Math.PI * 2;
-  while (normalized < -Math.PI) normalized += Math.PI * 2;
-  return normalized;
+  const invalidateReadiness = useCallback(() => {
+    readiness.current = invalidateRenderReadiness();
+    if (reportedReady.current) {
+      reportedReady.current = false;
+      onReadinessChange(sceneKey, false);
+    }
+    requestRender();
+  }, [onReadinessChange, requestRender, sceneKey]);
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const handleContextLost = (event: Event) => {
+      event.preventDefault();
+      invalidateReadiness();
+    };
+    const handleLifecycleChange = () => invalidateReadiness();
+    const resizeObserver = new ResizeObserver(handleLifecycleChange);
+    let dprQuery: MediaQueryList | null = null;
+
+    const watchDpr = () => {
+      dprQuery?.removeEventListener("change", handleDprChange);
+      dprQuery = window.matchMedia(
+        `(resolution: ${window.devicePixelRatio}dppx)`,
+      );
+      dprQuery.addEventListener("change", handleDprChange);
+    };
+    const handleDprChange = () => {
+      handleLifecycleChange();
+      watchDpr();
+    };
+
+    canvas.addEventListener("webglcontextlost", handleContextLost);
+    canvas.addEventListener("webglcontextrestored", handleLifecycleChange);
+    resizeObserver.observe(canvas);
+    window.addEventListener("resize", handleLifecycleChange);
+    window.addEventListener("orientationchange", handleLifecycleChange);
+    window.visualViewport?.addEventListener("resize", handleLifecycleChange);
+    watchDpr();
+
+    return () => {
+      canvas.removeEventListener("webglcontextlost", handleContextLost);
+      canvas.removeEventListener("webglcontextrestored", handleLifecycleChange);
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", handleLifecycleChange);
+      window.removeEventListener("orientationchange", handleLifecycleChange);
+      window.visualViewport?.removeEventListener(
+        "resize",
+        handleLifecycleChange,
+      );
+      dprQuery?.removeEventListener("change", handleDprChange);
+    };
+  }, [gl, invalidateReadiness]);
+
+  useFrame(() => {
+    const canvas = gl.domElement;
+    const bounds = canvas.getBoundingClientRect();
+    gl.getDrawingBufferSize(drawingBufferSize.current);
+    const coversViewport =
+      Math.abs(bounds.x) <= 1 &&
+      Math.abs(bounds.y) <= 1 &&
+      Math.abs(bounds.width - window.innerWidth) <= 1 &&
+      Math.abs(bounds.height - window.innerHeight) <= 1;
+    const hasCompleteDrawingBuffer =
+      drawingBufferSize.current.x >= Math.floor(bounds.width) &&
+      drawingBufferSize.current.y >= Math.floor(bounds.height);
+
+    const signature = [
+      window.innerWidth,
+      window.innerHeight,
+      window.devicePixelRatio,
+      Math.round(bounds.width),
+      Math.round(bounds.height),
+      drawingBufferSize.current.x,
+      drawingBufferSize.current.y,
+    ].join(":");
+    readiness.current = observeRenderFrame(readiness.current, {
+      valid:
+        !gl.getContext().isContextLost() &&
+        coversViewport &&
+        hasCompleteDrawingBuffer,
+      signature,
+    });
+
+    if (reportedReady.current && !readiness.current.ready) {
+      reportedReady.current = false;
+      onReadinessChange(sceneKey, false);
+      return;
+    }
+    // useFrame runs before R3F's render. Requiring three observations proves
+    // that two correctly sized, asset-complete frames have already painted.
+    if (!reportedReady.current && readiness.current.ready) {
+      reportedReady.current = true;
+      onReadinessChange(sceneKey, true);
+    }
+  });
+
+  return null;
 }
 
 function hashString(value: string) {
@@ -447,26 +406,247 @@ function buildModelVariant(player: BackendFieldPlayer, isTeammate: boolean) {
 
 function PlayerLabel({
   player,
+  legendPlayerId,
   isTeammate,
+  visible,
   worldPosition,
 }: {
   player: BackendFieldPlayer;
+  legendPlayerId: string | null;
   isTeammate: boolean;
+  visible: boolean;
   worldPosition: [number, number, number];
 }) {
-  if (!player.is_legend) {
+  if (player.id !== legendPlayerId) {
     return null;
   }
 
   return (
     <Html
-      position={[worldPosition[0], FIELD_Y + 0.5, worldPosition[2]]}
+      position={worldPosition}
       center
+      zIndexRange={[20, 20]}
+      style={{ display: visible ? "block" : "none" }}
       className={`translate-y-8 rounded-full px-2 py-1 text-[10px] font-bold tracking-[0.18em] uppercase ${
         isTeammate ? "bg-black/65 text-[#d8ff6f]" : "bg-black/65 text-[#9fd1ff]"
       }`}
     >
-      YOU
+      <span data-testid="legend-player-label" data-player-id={player.id}>
+        YOU
+      </span>
+    </Html>
+  );
+}
+
+function PlayerScreenAnchor({
+  testId,
+  playerId,
+  worldPosition,
+}: {
+  testId: string | null;
+  playerId: string;
+  worldPosition: [number, number, number];
+}) {
+  if (!testId) {
+    return null;
+  }
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{
+        height: 2,
+        opacity: 0,
+        pointerEvents: "none",
+        width: 2,
+      }}
+    >
+      <span data-testid={testId} data-player-id={playerId} />
+    </Html>
+  );
+}
+
+function PlayerRenderProbe({
+  player,
+  groupRef,
+  targetRotation,
+  worldPosition,
+}: {
+  player: BackendFieldPlayer;
+  groupRef: RefObject<THREE.Group | null>;
+  targetRotation: number;
+  worldPosition: [number, number, number];
+}) {
+  const probeRef = useRef<HTMLSpanElement>(null);
+
+  useFrame(() => {
+    const probe = probeRef.current;
+    const group = groupRef.current;
+    if (!probe || !group) return;
+    probe.dataset.rotationY = String(group.rotation.y);
+  });
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        ref={probeRef}
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="player-render-probe"
+        data-player-id={player.id}
+        data-player-x={player.x}
+        data-player-y={player.y}
+        data-target-rotation-y={targetRotation}
+      />
+    </Html>
+  );
+}
+
+function BallRenderProbe({
+  fieldPosition,
+  groupRef,
+  worldPosition,
+}: {
+  fieldPosition: { x: number; y: number; z: number };
+  groupRef: RefObject<THREE.Group | null>;
+  worldPosition: [number, number, number];
+}) {
+  const probeRef = useRef<HTMLSpanElement>(null);
+  const sampledWorldPosition = useRef(new THREE.Vector3());
+
+  useFrame(() => {
+    const probe = probeRef.current;
+    const group = groupRef.current;
+    if (!probe || !group) return;
+    group.getWorldPosition(sampledWorldPosition.current);
+    const renderedFieldPosition = WORLD_FIELD_TRANSFORM.worldToField(
+      sampledWorldPosition.current,
+    );
+    probe.dataset.ballX = String(renderedFieldPosition.x);
+    probe.dataset.ballY = String(renderedFieldPosition.y);
+    probe.dataset.ballZ = String(renderedFieldPosition.z);
+  });
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        ref={probeRef}
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="ball-render-probe"
+        data-ball-x={fieldPosition.x}
+        data-ball-y={fieldPosition.y}
+        data-ball-z={fieldPosition.z}
+      />
+    </Html>
+  );
+}
+
+type BallFlightPoint = { x: number; y: number; z: number };
+
+type BallFlightPlayback = {
+  completed: boolean;
+  durationMs: number;
+  finalPoint: BallFlightPoint;
+  id: number;
+  path: Array<BallFlightPoint & { t: number }>;
+  startedAt: number;
+};
+
+function BallFlightController({
+  ballGroupRef,
+  livePointRef,
+  playbackRef,
+  onComplete,
+}: {
+  ballGroupRef: RefObject<THREE.Group | null>;
+  livePointRef: { current: BallFlightPoint | null };
+  playbackRef: { current: BallFlightPlayback | null };
+  onComplete: (playbackId: number, point: BallFlightPoint) => void;
+}) {
+  useFrame(() => {
+    const group = ballGroupRef.current;
+    const playback = playbackRef.current;
+    if (!group || !playback) return;
+
+    const elapsedMs = Math.min(
+      playback.durationMs,
+      performance.now() - playback.startedAt,
+    );
+    const point = sampleFlightPath(playback.path, elapsedMs / 1000);
+    if (!point) return;
+
+    livePointRef.current = point;
+    const [worldX, worldY, worldZ] = fieldToWorld(point.x, point.y, point.z);
+    group.position.set(worldX, worldY, worldZ);
+
+    if (elapsedMs >= playback.durationMs && !playback.completed) {
+      playback.completed = true;
+      livePointRef.current = playback.finalPoint;
+      const [finalX, finalY, finalZ] = fieldToWorld(
+        playback.finalPoint.x,
+        playback.finalPoint.y,
+        playback.finalPoint.z,
+      );
+      group.position.set(finalX, finalY, finalZ);
+      queueMicrotask(() => onComplete(playback.id, playback.finalPoint));
+    }
+  });
+
+  return null;
+}
+
+function FieldCameraAnchorProbe() {
+  const worldPosition = fieldToWorld(50, 0, FIELD_SURFACE_Y);
+
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="field-camera-anchor"
+      />
+    </Html>
+  );
+}
+
+function PlayerReachProbe({
+  player,
+  worldPosition,
+}: {
+  player: BackendFieldPlayer;
+  worldPosition: [number, number, number];
+}) {
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid="player-reach-probe"
+        data-player-id={player.id}
+        data-player-x={player.x}
+        data-player-y={player.y}
+        data-player-radius-m={player.collision_shape?.radius_m ?? 0.42}
+        data-reach-height-m={player.collision_shape?.height_m ?? 2}
+      />
     </Html>
   );
 }
@@ -483,7 +663,10 @@ function FieldLoadingOverlay({
   }
 
   return (
-    <div className="absolute inset-0 z-30 overflow-hidden bg-linear-to-b from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]">
+    <div
+      data-testid="field-loading-overlay"
+      className="absolute inset-0 z-30 overflow-hidden bg-linear-to-b from-[#0f5f7a] via-[#0f7a69] to-[#0a4739]"
+    >
       <div className="absolute inset-0 [background-image:linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] [background-size:22%_16%] opacity-35" />
       <div className="absolute inset-x-[14%] top-[12%] h-[16%] rounded-b-[2.5rem] border-4 border-t-0 border-cyan-200/35" />
       <div className="absolute inset-x-[24%] top-[4.5%] h-[5.5%] rounded-sm border-[6px] border-slate-200/70 bg-slate-300/35" />
@@ -523,23 +706,28 @@ function BackendPlayerModel({
   player,
   isTeammate,
   ballFieldPosition,
+  liveBallFlightPointRef,
   stagedDecisionResult,
   isResultAnimating,
+  legendPlayerId,
+  screenAnchorTestId = null,
+  showPlayerLabel = true,
 }: {
   player: BackendFieldPlayer;
   isTeammate: boolean;
   ballFieldPosition: { x: number; y: number };
+  liveBallFlightPointRef: { current: BallFlightPoint | null };
   stagedDecisionResult?: BackendMatchResponse["decision_result"];
   isResultAnimating: boolean;
+  legendPlayerId: string | null;
+  screenAnchorTestId?: string | null;
+  showPlayerLabel?: boolean;
 }) {
   const worldPosition = fieldToWorld(player.x, player.y);
-  const renderWorldPosition: [number, number, number] = [
-    worldPosition[0],
-    worldPosition[1],
-    worldPosition[2] + PLAYER_RENDER_Z_OFFSET,
-  ];
+  const renderWorldPosition = worldPosition;
   const modelVariant = buildModelVariant(player, isTeammate);
-  const stagedFlightPath = stagedDecisionResult?.flight_path || [];
+  const stagedFlightPath =
+    completeAuthoritativeFlightPath(stagedDecisionResult);
   const involvedPlayerId =
     stagedDecisionResult?.receiver?.id ||
     stagedDecisionResult?.interceptor?.id ||
@@ -547,34 +735,37 @@ function BackendPlayerModel({
   const tracksTrajectory =
     stagedFlightPath.length > 0 &&
     minDistanceToFlightPath(player, stagedFlightPath) <=
-      PLAYER_TRAJECTORY_TRACK_DISTANCE;
+      PLAYER_TRAJECTORY_TRACK_DISTANCE_M;
   const tracksBallNow =
-    distanceInField(player, ballFieldPosition) <= OPPONENT_NEAR_BALL_DISTANCE;
+    distanceInFieldMeters(player, ballFieldPosition) <=
+    OPPONENT_NEAR_BALL_DISTANCE_M;
   const shouldTrackBall =
     Boolean(stagedDecisionResult) &&
     (tracksTrajectory || tracksBallNow || player.id === involvedPlayerId);
   const opponentNearBall =
     !isTeammate &&
-    distanceInField(player, ballFieldPosition) <= OPPONENT_NEAR_BALL_DISTANCE;
-  const backendFacingTarget =
-    typeof player.facing_target_x === "number" &&
-    typeof player.facing_target_y === "number"
-      ? { x: player.facing_target_x, y: player.facing_target_y }
-      : null;
+    distanceInFieldMeters(player, ballFieldPosition) <=
+      OPPONENT_NEAR_BALL_DISTANCE_M;
+  const backendFacingTarget = authoritativeFacingTarget(
+    player,
+    stagedDecisionResult?.receiver_control,
+  );
   const rotationY =
-    shouldTrackBall && (isResultAnimating || player.id === involvedPlayerId)
+    isResultAnimating && shouldTrackBall
       ? rotationTowardsFieldTarget(player, ballFieldPosition)
       : backendFacingTarget
         ? rotationTowardsFieldTarget(player, backendFacingTarget)
-        : isTeammate
-          ? Math.PI
-          : opponentNearBall
-            ? rotationTowardsFieldTarget(player, ballFieldPosition)
-            : player.role === "GK"
-              ? 0
-              : player.y < ballFieldPosition.y
+        : shouldTrackBall && player.id === involvedPlayerId
+          ? rotationTowardsFieldTarget(player, ballFieldPosition)
+          : isTeammate
+            ? Math.PI
+            : opponentNearBall
+              ? rotationTowardsFieldTarget(player, ballFieldPosition)
+              : player.role === "GK"
                 ? 0
-                : Math.PI;
+                : player.y < ballFieldPosition.y
+                  ? 0
+                  : Math.PI;
   const groupRef = useRef<THREE.Group>(null);
   const currentRotationRef = useRef(rotationY);
 
@@ -584,12 +775,17 @@ function BackendPlayerModel({
       return;
     }
 
-    const current = currentRotationRef.current;
-    const target = rotationY;
-    const deltaAngle = normalizeAngle(target - current);
-    const step = Math.min(1, delta * PLAYER_TRACK_TURN_SPEED);
-    const next = current + deltaAngle * step;
-    currentRotationRef.current = normalizeAngle(next);
+    const liveBallPosition = liveBallFlightPointRef.current;
+    const liveRotationTarget =
+      isResultAnimating && shouldTrackBall && liveBallPosition
+        ? rotationTowardsFieldTarget(player, liveBallPosition)
+        : rotationY;
+    currentRotationRef.current = advancePlayerRotation(
+      currentRotationRef.current,
+      liveRotationTarget,
+      delta,
+      PLAYER_TRACK_TURN_SPEED,
+    );
     group.rotation.y = currentRotationRef.current;
   });
 
@@ -602,216 +798,812 @@ function BackendPlayerModel({
           animationName="DefensiveIdle"
           position={[0, 0, 0]}
           rotation={[0, 0, 0]}
-          scale={0.1}
+          scale={PLAYER_MODEL_REGISTRATION.visualScale}
           targetPosition={null}
           renderOnly={true}
         />
       </group>
       <PlayerLabel
         player={player}
+        legendPlayerId={legendPlayerId}
         isTeammate={isTeammate}
+        visible={showPlayerLabel}
         worldPosition={renderWorldPosition}
       />
+      <PlayerScreenAnchor
+        testId={screenAnchorTestId}
+        playerId={player.id}
+        worldPosition={renderWorldPosition}
+      />
+      {E2E_RENDER_PROBES && (
+        <>
+          <PlayerRenderProbe
+            player={player}
+            groupRef={groupRef}
+            targetRotation={rotationY}
+            worldPosition={renderWorldPosition}
+          />
+          <PlayerReachProbe
+            player={player}
+            worldPosition={fieldToWorld(
+              player.x,
+              player.y,
+              player.collision_shape?.height_m ?? 2,
+            )}
+          />
+        </>
+      )}
     </>
   );
 }
 
-export default function GameScene({ active = true }: { active?: boolean }) {
+export default function GameScene({
+  active = true,
+  matchId: routeMatchId = null,
+}: {
+  active?: boolean;
+  matchId?: string | null;
+}) {
   const navigate = useNavigate();
   const {
     active: assetsActive,
     progress: assetsProgress,
     loaded: assetsLoaded,
     total: assetsTotal,
+    errors: assetErrors,
   } = useProgress();
   const match = useMatchSessionStore((state) => state.match);
+  const authoritativeRouteReady = Boolean(
+    active && routeMatchId && match?.id === routeMatchId,
+  );
+  const phase = useMatchSessionStore((state) => state.phase);
+  const diagnostic = useMatchSessionStore((state) => state.diagnostic);
+  const unsupportedScene = useMatchSessionStore(
+    (state) => state.unsupportedScene,
+  );
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
+  const resultPlayback = useMatchSessionStore((state) => state.resultPlayback);
+  const legendAvailability = useMatchSessionStore(
+    (state) => state.legendAvailability,
+  );
+  const halftimeSummary = useMatchSessionStore(
+    (state) => state.halftimeSummary,
+  );
+  const fullTimeHandoff = useMatchSessionStore(
+    (state) => state.fullTimeHandoff,
+  );
   const myTeam = useMatchSessionStore((state) => state.myTeam);
   const opponentTeam = useMatchSessionStore((state) => state.opponentTeam);
   const setActionResponse = useMatchSessionStore(
     (state) => state.setActionResponse,
   );
+  const acknowledgeDecisionResult = useMatchSessionStore(
+    (state) => state.acknowledgeDecisionResult,
+  );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
+  const hydrateMatchSession = useMatchSessionStore(
+    (state) => state.hydrateMatchSession,
+  );
+  const markSceneReady = useMatchSessionStore((state) => state.markSceneReady);
+  const setPlaybackMinute = useMatchSessionStore(
+    (state) => state.setPlaybackMinute,
+  );
+  const retainedFieldDraft = useMatchSessionStore((state) => state.fieldDraft);
+  const retainFieldDraft = useMatchSessionStore(
+    (state) => state.retainFieldDraft,
+  );
+  const clearFieldDraft = useMatchSessionStore(
+    (state) => state.clearFieldDraft,
+  );
   const pendingCommand = useMatchSessionStore((state) => state.pendingCommand);
-  const retainPendingCommand = useMatchSessionStore(
-    (state) => state.retainPendingCommand,
+  const retrySafe = useMatchSessionStore((state) => state.retrySafe);
+  const beginActionCommand = useMatchSessionStore(
+    (state) => state.beginActionCommand,
   );
   const [releasedAimDraft, setReleasedAimDraft] = useState<BallAimDraft | null>(
     null,
   );
-  const [strikePoint, setStrikePoint] = useState(DEFAULT_STRIKE_POINT);
+  const [activeAimDraft, setActiveAimDraft] = useState<BallAimDraft | null>(
+    null,
+  );
+  const [strikeContact, setStrikeContact] = useState(DEFAULT_STRIKE_CONTACT);
+  const [restoreAimFocus, setRestoreAimFocus] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stagedKickResult, setStagedKickResult] =
     useState<StagedKickResult | null>(null);
-  const [animatedBallFieldPosition, setAnimatedBallFieldPosition] = useState<{
+  const [debugResultContinuation] = useState(isDebugResultContinuationEnabled);
+  const [resolvedSceneFieldState, setResolvedSceneFieldState] =
+    useState<BackendFieldState | null>(null);
+  const [animatedBallFlightPoint, setAnimatedBallFlightPoint] = useState<{
     x: number;
     y: number;
+    z: number;
   } | null>(null);
   const [isResultAnimating, setIsResultAnimating] = useState(false);
-  const animationFrameRef = useRef<number | null>(null);
+  const [readySceneKey, setReadySceneKey] = useState("");
+  const [rehydrationKey, setRehydrationKey] = useState(0);
+  const ballRenderGroupRef = useRef<THREE.Group | null>(null);
+  const ballFlightPlaybackRef = useRef<BallFlightPlayback | null>(null);
+  const liveBallFlightPointRef = useRef<BallFlightPoint | null>(null);
+  const ballFlightSequenceRef = useRef(0);
+  const terminalFrameTimeoutRef = useRef<number | null>(null);
+  const resultTimerRef = useRef<number | null>(null);
+  const kickSubmissionGateRef = useRef(createKickSubmissionGate());
+  const dribbleSubmissionGateRef = useRef(createDribbleSubmissionGate());
+  const randomEventSubmissionGateRef = useRef(
+    createRandomEventSubmissionGate(),
+  );
+  const assetErrorBaselineRef = useRef<number | null>(null);
+  const fieldRehydrationGateRef = useRef(createReconnectHydrationGate());
+  const fieldRehydrationGenerationRef = useRef(0);
+  const activeRouteRef = useRef({ active, matchId: routeMatchId });
+  const activeActionCommandRef = useRef<MatchCommand | null>(null);
+  const playedOperationIdRef = useRef<string | null>(null);
+  const feedbackOperationIdRef = useRef<string | null>(null);
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
-  const hasImmediateFollowUpFieldState =
-    Boolean(stagedKickResult?.response.pending_action?.field_state) &&
-    stagedKickResult?.response.pending_action?.minute ===
-      (stagedKickResult?.response.prev_time ??
-        pendingAction?.minute ??
-        match?.current_time ??
-        0);
+
+  useLayoutEffect(() => {
+    activeRouteRef.current = { active, matchId: routeMatchId };
+    return () => {
+      activeRouteRef.current = { active: false, matchId: null };
+    };
+  }, [active, routeMatchId]);
+
+  useLayoutEffect(() => {
+    ballFlightPlaybackRef.current = null;
+    liveBallFlightPointRef.current = null;
+    if (terminalFrameTimeoutRef.current) {
+      window.clearTimeout(terminalFrameTimeoutRef.current);
+      terminalFrameTimeoutRef.current = null;
+    }
+    if (resultTimerRef.current) {
+      window.clearTimeout(resultTimerRef.current);
+      resultTimerRef.current = null;
+    }
+    setReleasedAimDraft(null);
+    setActiveAimDraft(null);
+    setStrikeContact(DEFAULT_STRIKE_CONTACT);
+    setRestoreAimFocus(false);
+    setSubmitError(null);
+    setIsSubmitting(false);
+    setStagedKickResult(null);
+    setResolvedSceneFieldState(null);
+    setAnimatedBallFlightPoint(null);
+    setIsResultAnimating(false);
+    setReadySceneKey("");
+    kickSubmissionGateRef.current = createKickSubmissionGate();
+    dribbleSubmissionGateRef.current = createDribbleSubmissionGate();
+    randomEventSubmissionGateRef.current = createRandomEventSubmissionGate();
+    fieldRehydrationGateRef.current = createReconnectHydrationGate();
+    fieldRehydrationGenerationRef.current += 1;
+    assetErrorBaselineRef.current = null;
+    playedOperationIdRef.current = null;
+    feedbackOperationIdRef.current = null;
+    return () => {
+      const command = activeActionCommandRef.current;
+      activeActionCommandRef.current = null;
+      if (command) {
+        useMatchSessionStore.getState().requireCommandReconciliation(command);
+      }
+    };
+  }, [routeMatchId]);
+
+  const actionRequestIsCurrent = (command: MatchCommand) => {
+    const route = activeRouteRef.current;
+    return Boolean(
+      route.active &&
+        route.matchId === command.matchId &&
+        matchCommandsExactly(
+          useMatchSessionStore.getState().pendingCommand,
+          command,
+        ),
+    );
+  };
+
+  const reconcileAbandonedActionRequest = (command: MatchCommand) => {
+    if (!matchCommandsExactly(activeActionCommandRef.current, command)) return;
+    useMatchSessionStore.getState().requireCommandReconciliation(command);
+    activeActionCommandRef.current = null;
+  };
+
+  const settleActionRequest = (command: MatchCommand) => {
+    if (matchCommandsExactly(activeActionCommandRef.current, command)) {
+      activeActionCommandRef.current = null;
+    }
+  };
+
+  const commandForDecision = (
+    actionId: string,
+    decision: Record<string, unknown>,
+  ): MatchCommand | null => {
+    if (!match || !authoritativeRouteReady) return null;
+    if (pendingCommand) {
+      if (
+        actionCommandMatchesDecision(pendingCommand, {
+          matchId: match.id,
+          revision: match.revision,
+          actionId,
+          decision,
+        })
+      ) {
+        return pendingCommand;
+      }
+      setSubmitError(
+        "A different action input is already awaiting confirmation. Retry the exact saved input.",
+      );
+      return null;
+    }
+    return createMatchCommand(
+      "action",
+      {
+        match_id: match.id,
+        action_id: actionId,
+        match_decision: decision,
+      },
+      {
+        matchId: match.id,
+        revision: match.revision,
+        actionId,
+      },
+    );
+  };
+
+  useEffect(() => {
+    const playback = resultPlayback?.playback;
+    const submittedAction = playback?.submitted_action;
+    if (
+      stagedKickResult ||
+      phase !== "result_playback" ||
+      !match ||
+      !submittedAction ||
+      !playback?.decision_result
+    ) {
+      return;
+    }
+    setResolvedSceneFieldState(playback.submitted_field_state);
+    setStagedKickResult({
+      sceneType: submittedAction.scene_type,
+      response: {
+        minute: match.current_time,
+        status: match.match_status,
+        prev_time: submittedAction.minute,
+        pending_action: pendingAction,
+        field_state: fieldState,
+        action: submittedAction.scene_type,
+        action_team: submittedAction.action_team,
+        events: playback.events,
+        match,
+        decision_result: playback.decision_result,
+        pending_settlement_events: [],
+        unsupported_scene: null,
+        legend_availability: legendAvailability ?? {
+          version: 1,
+          status: "AVAILABLE",
+          availability: "AVAILABLE",
+          participation: "PARTICIPATING",
+          interactive_controls: true,
+          unavailable_since_minute: null,
+        },
+        halftime_summary: halftimeSummary,
+        full_time_handoff: fullTimeHandoff,
+        latest_operation: resultPlayback,
+      },
+    });
+  }, [
+    fieldState,
+    fullTimeHandoff,
+    halftimeSummary,
+    legendAvailability,
+    match,
+    pendingAction,
+    phase,
+    resultPlayback,
+    stagedKickResult,
+  ]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      !routeMatchId ||
+      (match?.id === routeMatchId && rehydrationKey === 0)
+    ) {
+      return;
+    }
+    let cancelled = false;
+    const hydrationGeneration = ++fieldRehydrationGenerationRef.current;
+    beginHydration(fieldRehydrationGateRef.current);
+    let succeeded = false;
+    let retryableFailure = true;
+    void fetchBackendMatch(routeMatchId)
+      .then((response) => {
+        if (cancelled) return;
+        const pendingAction =
+          response.pending_action &&
+          !response.pending_action.field_state &&
+          response.field_state
+            ? { ...response.pending_action, field_state: response.field_state }
+            : response.pending_action;
+        hydrateMatchSession({
+          match: response.match,
+          myTeam: response.my_team,
+          opponentTeam: response.opponent_team,
+          timelineEvents: response.timeline,
+          pendingAction,
+          unsupportedScene: response.unsupported_scene,
+          legendAvailability: response.legend_availability,
+          halftimeSummary: response.halftime_summary,
+          fullTimeHandoff: response.full_time_handoff,
+          latestOperation: response.latest_operation,
+        });
+        succeeded = true;
+      })
+      .catch((error: unknown) => {
+        retryableFailure = isRetryableHydrationFailure(error);
+        if (!cancelled) setError(error);
+      })
+      .finally(() => {
+        if (hydrationGeneration === fieldRehydrationGenerationRef.current) {
+          const retryQueuedReconnect = settleHydration(
+            fieldRehydrationGateRef.current,
+            succeeded,
+            retryableFailure,
+          );
+          if (!cancelled && retryQueuedReconnect) {
+            setRehydrationKey((value) => value + 1);
+          }
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    active,
+    hydrateMatchSession,
+    match?.id,
+    rehydrationKey,
+    routeMatchId,
+    setError,
+  ]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      !routeMatchId ||
+      match?.id !== routeMatchId ||
+      phase !== "timeline_playback" ||
+      !pendingAction
+    ) {
+      return;
+    }
+
+    // A direct /game/:matchId route explicitly requests the authoritative
+    // pending field scene. The timeline route owns normal timeline playback;
+    // this only restores the presentation phase after direct hydration.
+    setPlaybackMinute(pendingAction.minute);
+    markSceneReady();
+  }, [
+    active,
+    markSceneReady,
+    match?.id,
+    pendingAction,
+    phase,
+    routeMatchId,
+    setPlaybackMinute,
+  ]);
+
+  useEffect(() => {
+    if (!active || !routeMatchId) return;
+    const rehydrateAfterReconnect = () => {
+      if (requestReconnectHydration(fieldRehydrationGateRef.current)) {
+        setRehydrationKey((value) => value + 1);
+      }
+    };
+    window.addEventListener("online", rehydrateAfterReconnect);
+    return () => window.removeEventListener("online", rehydrateAfterReconnect);
+  }, [active, routeMatchId]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      !routeMatchId ||
+      match?.id !== routeMatchId ||
+      phase !== "timeline_playback" ||
+      pendingAction ||
+      resultPlayback
+    ) {
+      return;
+    }
+    // The field route owns only an active scene or result playback. Once the
+    // authoritative session has neither, timeline owns the continuation.
+    navigate(`/match/${match.id}`, { replace: true });
+  }, [
+    active,
+    match?.id,
+    navigate,
+    pendingAction,
+    phase,
+    resultPlayback,
+    routeMatchId,
+  ]);
+
+  useEffect(() => {
+    if (
+      !retainedFieldDraft ||
+      !authoritativeRouteReady ||
+      !match ||
+      !pendingAction ||
+      retainedFieldDraft.matchId !== match.id ||
+      retainedFieldDraft.revision !== match.revision ||
+      retainedFieldDraft.actionId !== pendingAction.id ||
+      releasedAimDraft
+    ) {
+      return;
+    }
+    setReleasedAimDraft(retainedFieldDraft.aim);
+    setStrikeContact(retainedFieldDraft.contact);
+  }, [
+    authoritativeRouteReady,
+    match,
+    pendingAction,
+    releasedAimDraft,
+    retainedFieldDraft,
+  ]);
+  const handleRenderReadiness = useCallback(
+    (sceneKey: string, ready: boolean) => {
+      if (!ready) {
+        setActiveAimDraft(null);
+        setReleasedAimDraft(null);
+      }
+      setReadySceneKey((current) => {
+        if (ready) return sceneKey;
+        return current === sceneKey ? "" : current;
+      });
+    },
+    [],
+  );
+  const continuationFieldState = stagedKickResult
+    ? authoritativeContinuationFieldState(stagedKickResult.response)
+    : null;
   const stagedFieldState =
-    !isResultAnimating &&
-    hasImmediateFollowUpFieldState &&
-    stagedKickResult?.response.pending_action?.field_state
-      ? stagedKickResult.response.pending_action.field_state
+    !isResultAnimating && continuationFieldState
+      ? continuationFieldState
       : null;
-  const displayFieldState = stagedFieldState || fieldState;
+  // Keep the submitted scene visible during authoritative trajectory playback.
+  // The authoritative continuation replaces it only after the flight completes.
+  const displayFieldState =
+    stagedFieldState || resolvedSceneFieldState || fieldState;
+  const sequenceFieldState = resolvedSceneFieldState || fieldState;
   const myPlayers = displayFieldState?.my_team_positions || [];
   const opponentPlayers = displayFieldState?.opponent_positions || [];
-  const legendPlayer =
-    myPlayers.find((player) => player.is_legend) ||
-    (displayFieldState?.legend_player_id
-      ? myPlayers.find(
-          (player) => player.id === displayFieldState.legend_player_id,
-        ) || null
-      : null);
+  const legendPlayer = displayFieldState?.legend_player_id
+    ? myPlayers.find(
+        (player) => player.id === displayFieldState.legend_player_id,
+      ) || null
+    : null;
+  const carrierPlayer = displayFieldState?.carrier_player_id
+    ? myPlayers.find(
+        (player) => player.id === displayFieldState.carrier_player_id,
+      ) || null
+    : null;
+  const sequenceAnchorPlayer = sequenceFieldState?.legend_player_id
+    ? sequenceFieldState.my_team_positions.find(
+        (player) => player.id === sequenceFieldState.legend_player_id,
+      ) || null
+    : null;
+  const fallbackCameraView: FieldViewWindow = shouldUseDefaultCamera(
+    sequenceAnchorPlayer,
+  )
+    ? fixedAttackingView()
+    : followLegendView(sequenceAnchorPlayer ?? { x: 50, y: 25 });
+  const fieldViewWindow =
+    sequenceFieldState?.sequence?.camera.view_window ?? fallbackCameraView;
+  const fieldCameraPose = createFieldCameraPose(fieldViewWindow);
+  const fieldCameraFramingKey =
+    sequenceFieldState?.sequence?.sequence_id ??
+    sequenceFieldState?.id ??
+    pendingAction?.id ??
+    "no-action";
+  const penaltyNonparticipantCount =
+    displayFieldState?.scene_family === "PENALTY"
+      ? myPlayers.length +
+        opponentPlayers.length -
+        (legendPlayer ? 1 : 0) -
+        opponentPlayers.filter((player) => player.role === "GK").length
+      : null;
+  const isDribbleScene = pendingAction?.scene_type === "DRIBBLE";
+  const isRandomEventScene = isRandomEventAction(pendingAction);
+  const isStagedRandomEvent = Boolean(
+    stagedKickResult && isRandomEventSceneType(stagedKickResult.sceneType),
+  );
+  const parsedRandomEvent = parseRandomEventAction(pendingAction);
+  // Drei Html labels share the DOM overlay with the active-scene HUD. Hide the
+  // legend label whenever either dribble or a result takes over that region.
+  const showLegendPlayerLabel =
+    !isDribbleScene && !isRandomEventScene && !stagedKickResult;
+  const dribbleDefenderId =
+    isDribbleScene && legendPlayer
+      ? (opponentPlayers.reduce<BackendFieldPlayer | null>(
+          (closest, player) => {
+            if (!closest) return player;
+            return distanceInFieldMeters(player, legendPlayer) <
+              distanceInFieldMeters(closest, legendPlayer)
+              ? player
+              : closest;
+          },
+          null,
+        )?.id ?? null)
+      : null;
+  const parsedDribblePattern = isDribbleScene
+    ? parseDribblePattern(displayFieldState?.dribble_pattern)
+    : { pattern: null, error: null };
+  const dribblePattern = parsedDribblePattern.pattern;
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
-    : { x: 50, y: VISIBLE_FIELD_CENTER_Y };
-  const ballFieldPosition = animatedBallFieldPosition || baseBallFieldPosition;
-  const [ballX, , logicalBallZ] = displayFieldState
-    ? fieldToWorld(ballFieldPosition.x, ballFieldPosition.y)
-    : [0, BALL_Y, 0];
-  const ballZ = logicalBallZ + PLAYER_RENDER_Z_OFFSET;
-  const legendWorldPosition = legendPlayer
-    ? (() => {
-        const [x, y, z] = fieldToWorld(legendPlayer.x, legendPlayer.y);
-        return [x, y, z + PLAYER_RENDER_Z_OFFSET] as [number, number, number];
-      })()
-    : null;
-  const canAim =
-    !stagedKickResult &&
+    : { x: 50, y: 25 };
+  const ballFieldPosition = animatedBallFlightPoint || baseBallFieldPosition;
+  const ballCenterHeight =
+    animatedBallFlightPoint?.z ??
+    displayFieldState?.geometry?.ball_radius_m ??
+    DEFAULT_BALL_RADIUS_M;
+  const [ballX, ballY, ballZ] = displayFieldState
+    ? fieldToWorld(ballFieldPosition.x, ballFieldPosition.y, ballCenterHeight)
+    : [0, DEFAULT_BALL_RADIUS_M, 0];
+  const kickControlEnvelope = parseKickControlEnvelope(
+    pendingAction?.control_envelope,
+  );
+  const renderSceneKey = [
+    pendingAction?.id ?? "no-action",
+    displayFieldState?.scene_family ?? "no-scene",
+    displayFieldState?.ball_x ?? "no-ball-x",
+    displayFieldState?.ball_y ?? "no-ball-y",
+    myPlayers.length,
+    opponentPlayers.length,
+  ].join(":");
+  const isCanvasReady = readySceneKey === renderSceneKey;
+  const isFieldInteractionReady =
+    isCanvasReady &&
     !assetsActive &&
+    (assetsTotal === 0 || assetsLoaded >= assetsTotal);
+  const canAim =
+    authoritativeRouteReady &&
+    isFieldInteractionReady &&
+    !stagedKickResult &&
+    phase === "scene_ready" &&
     pendingAction?.action_team === "MY_TEAM" &&
-    pendingAction?.scene_type !== "DRIBBLE" &&
-    pendingAction?.scene_type !== undefined;
-  const showFieldLoadingOverlay =
-    assetsActive || (assetsTotal > 0 && assetsLoaded < assetsTotal);
+    isCanonicalKickScene(pendingAction?.scene_type) &&
+    pendingAction.available_choices.some((choice) => choice.id === "KICK") &&
+    Boolean(kickControlEnvelope);
+  const canDribble =
+    authoritativeRouteReady &&
+    isFieldInteractionReady &&
+    !stagedKickResult &&
+    phase === "scene_ready" &&
+    pendingAction?.action_team === "MY_TEAM" &&
+    isDribbleScene &&
+    Boolean(dribblePattern) &&
+    pendingAction.available_choices.length === 2 &&
+    pendingAction.available_choices.some(
+      (choice) => choice.id === "DRIBBLE_RUN",
+    ) &&
+    pendingAction.available_choices.some(
+      (choice) => choice.id === "SIMULATE_FOUL",
+    );
+  const canResolveRandomEvent =
+    authoritativeRouteReady &&
+    isFieldInteractionReady &&
+    !stagedKickResult &&
+    phase === "scene_ready" &&
+    Boolean(parsedRandomEvent.event);
+  const canRecoverUnsupportedScene =
+    authoritativeRouteReady &&
+    phase === "unsupported_recovery" &&
+    Boolean(unsupportedScene) &&
+    Boolean(match?.id);
+  const displayedKickDecision =
+    releasedAimDraft && kickControlEnvelope
+      ? buildCanonicalKickDecision(
+          kickControlEnvelope,
+          {
+            x: releasedAimDraft.normalizedDirection.x,
+            y: releasedAimDraft.normalizedDirection.z,
+          },
+          releasedAimDraft.normalizedPower,
+          strikeContact,
+        )
+      : null;
+  const showFieldLoadingOverlay = !isFieldInteractionReady;
 
   useEffect(() => {
     return () => {
-      if (animationFrameRef.current) {
-        window.cancelAnimationFrame(animationFrameRef.current);
+      ballFlightPlaybackRef.current = null;
+      liveBallFlightPointRef.current = null;
+      if (terminalFrameTimeoutRef.current) {
+        window.clearTimeout(terminalFrameTimeoutRef.current);
+      }
+      if (resultTimerRef.current) {
+        window.clearTimeout(resultTimerRef.current);
       }
     };
   }, []);
 
-  const clearStagedKickResult = () => {
-    if (animationFrameRef.current) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = null;
-    }
-    setStagedKickResult(null);
-    setAnimatedBallFieldPosition(null);
-    setIsResultAnimating(false);
-  };
+  useEffect(() => {
+    if (!E2E_RENDER_PROBES) return;
+    const e2eState = globalThis as typeof globalThis & {
+      __OVERGOAL_E2E_READ_LIVE_BALL__?: () => BallFlightPoint | null;
+    };
+    e2eState.__OVERGOAL_E2E_READ_LIVE_BALL__ = () =>
+      liveBallFlightPointRef.current;
+    return () => {
+      delete e2eState.__OVERGOAL_E2E_READ_LIVE_BALL__;
+    };
+  }, []);
 
-  const startBallPlayback = (
-    response: BackendMatchResponse,
-    submittedPayload: ReturnType<typeof buildKickPayload>,
-  ) => {
-    if (animationFrameRef.current) {
-      window.cancelAnimationFrame(animationFrameRef.current);
-    }
-
-    const flightPath = response.decision_result?.flight_path;
-    if (Array.isArray(flightPath) && flightPath.length > 1) {
-      const startedAt = performance.now();
-      const durationMs = Math.max(
-        500,
-        flightPath[flightPath.length - 1].t * 1000,
-      );
-      setIsResultAnimating(true);
-
-      const tick = (now: number) => {
-        const elapsed = now - startedAt;
-        const progressMs = Math.min(durationMs, elapsed);
-        const point = sampleFlightPath(flightPath, progressMs / 1000);
-        if (point) {
-          setAnimatedBallFieldPosition(point);
-        }
-
-        if (progressMs < durationMs) {
-          animationFrameRef.current = window.requestAnimationFrame(tick);
-        } else {
-          animationFrameRef.current = null;
-          const rawFinalPoint = response.decision_result?.final_point
-            ? {
-                x: response.decision_result.final_point.x,
-                y: response.decision_result.final_point.y,
-              }
-            : point;
-          const resolvedFinalPoint = resolveControlledBallPosition(
-            response,
-            rawFinalPoint || null,
-          );
-          setAnimatedBallFieldPosition(resolvedFinalPoint || null);
-          setIsResultAnimating(false);
-        }
-      };
-
-      animationFrameRef.current = window.requestAnimationFrame(tick);
+  useEffect(() => {
+    if (!active) {
+      assetErrorBaselineRef.current = null;
       return;
     }
 
-    const start = baseBallFieldPosition;
-    const end = { x: submittedPayload.end_x, y: submittedPayload.end_y };
-    const duration = Math.max(
-      650,
-      Math.min(1400, 420 + submittedPayload.power * 7),
-    );
-    const lift = Math.max(6, Math.min(18, distanceBetween(start, end) * 0.12));
-    const startedAt = performance.now();
-    setIsResultAnimating(true);
+    if (assetErrorBaselineRef.current === null) {
+      assetErrorBaselineRef.current = assetErrors.length;
+      return;
+    }
 
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - startedAt) / duration);
-      const eased = 1 - (1 - progress) * (1 - progress);
-      setAnimatedBallFieldPosition({
-        x: start.x + (end.x - start.x) * eased,
-        y:
-          start.y +
-          (end.y - start.y) * eased -
-          Math.sin(Math.PI * eased) * lift,
-      });
+    if (assetErrors.length <= assetErrorBaselineRef.current) return;
 
-      if (progress < 1) {
-        animationFrameRef.current = window.requestAnimationFrame(tick);
+    // Drei retains historical loader failures globally. Only errors that occur
+    // after this field route becomes active can make this scene unrecoverable.
+    const failedAsset =
+      assetErrors[assetErrors.length - 1] ?? "an unknown match asset";
+    assetErrorBaselineRef.current = assetErrors.length;
+    setError(new Error(`Unable to load match asset ${failedAsset}.`));
+  }, [active, assetErrors, setError]);
+
+  const clearStagedKickResult = () => {
+    ballFlightPlaybackRef.current = null;
+    liveBallFlightPointRef.current = null;
+    if (terminalFrameTimeoutRef.current) {
+      window.clearTimeout(terminalFrameTimeoutRef.current);
+      terminalFrameTimeoutRef.current = null;
+    }
+    setStagedKickResult(null);
+    setResolvedSceneFieldState(null);
+    setAnimatedBallFlightPoint(null);
+    setIsResultAnimating(false);
+  };
+
+  const completeBallPlayback = useCallback(
+    (playbackId: number, finalPoint: BallFlightPoint) => {
+      if (ballFlightPlaybackRef.current?.id !== playbackId) return;
+      ballFlightPlaybackRef.current = null;
+      liveBallFlightPointRef.current = finalPoint;
+      setAnimatedBallFlightPoint(finalPoint);
+
+      const response = stagedKickResult?.response;
+      if (response && authoritativeContinuationFieldState(response)) {
+        terminalFrameTimeoutRef.current = window.setTimeout(() => {
+          terminalFrameTimeoutRef.current = null;
+          liveBallFlightPointRef.current = null;
+          setAnimatedBallFlightPoint(null);
+          setIsResultAnimating(false);
+        }, 100);
       } else {
-        animationFrameRef.current = null;
-        const resolvedFinalPoint = resolveControlledBallPosition(response, end);
-        setAnimatedBallFieldPosition(resolvedFinalPoint || null);
         setIsResultAnimating(false);
       }
-    };
+    },
+    [stagedKickResult],
+  );
 
-    animationFrameRef.current = window.requestAnimationFrame(tick);
-  };
+  const startBallPlayback = useCallback(
+    (response: BackendMatchResponse, operationId: string | null = null) => {
+      const feedbackId =
+        operationId ??
+        `${response.match.id}:${response.match.revision}:${response.prev_time}`;
+      if (feedbackOperationIdRef.current !== feedbackId) {
+        feedbackOperationIdRef.current = feedbackId;
+        playGameFeedback(
+          outcomeFeedbackCue(response.decision_result?.outcome_type),
+        );
+      }
+      if (operationId) playedOperationIdRef.current = operationId;
+      ballFlightPlaybackRef.current = null;
+      liveBallFlightPointRef.current = null;
+      if (terminalFrameTimeoutRef.current) {
+        window.clearTimeout(terminalFrameTimeoutRef.current);
+        terminalFrameTimeoutRef.current = null;
+      }
+
+      const trajectory = authoritativeTrajectoryPlayback(
+        response.decision_result,
+      );
+      if (trajectory) {
+        const { finalPoint, path: flightPath } = trajectory;
+        const durationMs = Math.max(
+          500,
+          flightPath[flightPath.length - 1].t * 1000,
+        );
+        const initialPoint = sampleFlightPath(flightPath, 0);
+        const playbackId = (ballFlightSequenceRef.current += 1);
+        ballFlightPlaybackRef.current = {
+          completed: false,
+          durationMs,
+          finalPoint,
+          id: playbackId,
+          path: flightPath,
+          startedAt: performance.now(),
+        };
+        liveBallFlightPointRef.current = initialPoint;
+        setAnimatedBallFlightPoint(initialPoint);
+        setIsResultAnimating(true);
+        return;
+      }
+
+      // Canonical kick scenes never fabricate a trajectory when the server omits one.
+      if (authoritativeContinuationFieldState(response)) {
+        liveBallFlightPointRef.current = null;
+        setAnimatedBallFlightPoint(null);
+      }
+      setIsResultAnimating(false);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const operationId = resultPlayback?.operation_id ?? null;
+    if (
+      phase !== "result_playback" ||
+      !stagedKickResult ||
+      !operationId ||
+      playedOperationIdRef.current === operationId
+    ) {
+      return;
+    }
+    startBallPlayback(stagedKickResult.response, operationId);
+  }, [phase, resultPlayback, stagedKickResult, startBallPlayback]);
 
   const handleAimRelease = (draft: BallAimDraft) => {
+    playGameFeedback("aim-ready");
+    setRestoreAimFocus(false);
     setSubmitError(null);
+    setActiveAimDraft(null);
     setReleasedAimDraft(draft);
-    setStrikePoint(DEFAULT_STRIKE_POINT);
+    setStrikeContact(DEFAULT_STRIKE_CONTACT);
+    if (match && pendingAction) {
+      retainFieldDraft({
+        kind: "kick",
+        matchId: match.id,
+        revision: match.revision,
+        actionId: pendingAction.id,
+        aim: draft,
+        contact: DEFAULT_STRIKE_CONTACT,
+      });
+    }
   };
 
-  const handleStrikePanelClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / rect.width) * 100;
-    const y = ((event.clientY - rect.top) / rect.height) * 100;
-    setStrikePoint({
-      x: clamp(x, 8, 92),
-      y: clamp(y, 8, 92),
+  const closeContactDialog = () => {
+    setReleasedAimDraft(null);
+    setSubmitError(null);
+    setRestoreAimFocus(true);
+    clearFieldDraft();
+  };
+
+  const handleAimFocusRestored = useCallback(() => {
+    setRestoreAimFocus(false);
+  }, []);
+
+  const handleStrikeContactChange = (contact: { x: number; y: number }) => {
+    setStrikeContact(contact);
+    if (!match || !pendingAction || !releasedAimDraft) return;
+    retainFieldDraft({
+      kind: "kick",
+      matchId: match.id,
+      revision: match.revision,
+      actionId: pendingAction.id,
+      aim: releasedAimDraft,
+      contact,
     });
   };
 
@@ -820,55 +1612,344 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       return;
     }
 
-    const payload = buildKickPayload(
-      releasedAimDraft,
-      strikePoint,
-      ballFieldPosition,
+    const envelope = kickControlEnvelope;
+    if (!envelope) {
+      setSubmitError("The current action is missing canonical kick controls.");
+      return;
+    }
+    if (!kickSubmissionGateRef.current.begin(pendingAction.id)) {
+      return;
+    }
+    const payload = buildCanonicalKickDecision(
+      envelope,
+      {
+        x: releasedAimDraft.normalizedDirection.x,
+        y: releasedAimDraft.normalizedDirection.z,
+      },
+      releasedAimDraft.normalizedPower,
+      strikeContact,
     );
+    const command = commandForDecision(pendingAction.id, payload);
+    if (!command) {
+      kickSubmissionGateRef.current.reset(pendingAction.id);
+      return;
+    }
 
     try {
+      playGameFeedback("action");
       setIsSubmitting(true);
       setSubmitError(null);
       setLoading(true);
       setError(null);
 
-      const command =
-        pendingCommand?.operation === "action" &&
-        pendingCommand.matchId === match.id &&
-        pendingCommand.actionId === pendingAction.id
-          ? pendingCommand
-          : createMatchCommand(
-              "action",
-              {
-                match_id: match.id,
-                action_id: pendingAction.id,
-                match_decision: payload,
-              },
-              {
-                matchId: match.id,
-                revision: match.revision ?? null,
-                actionId: pendingAction.id,
-              },
-            );
-      retainPendingCommand(command);
+      if (!beginActionCommand(command)) {
+        kickSubmissionGateRef.current.reset(pendingAction.id);
+        setLoading(false);
+        return;
+      }
+      activeActionCommandRef.current = command;
       const response = await processBackendMatchAction(
         match,
         pendingAction.id,
         payload,
         command,
       );
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      const submittedFieldState = fieldState;
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
       setReleasedAimDraft(null);
+      clearFieldDraft();
+      setResolvedSceneFieldState(submittedFieldState);
       setStagedKickResult({
         response,
-        submittedPayload: payload,
+        sceneType: pendingAction.scene_type,
       });
       setLoading(false);
-      startBallPlayback(response, payload);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
     } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      kickSubmissionGateRef.current.reset(pendingAction.id);
       const message =
         error instanceof Error ? error.message : "Failed to submit kick.";
       setSubmitError(message);
-      setError(message);
+      setError(error);
+      settleActionRequest(command);
+      setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDribbleDecision = async (decision: DribbleDecision) => {
+    if (!match?.id || !pendingAction || !dribblePattern) {
+      return;
+    }
+    if (!dribbleSubmissionGateRef.current.begin(pendingAction.id)) {
+      return;
+    }
+    const command = commandForDecision(
+      pendingAction.id,
+      decision as unknown as Record<string, unknown>,
+    );
+    if (!command) {
+      dribbleSubmissionGateRef.current.reset(pendingAction.id);
+      return;
+    }
+
+    try {
+      playGameFeedback("action");
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setLoading(true);
+      setError(null);
+      if (!beginActionCommand(command)) {
+        dribbleSubmissionGateRef.current.reset(pendingAction.id);
+        setLoading(false);
+        return;
+      }
+      activeActionCommandRef.current = command;
+      const submittedFieldState = fieldState;
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        decision,
+        command,
+      );
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
+      setResolvedSceneFieldState(submittedFieldState);
+      setStagedKickResult({ response, sceneType: pendingAction.scene_type });
+      setLoading(false);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
+    } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      dribbleSubmissionGateRef.current.reset(pendingAction.id);
+      const message =
+        error instanceof Error ? error.message : "Failed to submit dribble.";
+      setSubmitError(message);
+      setError(error);
+      settleActionRequest(command);
+      setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRandomEventDecision = async (choiceId: string) => {
+    if (!match?.id || !pendingAction || !parsedRandomEvent.event) {
+      return;
+    }
+    if (!randomEventSubmissionGateRef.current.begin(pendingAction.id)) {
+      return;
+    }
+
+    let payload: Record<string, unknown>;
+    try {
+      payload = createRandomEventDecision(parsedRandomEvent.event, choiceId);
+    } catch (error) {
+      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      setSubmitError(
+        error instanceof Error ? error.message : "The event choice is invalid.",
+      );
+      return;
+    }
+    const command = commandForDecision(pendingAction.id, payload);
+    if (!command) {
+      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      return;
+    }
+
+    try {
+      playGameFeedback("action");
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setLoading(true);
+      setError(null);
+      if (!beginActionCommand(command)) {
+        randomEventSubmissionGateRef.current.reset(pendingAction.id);
+        setLoading(false);
+        return;
+      }
+      activeActionCommandRef.current = command;
+      const submittedFieldState = fieldState;
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        payload,
+        command,
+      );
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
+      setResolvedSceneFieldState(submittedFieldState);
+      setStagedKickResult({ response, sceneType: pendingAction.scene_type });
+      setLoading(false);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
+    } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      randomEventSubmissionGateRef.current.reset(pendingAction.id);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Failed to submit match event.";
+      setSubmitError(message);
+      setError(error);
+      settleActionRequest(command);
+      setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleUnsupportedSceneRecovery = async () => {
+    if (!match?.id || !unsupportedScene) return;
+    const actionId = unsupportedScene.action_id;
+    const choiceId = unsupportedScene.recovery.choice;
+    if (!randomEventSubmissionGateRef.current.begin(actionId)) return;
+    const payload = { choice: choiceId };
+    const command = commandForDecision(actionId, payload);
+    if (!command) {
+      randomEventSubmissionGateRef.current.reset(actionId);
+      return;
+    }
+
+    try {
+      playGameFeedback("action");
+      setIsSubmitting(true);
+      setSubmitError(null);
+      setLoading(true);
+      setError(null);
+      if (!beginActionCommand(command)) {
+        randomEventSubmissionGateRef.current.reset(actionId);
+        setLoading(false);
+        return;
+      }
+      activeActionCommandRef.current = command;
+      const response = await processBackendMatchAction(
+        match,
+        actionId,
+        payload,
+        command,
+      );
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      if (!setActionResponse(response, command)) {
+        settleActionRequest(command);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(command);
+      setLoading(false);
+      navigate(`/match/${match.id}`);
+    } catch (error) {
+      if (!actionRequestIsCurrent(command)) {
+        reconcileAbandonedActionRequest(command);
+        return;
+      }
+      randomEventSubmissionGateRef.current.reset(actionId);
+      setError(error);
+      settleActionRequest(command);
+      setLoading(false);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const retryPendingAction = async () => {
+    if (
+      !match ||
+      !pendingCommand ||
+      !retrySafe ||
+      pendingCommand.operation !== "action" ||
+      pendingCommand.matchId !== match.id ||
+      pendingCommand.actionId !== pendingAction?.id
+    ) {
+      return;
+    }
+    const decision = pendingCommand.payload.match_decision;
+    if (!decision || typeof decision !== "object") return;
+
+    try {
+      playGameFeedback("action");
+      setError(null);
+      if (!beginActionCommand(pendingCommand)) return;
+      activeActionCommandRef.current = pendingCommand;
+      setIsSubmitting(true);
+      setLoading(true);
+      const response = await processBackendMatchAction(
+        match,
+        pendingAction.id,
+        decision as Record<string, unknown>,
+        pendingCommand,
+      );
+      if (!actionRequestIsCurrent(pendingCommand)) {
+        reconcileAbandonedActionRequest(pendingCommand);
+        return;
+      }
+      if (!setActionResponse(response, pendingCommand)) {
+        settleActionRequest(pendingCommand);
+        setLoading(false);
+        return;
+      }
+      settleActionRequest(pendingCommand);
+      clearFieldDraft();
+      setResolvedSceneFieldState(fieldState);
+      setStagedKickResult({ response, sceneType: pendingAction.scene_type });
+      setLoading(false);
+      startBallPlayback(
+        response,
+        response.latest_operation?.operation_id ?? null,
+      );
+    } catch (error) {
+      if (!actionRequestIsCurrent(pendingCommand)) {
+        reconcileAbandonedActionRequest(pendingCommand);
+        return;
+      }
+      setError(error);
+      settleActionRequest(pendingCommand);
       setLoading(false);
     } finally {
       setIsSubmitting(false);
@@ -880,206 +1961,461 @@ export default function GameScene({ active = true }: { active?: boolean }) {
       return;
     }
 
-    setActionResponse(stagedKickResult.response);
+    acknowledgeDecisionResult();
     clearStagedKickResult();
     navigate(`/match/${match.id}`);
   };
+
+  const autoContinueResult = useEffectEvent(handleNextAction);
+
+  useEffect(() => {
+    if (
+      !authoritativeRouteReady ||
+      !stagedKickResult ||
+      isResultAnimating ||
+      phase === "recoverable_error" ||
+      phase === "unsupported_contract" ||
+      !isFieldInteractionReady ||
+      debugResultContinuation
+    ) {
+      return;
+    }
+    resultTimerRef.current = window.setTimeout(
+      autoContinueResult,
+      RESULT_HOLD_MS,
+    );
+    return () => {
+      if (resultTimerRef.current) {
+        window.clearTimeout(resultTimerRef.current);
+        resultTimerRef.current = null;
+      }
+    };
+  }, [
+    authoritativeRouteReady,
+    debugResultContinuation,
+    isFieldInteractionReady,
+    isResultAnimating,
+    phase,
+    stagedKickResult,
+  ]);
 
   const resultDescription =
     stagedKickResult?.response.decision_result?.description ||
     stagedKickResult?.response.events?.[0]?.description ||
     "Action resolved.";
-  const resultMinute =
-    stagedKickResult?.response.prev_time ??
-    pendingAction?.minute ??
-    match?.current_time ??
-    0;
+  const resultMinute = stagedKickResult?.response.prev_time;
+  const handleFieldCanvasError = useCallback(() => {
+    setError(
+      new Error(
+        "Unable to load match asset required for this field. Refresh to retry.",
+      ),
+    );
+  }, [setError]);
+  const hasBlockingSessionError =
+    phase === "recoverable_error" || phase === "unsupported_contract";
+  const blockingSessionError = hasBlockingSessionError ? (
+    <div
+      data-testid="scene-contract-error"
+      role="alert"
+      className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
+    >
+      <p className="font-orbitron text-[10px] font-black tracking-[0.28em] text-pink-200 uppercase">
+        Recoverable Match Error
+      </p>
+      <p className="mt-3 text-base leading-6 text-cyan-50">
+        {diagnostic?.message ||
+          "The live match scene could not be rendered safely."}
+      </p>
+      <div className="mt-5 flex gap-3">
+        {diagnostic?.recoveryAction !== "STOP" && (
+          <button
+            type="button"
+            onClick={() => {
+              if (diagnostic?.recoveryAction === "REAUTHENTICATE") {
+                navigate("/login");
+                return;
+              }
+              setRehydrationKey((value) => value + 1);
+            }}
+            className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
+          >
+            {diagnostic?.recoveryAction === "REAUTHENTICATE"
+              ? "Sign in again"
+              : diagnostic?.recoveryAction === "HYDRATE_MATCH"
+                ? "Refresh match state"
+                : diagnostic?.recoveryAction === "CHECK_TRANSPORT"
+                  ? "Check connection"
+                  : "Refresh"}
+          </button>
+        )}
+        {retrySafe &&
+          diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
+          pendingCommand?.operation === "action" && (
+            <button
+              type="button"
+              onClick={retryPendingAction}
+              className="rounded-xl border border-cyan-200/55 px-4 py-2 text-xs font-bold tracking-[0.12em] text-cyan-100 uppercase"
+            >
+              Retry exact action
+            </button>
+          )}
+        {match?.id && (
+          <button
+            type="button"
+            onClick={() => navigate(`/match/${match.id}`)}
+            className="rounded-xl border border-white/18 px-4 py-2 text-xs font-bold tracking-[0.12em] text-white/82 uppercase"
+          >
+            Timeline
+          </button>
+        )}
+      </div>
+    </div>
+  ) : null;
+  if (active && routeMatchId && !authoritativeRouteReady) {
+    return (
+      <div
+        data-testid="game-field"
+        data-session-phase={hasBlockingSessionError ? phase : "hydrating"}
+        data-interaction-phase="blocked"
+        data-render-ready="false"
+        className="fixed inset-0 z-40 overflow-hidden bg-[#0a4739]"
+      >
+        <FieldBackdrop />
+        <FieldLoadingOverlay
+          visible={!hasBlockingSessionError}
+          progress={assetsProgress}
+        />
+        {blockingSessionError}
+      </div>
+    );
+  }
+  const interactionPhase = hasBlockingSessionError
+    ? "blocked"
+    : stagedKickResult
+      ? "result_playback"
+      : phase === "submitting" || isSubmitting
+        ? "submitting"
+        : releasedAimDraft
+          ? "contact_selection"
+          : activeAimDraft
+            ? "aiming"
+            : "idle";
 
   return (
     <div
       data-testid="game-field"
+      data-session-phase={phase}
+      data-interaction-phase={interactionPhase}
       data-player-count={myPlayers.length + opponentPlayers.length}
+      data-player-roles={[...myPlayers, ...opponentPlayers]
+        .map((player) => player.role)
+        .sort()
+        .join(",")}
+      data-opponent-roles={opponentPlayers
+        .map((player) => player.role)
+        .sort()
+        .join(",")}
+      data-scene-family={displayFieldState?.scene_family ?? ""}
+      data-ball-x={displayFieldState ? ballFieldPosition.x : ""}
+      data-ball-y={displayFieldState ? ballFieldPosition.y : ""}
+      data-ball-z={ballCenterHeight}
+      data-carrier-player-id={displayFieldState?.carrier_player_id ?? ""}
+      data-carrier-player-x={carrierPlayer?.x ?? ""}
+      data-carrier-player-y={carrierPlayer?.y ?? ""}
+      data-carrier-has-ball={
+        carrierPlayer?.has_ball === true ? "true" : "false"
+      }
+      data-carrier-facing-target-x={carrierPlayer?.facing_target_x ?? ""}
+      data-carrier-facing-target-y={carrierPlayer?.facing_target_y ?? ""}
+      data-carrier-facing-target-player-id={
+        carrierPlayer?.facing_target_player_id ?? ""
+      }
+      data-carrier-carry-offset-m={carrierPlayer?.carry_offset_m ?? ""}
+      data-result-receiver-id={stagedDecisionResult?.receiver?.id ?? ""}
+      data-result-receiver-x={stagedDecisionResult?.receiver?.x ?? ""}
+      data-result-receiver-y={stagedDecisionResult?.receiver?.y ?? ""}
+      data-result-control-carrier-id={
+        stagedDecisionResult?.receiver_control?.carrier_player_id ?? ""
+      }
+      data-result-facing-target-x={
+        stagedDecisionResult?.receiver_control?.facing_target_x ?? ""
+      }
+      data-result-facing-target-y={
+        stagedDecisionResult?.receiver_control?.facing_target_y ?? ""
+      }
+      data-result-facing-target-player-id={
+        stagedDecisionResult?.receiver_control?.facing_target_player_id ?? ""
+      }
+      data-result-carry-offset-m={
+        stagedDecisionResult?.receiver_control?.carry_offset_m ?? ""
+      }
+      data-result-minute={stagedKickResult?.response.prev_time ?? ""}
+      data-continuation-minute={stagedKickResult?.response.minute ?? ""}
+      data-result-animating={isResultAnimating ? "true" : "false"}
+      data-penalty-nonparticipant-count={penaltyNonparticipantCount ?? ""}
+      data-render-ready={isCanvasReady ? "true" : "false"}
+      data-kick-contract-supported={kickControlEnvelope ? "true" : "false"}
       className={`fixed inset-0 overflow-hidden bg-[#0a4739] ${
         active ? "z-40 opacity-100" : "pointer-events-none -z-10 opacity-0"
       }`}
       aria-hidden={!active}
     >
       <FieldBackdrop />
-      <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
-        <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
-          {pendingAction?.title || "Field"}
-        </div>
-        <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
-          <div className="font-bold">
-            {myTeam?.name || "My Team"} vs {opponentTeam?.name || "Opponent"}
+      {!stagedKickResult && !isDribbleScene && !isRandomEventScene && (
+        <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
+          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
+            {pendingAction?.title || "Field"}
           </div>
-          <div>{pendingAction?.description || "Waiting for field state."}</div>
-        </div>
-        {!fieldState && (
-          <div className="max-w-sm rounded-xl bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-sm">
-            No backend field state is available for this screen yet.
+          <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
+            <div className="font-bold">
+              {myTeam?.name || "My Team"} vs {opponentTeam?.name || "Opponent"}
+            </div>
+            <div>
+              {pendingAction?.description || "Waiting for field state."}
+            </div>
           </div>
-        )}
-      </div>
+          {active && !displayFieldState && (
+            <div
+              role="alert"
+              className="max-w-sm rounded-xl bg-red-950/65 px-4 py-3 text-sm text-red-100 backdrop-blur-sm"
+            >
+              {diagnostic?.message ||
+                "No backend field state is available for this screen yet."}
+              {diagnostic?.retryable && (
+                <button
+                  type="button"
+                  className="mt-2 block font-bold text-cyan-200 underline underline-offset-4"
+                  onClick={() => window.location.reload()}
+                >
+                  Refresh match
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-      <Canvas
-        gl={{
-          antialias: true,
-          alpha: true,
-          powerPreference: "high-performance",
-        }}
-        dpr={[1, 2]}
-        style={{ touchAction: "none", background: "transparent" }}
-        onCreated={({ gl }) => {
-          gl.setClearColor(0x000000, 0);
-        }}
+      <FieldCanvasErrorBoundary
+        onError={handleFieldCanvasError}
+        resetKey={`${routeMatchId ?? "no-match"}:${rehydrationKey}`}
       >
-        <OrthographicCamera
-          makeDefault
-          position={DEFAULT_CAMERA_POSITION}
-          rotation={DEFAULT_CAMERA_ROTATION}
-          zoom={DEFAULT_CAMERA_ZOOM}
-          near={0.1}
-          far={1000}
-        />
-        <FieldCameraController
-          legendPlayer={legendPlayer}
-          legendWorldPosition={legendWorldPosition}
-          cameraLocked={Boolean(stagedKickResult)}
-        />
+        <Canvas
+          gl={{
+            antialias: true,
+            alpha: true,
+            powerPreference: "high-performance",
+          }}
+          dpr={[1, 2]}
+          style={{ touchAction: "none", background: "transparent" }}
+          onCreated={({ gl }) => {
+            gl.setClearColor(0x000000, 0);
+          }}
+        >
+          <OrthographicCamera
+            makeDefault
+            manual
+            position={fieldCameraPose.position}
+            rotation={fieldCameraPose.rotation}
+            left={fieldCameraPose.frustum.left}
+            right={fieldCameraPose.frustum.right}
+            top={fieldCameraPose.frustum.top}
+            bottom={fieldCameraPose.frustum.bottom}
+            zoom={1}
+            near={0.1}
+            far={1000}
+          />
+          <FieldCameraController
+            pose={fieldCameraPose}
+            cameraLocked={Boolean(stagedKickResult)}
+            framingKey={fieldCameraFramingKey}
+          />
 
-        <Suspense fallback={null}>
-          <Physics gravity={[0, -30, 0]} colliders={"ball"}>
-            <Sky sunPosition={[10, 10, 0]} />
-            <ContactShadows
-              frames={1}
-              scale={10}
-              position={[0, -2, 0]}
-              blur={4}
-              opacity={0.2}
-            />
-            <Stadium position={[0, 0, 0]} scale={10} rotation={[0, 0, 0]} />
-
-            <Ball
-              position={[ballX, BALL_Y, ballZ]}
-              interactive={false}
-              renderOnly={true}
-              aimEnabled={Boolean(canAim && !releasedAimDraft)}
-              onAimRelease={handleAimRelease}
-            />
-
-            {myPlayers.map((player) => (
-              <BackendPlayerModel
-                key={player.id}
-                player={player}
-                isTeammate={true}
-                ballFieldPosition={ballFieldPosition}
-                stagedDecisionResult={stagedDecisionResult}
-                isResultAnimating={isResultAnimating}
+          <Suspense fallback={null}>
+            <Physics gravity={[0, -30, 0]} colliders={"ball"}>
+              <Sky sunPosition={[10, 10, 0]} />
+              <ContactShadows
+                frames={1}
+                scale={100}
+                position={[0, FIELD_SURFACE_Y, 0]}
+                blur={4}
+                opacity={0.2}
               />
-            ))}
-            {opponentPlayers.map((player) => (
-              <BackendPlayerModel
-                key={player.id}
-                player={player}
-                isTeammate={false}
-                ballFieldPosition={ballFieldPosition}
-                stagedDecisionResult={stagedDecisionResult}
-                isResultAnimating={isResultAnimating}
+              <Stadium position={[0, 0, 0]} rotation={[0, 0, 0]} />
+
+              <Ball
+                renderGroupRef={ballRenderGroupRef}
+                position={[ballX, ballY, ballZ]}
+                interactive={false}
+                renderOnly={true}
+                aimEnabled={Boolean(canAim && !releasedAimDraft)}
+                aimDraft={activeAimDraft}
+                kickControlEnvelope={kickControlEnvelope}
+                onAimChange={setActiveAimDraft}
+                onAimRelease={handleAimRelease}
               />
-            ))}
-            <Preload all />
-          </Physics>
-        </Suspense>
-      </Canvas>
+              {E2E_RENDER_PROBES && (
+                <>
+                  <FieldCameraAnchorProbe />
+                  <BallRenderProbe
+                    fieldPosition={{
+                      x: ballFieldPosition.x,
+                      y: ballFieldPosition.y,
+                      z: ballCenterHeight,
+                    }}
+                    groupRef={ballRenderGroupRef}
+                    worldPosition={[ballX, ballY, ballZ]}
+                  />
+                </>
+              )}
+              <BallFlightController
+                ballGroupRef={ballRenderGroupRef}
+                livePointRef={liveBallFlightPointRef}
+                playbackRef={ballFlightPlaybackRef}
+                onComplete={completeBallPlayback}
+              />
+              {canAim && (
+                <BallAimSurface
+                  position={[ballX, ballY, ballZ]}
+                  maximumPower={kickControlEnvelope?.maximum_power ?? 0}
+                  enabled={!releasedAimDraft}
+                  focusOnMount={restoreAimFocus}
+                  onFocusRestored={handleAimFocusRestored}
+                  onAimChange={setActiveAimDraft}
+                  onAimRelease={handleAimRelease}
+                />
+              )}
+
+              {myPlayers.map((player) => (
+                <BackendPlayerModel
+                  key={player.id}
+                  player={player}
+                  isTeammate={true}
+                  ballFieldPosition={ballFieldPosition}
+                  liveBallFlightPointRef={liveBallFlightPointRef}
+                  stagedDecisionResult={stagedDecisionResult}
+                  isResultAnimating={isResultAnimating}
+                  legendPlayerId={displayFieldState?.legend_player_id ?? null}
+                  screenAnchorTestId={
+                    player.id === displayFieldState?.legend_player_id
+                      ? "legend-player-anchor"
+                      : null
+                  }
+                  showPlayerLabel={showLegendPlayerLabel}
+                />
+              ))}
+              {opponentPlayers.map((player) => (
+                <BackendPlayerModel
+                  key={player.id}
+                  player={player}
+                  isTeammate={false}
+                  ballFieldPosition={ballFieldPosition}
+                  liveBallFlightPointRef={liveBallFlightPointRef}
+                  stagedDecisionResult={stagedDecisionResult}
+                  isResultAnimating={isResultAnimating}
+                  legendPlayerId={displayFieldState?.legend_player_id ?? null}
+                  screenAnchorTestId={
+                    isDribbleScene && player.id === dribbleDefenderId
+                      ? "dribble-defender-anchor"
+                      : null
+                  }
+                  showPlayerLabel={showLegendPlayerLabel}
+                />
+              ))}
+              <Preload all />
+              <FieldRenderReadiness
+                key={renderSceneKey}
+                sceneKey={renderSceneKey}
+                onReadinessChange={handleRenderReadiness}
+              />
+            </Physics>
+          </Suspense>
+        </Canvas>
+      </FieldCanvasErrorBoundary>
       <FieldLoadingOverlay
         visible={showFieldLoadingOverlay}
         progress={assetsProgress}
       />
-      {releasedAimDraft && (
-        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/18 px-4 py-6 backdrop-blur-[1px]">
-          <div className="w-full max-w-sm rounded-[2rem] border border-cyan-300/45 bg-linear-to-b from-cyan-400/18 via-slate-950/88 to-[#14235c]/92 p-4 shadow-[0_0_40px_rgba(34,211,238,0.18)]">
-            <div className="mb-3 flex items-center justify-between px-1">
-              <div>
-                <p className="text-[10px] font-bold tracking-[0.32em] text-cyan-200/80 uppercase">
-                  Strike Point
-                </p>
-                <p className="text-sm font-semibold text-white">
-                  Choose where to hit the ball
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rounded-full border border-white/15 px-3 py-1 text-xs font-semibold text-white/70"
-                onClick={() => {
-                  setReleasedAimDraft(null);
-                  setSubmitError(null);
-                }}
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="rounded-[1.6rem] border border-cyan-200/40 bg-linear-to-b from-cyan-300/12 via-[#14235c]/78 to-[#0f1738] p-4">
-              <div
-                className="relative mx-auto aspect-square w-full max-w-[260px] cursor-crosshair rounded-full border-2 border-cyan-300/70 bg-radial-[circle_at_35%_35%] from-cyan-100/95 via-sky-400/28 to-[#091132] shadow-[0_0_30px_rgba(56,189,248,0.28)]"
-                onClick={handleStrikePanelClick}
-              >
-                <div className="absolute inset-[10%] rounded-full border border-cyan-200/18" />
-                <div className="absolute inset-[23%] rounded-full border border-cyan-200/12" />
-                <div className="absolute top-[10%] left-1/2 h-[80%] w-px -translate-x-1/2 bg-cyan-100/12" />
-                <div className="absolute top-1/2 left-[10%] h-px w-[80%] -translate-y-1/2 bg-cyan-100/12" />
-                <div
-                  className="absolute h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-orange-400/95 shadow-[0_0_22px_rgba(251,146,60,0.65)]"
-                  style={{
-                    left: `${strikePoint.x}%`,
-                    top: `${strikePoint.y}%`,
-                  }}
-                >
-                  <div className="absolute top-1/2 left-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-amber-200/90" />
-                  <div className="absolute top-1/2 left-1/2 h-10 w-px -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
-                  <div className="absolute top-1/2 left-1/2 h-px w-10 -translate-x-1/2 -translate-y-1/2 bg-amber-200/90" />
-                </div>
-              </div>
-
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/72">
-                <div className="rounded-2xl bg-black/22 px-3 py-2">
-                  Pull power:{" "}
-                  {Math.round(releasedAimDraft.normalizedPower * 100)}%
-                </div>
-                <div className="rounded-2xl bg-black/22 px-3 py-2">
-                  Contact: {Math.round(strikePoint.x)},{" "}
-                  {Math.round(strikePoint.y)}
-                </div>
-              </div>
-              {submitError && (
-                <div className="mt-3 rounded-2xl border border-red-400/25 bg-red-950/40 px-3 py-2 text-xs text-red-100">
-                  {submitError}
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              disabled={isSubmitting}
-              className="mt-4 w-full rounded-2xl bg-linear-to-b from-amber-300 via-orange-400 to-red-500 px-4 py-3 text-center text-2xl font-black tracking-[0.12em] text-white uppercase shadow-[0_10px_26px_rgba(249,115,22,0.42)]"
-              onClick={handleKick}
-            >
-              {isSubmitting ? "Kicking..." : "Kick"}
-            </button>
+      {isCanvasReady &&
+        pendingAction?.action_team === "MY_TEAM" &&
+        isCanonicalKickScene(pendingAction.scene_type) &&
+        pendingAction.available_choices.some(
+          (choice) => choice.id === "KICK",
+        ) &&
+        !kickControlEnvelope && (
+          <div
+            role="alert"
+            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+          >
+            This action uses unsupported kick controls. Refresh the match before
+            interacting.
           </div>
-        </div>
+        )}
+      {isCanvasReady &&
+        isDribbleScene &&
+        !dribblePattern &&
+        !stagedKickResult && (
+          <div
+            role="alert"
+            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+          >
+            {parsedDribblePattern.error}
+          </div>
+        )}
+      {canDribble && isCanvasReady && pendingAction && dribblePattern && (
+        <DribbleControls
+          key={pendingAction.id}
+          pattern={dribblePattern}
+          disabled={isSubmitting}
+          onSubmit={handleDribbleDecision}
+        />
       )}
-      {stagedKickResult && (
-        <div className="absolute inset-x-0 bottom-0 z-30 p-4 text-white">
-          <div className="mx-auto w-full max-w-md rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
+      {canResolveRandomEvent && pendingAction && parsedRandomEvent.event && (
+        <RandomEventScene
+          action={pendingAction}
+          event={parsedRandomEvent.event}
+          disabled={isSubmitting}
+          onChoose={handleRandomEventDecision}
+        />
+      )}
+      {canRecoverUnsupportedScene && unsupportedScene && (
+        <UnsupportedEventRecovery
+          recovery={unsupportedScene}
+          disabled={isSubmitting}
+          onContinue={handleUnsupportedSceneRecovery}
+        />
+      )}
+      {blockingSessionError}
+      {releasedAimDraft &&
+        kickControlEnvelope &&
+        phase !== "recoverable_error" &&
+        phase !== "unsupported_contract" && (
+          <KickContactDialog
+            envelope={kickControlEnvelope}
+            contact={strikeContact}
+            submittedPower={displayedKickDecision?.kick_input.power ?? 0}
+            submitError={submitError}
+            isSubmitting={isSubmitting}
+            onContactChange={handleStrikeContactChange}
+            onClose={closeContactDialog}
+            onSubmit={handleKick}
+          />
+        )}
+      {stagedKickResult && !hasBlockingSessionError && (
+        <div
+          data-testid="kick-result"
+          data-outcome-type={
+            stagedKickResult.response.decision_result?.outcome_type ?? ""
+          }
+          className="absolute inset-x-0 bottom-0 z-30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-white"
+        >
+          <div className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold tracking-[0.28em] text-cyan-200/75 uppercase">
                   Scene Result
                 </p>
                 <p className="mt-1 text-sm font-semibold text-white/92">
-                  {resultMinute}' · {pendingAction?.scene_type || "ACTION"}
+                  {resultMinute}' · {stagedKickResult.sceneType}
                 </p>
               </div>
               <div className="rounded-full bg-cyan-400/12 px-3 py-1 text-[10px] font-bold tracking-[0.24em] text-cyan-200 uppercase">
@@ -1091,14 +2427,30 @@ export default function GameScene({ active = true }: { active?: boolean }) {
               {resultDescription}
             </p>
 
-            <button
-              type="button"
-              onClick={handleNextAction}
-              disabled={isResultAnimating}
-              className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              Next Action
-            </button>
+            {isStagedRandomEvent && (
+              <RandomEventResultDetails result={stagedDecisionResult} />
+            )}
+
+            {debugResultContinuation ? (
+              <button
+                type="button"
+                data-testid="next-action"
+                onClick={handleNextAction}
+                disabled={isResultAnimating}
+                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Next Action
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleNextAction}
+                disabled={isResultAnimating}
+                className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Tap to continue
+              </button>
+            )}
           </div>
         </div>
       )}

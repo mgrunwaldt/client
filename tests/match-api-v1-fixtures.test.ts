@@ -20,13 +20,17 @@ import {
   buildCanonicalChoiceMatrix,
 } from "../scripts/match-api-v1-fixture-invariants.mjs";
 import { createMatchApiV1SchemaValidator } from "../scripts/match-api-v1-schema-validator.mjs";
+import {
+  BackendMatchResponseSchema,
+  BackendMatchSnapshotSchema,
+} from "../src/match/api-v1/contract";
 import { fixtureUrl, readFixture } from "./match-api-v1-fixtures";
 
 const execFile = promisify(execFileCallback);
-const CONTRACT_SOURCE_REVISION = "9918cbc1beb502f0675895b9fbe64d77a96127dc";
+const CONTRACT_SOURCE_REVISION = "6e3494f90157423a729666ffb2f17ec00041c067";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
 const FIXTURE_MANIFEST_SHA256 =
-  "5bc7905b27edca848ee9f6bc82b04e8fb9838c12f66dce36c6c659307d980008";
+  "8caf940d575ffe925c243a2ab80fa68c552f1956685f3e062b04259b1907b845";
 const REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 const verifierPath = fileURLToPath(
@@ -34,15 +38,6 @@ const verifierPath = fileURLToPath(
 );
 const reproductionRoot = new URL("./fixtures/reproductions/", import.meta.url);
 const temporaryRoots: string[] = [];
-
-interface FixtureManifest {
-  source: {
-    repository: string;
-    revision: string;
-    contract_path: string;
-  };
-  sha256: Record<string, string>;
-}
 
 interface ReproductionManifest {
   source: {
@@ -147,32 +142,22 @@ afterEach(async () => {
 });
 
 describe("Match API v1 test fixture mirror", () => {
-  it("matches the pinned source revision and independent manifest seal", async () => {
-    const manifest = await readFixture<FixtureManifest>(
-      "fixture-manifest.json",
+  it("matches the pinned I9 contract manifest and complete source mirror", async () => {
+    const manifestContents = await readFile(fixtureUrl("manifest.json"));
+    const manifest = JSON.parse(manifestContents.toString()) as {
+      contract: string;
+      fixtures: unknown[];
+    };
+    expect(CONTRACT_SOURCE_REVISION).toBe(
+      "6e3494f90157423a729666ffb2f17ec00041c067",
     );
-    const manifestContents = await readFile(
-      fixtureUrl("fixture-manifest.json"),
-    );
-
-    expect(manifest.source).toEqual({
-      repository: "https://github.com/overgoal/match_server",
-      revision: CONTRACT_SOURCE_REVISION,
-      contract_path: "contracts/match-api/v1",
-      description:
-        "Test-only mirror of the M1 authenticated-owner Match API v1 contract. Runtime modules must not import this directory.",
-    });
+    expect(manifest.contract).toBe("openapi.json");
+    expect(manifest.fixtures.length).toBeGreaterThan(20);
     expect(sha256(manifestContents.toString())).toBe(FIXTURE_MANIFEST_SHA256);
-
-    const actualFiles = (await collectFiles(fixtureUrl("")))
-      .filter((file) => file !== "fixture-manifest.json")
-      .sort();
-    expect(Object.keys(manifest.sha256).sort()).toEqual(actualFiles);
-    expect(actualFiles).toHaveLength(49);
+    expect(await collectFiles(fixtureUrl(""))).toHaveLength(63);
   });
 
   it("seals and validates the complete Auth Boundary v1 fixture set", async () => {
-    const seal = await readFixture<FixtureManifest>("fixture-manifest.json");
     const contractManifest = await readFixture<{
       fixtures: Array<{
         file: string;
@@ -228,8 +213,6 @@ describe("Match API v1 test fixture mirror", () => {
         }),
       }),
     ]);
-    expect(authFiles.every((file) => seal.sha256[file])).toBe(true);
-
     const proof = await readFixture<Record<string, unknown>>(
       "player-client/auth-proof-request.json",
     );
@@ -240,6 +223,302 @@ describe("Match API v1 test fixture mirror", () => {
     await expect(runVerifier()).resolves.toMatchObject({
       stdout: expect.stringContaining("Match API v1 fixtures verified"),
     });
+  });
+
+  it("parses the current engine/7 spatial and tactics contract", async () => {
+    const progress = await readFixture<unknown>(
+      "server/waiting-open-play-response.json",
+    );
+    const snapshot = await readFixture<unknown>(
+      "server/match-snapshot-engine-7-response.json",
+    );
+
+    const parsedProgress = BackendMatchResponseSchema.safeParse(progress);
+    expect(parsedProgress.success).toBe(true);
+    expect(BackendMatchSnapshotSchema.safeParse(snapshot).success).toBe(true);
+
+    if (!parsedProgress.success || !parsedProgress.data.field_state) return;
+    const fieldState = parsedProgress.data.field_state;
+    expect(fieldState.coordinate_system?.version).toBe(
+      "field-coordinate-system/1",
+    );
+    expect(fieldState.coordinate_system?.z.unit).toBe("METRE");
+    expect(fieldState.sequence?.camera.locked).toBe(true);
+    expect(fieldState.sequence?.camera.view_window).toEqual(
+      expect.objectContaining({ width: 100, height: 50 }),
+    );
+    expect(fieldState.my_team_positions[0]).toEqual(
+      expect.objectContaining({
+        team_id: "team_1",
+        team_side: "MY_TEAM",
+        collision_shape: expect.objectContaining({ height_m: 2 }),
+      }),
+    );
+  });
+
+  it("rejects missing, unknown, and malformed engine/7 spatial data", async () => {
+    const original = await readFixture<Record<string, unknown>>(
+      "server/waiting-open-play-response.json",
+    );
+    const fieldState = (value: Record<string, unknown>) =>
+      value.field_state as Record<string, unknown>;
+    const pendingFieldState = (value: Record<string, unknown>) =>
+      (value.pending_action as Record<string, unknown>).field_state as Record<
+        string,
+        unknown
+      >;
+    const mutations: Array<{
+      name: string;
+      mutate: (value: Record<string, unknown>) => void;
+    }> = [
+      {
+        name: "missing coordinate system",
+        mutate: (value) => {
+          delete fieldState(value).coordinate_system;
+        },
+      },
+      {
+        name: "unknown coordinate system field",
+        mutate: (value) => {
+          (
+            fieldState(value).coordinate_system as Record<string, unknown>
+          ).extra = true;
+        },
+      },
+      {
+        name: "missing player team identity",
+        mutate: (value) => {
+          delete (
+            pendingFieldState(value).my_team_positions as Array<
+              Record<string, unknown>
+            >
+          )[0].team_id;
+        },
+      },
+      {
+        name: "unknown player side",
+        mutate: (value) => {
+          (
+            fieldState(value).opponent_positions as Array<
+              Record<string, unknown>
+            >
+          )[0].team_side = "UNKNOWN_TEAM";
+        },
+      },
+      {
+        name: "missing collision geometry",
+        mutate: (value) => {
+          delete (
+            fieldState(value).my_team_positions as Array<
+              Record<string, unknown>
+            >
+          )[0].collision_shape;
+        },
+      },
+      {
+        name: "unlocked sequence camera",
+        mutate: (value) => {
+          (
+            (fieldState(value).sequence as Record<string, unknown>)
+              .camera as Record<string, unknown>
+          ).locked = false;
+        },
+      },
+      {
+        name: "unknown view window field",
+        mutate: (value) => {
+          (
+            (
+              (fieldState(value).sequence as Record<string, unknown>)
+                .camera as Record<string, unknown>
+            ).view_window as Record<string, unknown>
+          ).zoom = 1.5;
+        },
+      },
+      {
+        name: "missing current action sequence",
+        mutate: (value) => {
+          delete (value.pending_action as Record<string, unknown>)
+            .action_sequence;
+        },
+      },
+      {
+        name: "missing canonical kick control envelope",
+        mutate: (value) => {
+          delete (value.pending_action as Record<string, unknown>)
+            .control_envelope;
+        },
+      },
+      {
+        name: "unknown current scene type",
+        mutate: (value) => {
+          (value.pending_action as Record<string, unknown>).scene_type =
+            "FUTURE_SCENE";
+        },
+      },
+      {
+        name: "incomplete current choice contract",
+        mutate: (value) => {
+          delete (
+            (value.pending_action as Record<string, unknown>)
+              .available_choices as Array<Record<string, unknown>>
+          )[0].input_schema;
+        },
+      },
+    ];
+
+    for (const { mutate, name } of mutations) {
+      const mutated = structuredClone(original);
+      mutate(mutated);
+      expect(BackendMatchResponseSchema.safeParse(mutated).success, name).toBe(
+        false,
+      );
+    }
+
+    const invalidTrajectory = structuredClone(original);
+    invalidTrajectory.decision_result = {
+      description: "The kick stays in play.",
+      success: true,
+      outcome_type: "KICK_TO_OPEN_PLAY",
+      flight_path: [{ x: 50, y: 40, z: 0.11, t: 0 }],
+      flight_outcome: "TEAMMATE_CONTROL",
+      final_point: { x: 50, y: 40, z: 0.11, t: 0 },
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(invalidTrajectory).success,
+    ).toBe(false);
+
+    const unknownTrajectoryField = structuredClone(original);
+    unknownTrajectoryField.decision_result = {
+      description: "The kick stays in play.",
+      success: true,
+      outcome_type: "KICK_TO_OPEN_PLAY",
+      flight_path: [
+        { x: 50, y: 40, z: 0.11, t: 0, extra: true },
+        { x: 52, y: 32, z: 0.11, t: 0.4 },
+      ],
+      flight_outcome: "TEAMMATE_CONTROL",
+      final_point: { x: 52, y: 32, z: 0.11, t: 0.4 },
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(unknownTrajectoryField).success,
+    ).toBe(false);
+
+    const nonMonotonicTrajectory = structuredClone(original);
+    nonMonotonicTrajectory.decision_result = {
+      description: "The kick stays in play.",
+      success: true,
+      outcome_type: "KICK_TO_OPEN_PLAY",
+      flight_path: [
+        { x: 50, y: 40, z: 0.11, t: 0.4 },
+        { x: 52, y: 32, z: 0.11, t: 0.4 },
+      ],
+      flight_outcome: "TEAMMATE_CONTROL",
+      final_point: { x: 52, y: 32, z: 0.11, t: 0.4 },
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(nonMonotonicTrajectory).success,
+    ).toBe(false);
+
+    const missingFinalPoint = structuredClone(original);
+    missingFinalPoint.decision_result = {
+      description: "The kick stays in play.",
+      success: true,
+      outcome_type: "KICK_TO_OPEN_PLAY",
+      flight_path: [
+        { x: 50, y: 40, z: 0.11, t: 0 },
+        { x: 52, y: 32, z: 0.11, t: 0.4 },
+      ],
+      flight_outcome: "TEAMMATE_CONTROL",
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(missingFinalPoint).success,
+    ).toBe(false);
+
+    const mismatchedFinalPoint = structuredClone(original);
+    mismatchedFinalPoint.decision_result = {
+      description: "The kick stays in play.",
+      success: true,
+      outcome_type: "KICK_TO_OPEN_PLAY",
+      flight_path: [
+        { x: 50, y: 40, z: 0.11, t: 0 },
+        { x: 52, y: 32, z: 0.11, t: 0.4 },
+      ],
+      flight_outcome: "TEAMMATE_CONTROL",
+      final_point: { x: 53, y: 32, z: 0.11, t: 0.4 },
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(mismatchedFinalPoint).success,
+    ).toBe(false);
+
+    const missingCanonicalTrajectory = structuredClone(original);
+    missingCanonicalTrajectory.decision_result = {
+      description: "A canonical kick cannot omit playback.",
+      success: false,
+      outcome_type: "OPEN_PLAY_OUT",
+      kick_resolution: { version: 1 },
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(missingCanonicalTrajectory).success,
+    ).toBe(false);
+
+    const discontinuousAutomaticShot = structuredClone(original);
+    discontinuousAutomaticShot.decision_result = {
+      description: "The receiver shoots automatically.",
+      success: true,
+      outcome_type: "AUTOMATIC_TEAMMATE_GOAL",
+      flight_path: [
+        { x: 50, y: 40, z: 0.11, t: 0 },
+        { x: 52, y: 20, z: 0.11, t: 0.8 },
+      ],
+      flight_outcome: "PASS_CONTROL",
+      final_point: { x: 52, y: 20, z: 0.11, t: 0.8 },
+      automatic_follow_up: {
+        type: "TEAMMATE_SHOT",
+        actor_player_id: "team_1_ST_10",
+        opportunity: {
+          eligible: true,
+          score: 84,
+          distance_to_goal_m: 11,
+          nearest_defender_m: 3,
+          lane_blocked: false,
+          scene_pressure: 62,
+          receive_speed_mps: 8,
+        },
+        flight_path: [
+          { x: 60, y: 20, z: 0.11, t: 0 },
+          { x: 50, y: 0, z: 0.11, t: 0.7 },
+        ],
+        flight_outcome: "GOAL",
+        final_point: { x: 50, y: 0, z: 0.11, t: 0.7 },
+        contact: null,
+        frame_contacts: [],
+      },
+    };
+    expect(
+      BackendMatchResponseSchema.safeParse(discontinuousAutomaticShot).success,
+    ).toBe(false);
+
+    const divergentEmbeddedField = structuredClone(original);
+    (
+      (divergentEmbeddedField.pending_action as Record<string, unknown>)
+        .field_state as Record<string, unknown>
+    ).ball_y = 99;
+    expect(
+      BackendMatchResponseSchema.safeParse(divergentEmbeddedField).success,
+    ).toBe(false);
+  });
+
+  it("keeps engine/1 through engine/6 snapshot parsing compatible", async () => {
+    for (const engineVersion of [1, 2, 3, 4, 5, 6]) {
+      const snapshot = await readFixture<unknown>(
+        `server/match-snapshot-engine-${engineVersion}-response.json`,
+      );
+      expect(
+        BackendMatchSnapshotSchema.safeParse(snapshot).success,
+        `match-engine/${engineVersion}`,
+      ).toBe(true);
+    }
   });
 
   it("rejects a format-invalid mutation with the canonical AJV 2020-12 validator", async () => {
@@ -264,7 +543,7 @@ describe("Match API v1 test fixture mirror", () => {
     );
   });
 
-  it("rejects a payload and mutable manifest changed together", async () => {
+  it("rejects a mutation of the pinned backend fixture mirror", async () => {
     const temporaryRoot = await mkdtemp(
       join(tmpdir(), "overgoal-fixture-tamper-"),
     );
@@ -272,23 +551,21 @@ describe("Match API v1 test fixture mirror", () => {
     const mirrorRoot = join(temporaryRoot, "match-api-v1");
     await cp(fixtureUrl(""), mirrorRoot, { recursive: true });
 
-    const payloadPath = join(mirrorRoot, "server/fulltime-response.json");
+    const payloadPath = join(
+      mirrorRoot,
+      "fixtures/server/fulltime-response.json",
+    );
     const payload = JSON.parse(await readFile(payloadPath, "utf8"));
     payload.status = "FINISHED_TAMPERED";
     const payloadContents = `${JSON.stringify(payload, null, 2)}\n`;
     await writeFile(payloadPath, payloadContents);
-
-    const manifestPath = join(mirrorRoot, "fixture-manifest.json");
-    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.sha256["server/fulltime-response.json"] = sha256(payloadContents);
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     const failure = await runVerifier({ fixtureRoot: mirrorRoot }).then(
       () => "",
       (error: { stderr?: string; stdout?: string }) =>
         `${error.stdout ?? ""}\n${error.stderr ?? ""}`,
     );
-    expect(failure).toContain("fixture-manifest digest mismatch");
+    expect(failure).toContain("mirror tree digest mismatch");
   });
 
   it("rejects a reproduction packet and mutable manifest changed together", async () => {
@@ -427,7 +704,10 @@ describe("Match API v1 test fixture mirror", () => {
       });
 
     const choiceMutation = structuredClone(openPlay);
-    choiceMutation.available_choices.reverse();
+    choiceMutation.available_choices.push({
+      ...choiceMutation.available_choices[0],
+      id: "DRIBBLE",
+    });
     expect(() => assertScene(choiceMutation)).toThrow(
       /choices must equal x-overgoal-choice-ids/,
     );

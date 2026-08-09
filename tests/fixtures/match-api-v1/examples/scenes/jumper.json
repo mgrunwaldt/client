@@ -1,0 +1,18 @@
+{
+  "id": "action-jumper-1", "minute": 53, "action_type": "JUMPER", "scene_type": "JUMPER", "action_team": "NEUTRAL", "source": "SIMULATION",
+  "title": "Jumper Gets on the Field", "description": "A fan invades the pitch and interrupts the match.", "field_state_id": "field-jumper-1",
+  "available_choices": [
+    { "id": "ACCEPT_HUG", "label": "Accept Hug and Selfie", "description": "Embrace the fan and turn the interruption into a crowd moment.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } },
+    { "id": "DODGE", "label": "Dodge", "description": "Avoid the intruder and use the stoppage to recover.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } },
+    { "id": "SECURITY_TACKLE", "label": "Security Tackle", "description": "Intervene forcefully before security reaches the fan.", "input_schema": { "required": ["choice"], "allowed": ["choice"], "additional_properties": false } }
+  ],
+  "context": { "seed": 53001, "distance_to_goal": 55, "side_of_pitch": "CENTER", "pressure": 50, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "SAFE", "previous_outcome": null, "carrier_player_id": "team_1_ST_10" },
+  "origin": null, "contract_version": 3,
+  "field_state": {
+    "id": "field-jumper-1", "match_id": "match-fixture-1", "minute": 53, "action_type": "JUMPER", "scene_family": "RANDOM_EVENT",
+    "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 48, "y": 51, "is_legend": true, "has_ball": true }],
+    "opponent_positions": [{ "id": "team_2_CB_3", "role": "CB", "x": 62, "y": 48 }],
+    "legend_player_id": "team_1_ST_10", "carrier_player_id": "team_1_ST_10", "distance_to_goal": 55, "ball_x": 50, "ball_y": 50,
+    "context": { "seed": 53001, "distance_to_goal": 55, "side_of_pitch": "CENTER", "pressure": 50, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "SAFE", "previous_outcome": null, "carrier_player_id": "team_1_ST_10" }
+  }
+}

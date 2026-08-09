@@ -12,13 +12,15 @@ import {
   buildCanonicalChoiceMatrix,
 } from "./match-api-v1-fixture-invariants.mjs";
 
-const SOURCE_REPOSITORY = "https://github.com/overgoal/match_server";
-const CONTRACT_SOURCE_REVISION = "9918cbc1beb502f0675895b9fbe64d77a96127dc";
+const SOURCE_REPOSITORY = "https://github.com/mgrunwaldt/match_server";
+const REPRODUCTION_SOURCE_REPOSITORY =
+  "https://github.com/overgoal/match_server";
+const CONTRACT_SOURCE_REVISION = "6e3494f90157423a729666ffb2f17ec00041c067";
 const REPRODUCTION_SOURCE_REVISION = "b9d96f8e3d2e584d52329c4a90abdd770e3b88c7";
-const EXPECTED_FIXTURE_MANIFEST_SHA256 =
-  "5bc7905b27edca848ee9f6bc82b04e8fb9838c12f66dce36c6c659307d980008";
+const EXPECTED_CONTRACT_MANIFEST_SHA256 =
+  "8caf940d575ffe925c243a2ab80fa68c552f1956685f3e062b04259b1907b845";
 const EXPECTED_MIRROR_TREE_SHA256 =
-  "c8e3c1ddfb73e9c2b89dbd288b48e657762dc7b06e2ab9a4c31571a2ee442eec";
+  "10464af8507e744d68e4b371f0b64b240ee03a456bcde9167922438378790246";
 const EXPECTED_REPRODUCTION_MANIFEST_SHA256 =
   "4c0b6a613961ea5c3ef2b068d17f3458598c5144dc6426fd35d4116436c06b3b";
 
@@ -114,14 +116,14 @@ function assertFixtureAssociation(openapi, fixture) {
 
 function mirrorPathForContractFixture(file) {
   if (file.startsWith("../examples/scenes/")) {
-    return `scenes/${file.split("/").at(-1)}`;
+    return `examples/scenes/${file.split("/").at(-1)}`;
   }
-  return file;
+  return `fixtures/${file}`;
 }
 
 async function validateMirroredContract(fixtureRoot, reproduction) {
   const manifest = JSON.parse(
-    await readFile(new URL("manifest.json", fixtureRoot), "utf8"),
+    await readFile(new URL("fixtures/manifest.json", fixtureRoot), "utf8"),
   );
   if (manifest.contract !== "openapi.json") {
     throw new Error(
@@ -180,6 +182,7 @@ async function validateMirroredContract(fixtureRoot, reproduction) {
       file: "self-pass-follow-up-response.json",
       schemaName: "MatchProgressResponse",
       value: reproduction,
+      allowLegacyOpenPlayDribbleChoice: true,
     });
   } catch (error) {
     failures.push(
@@ -210,7 +213,7 @@ async function readSealedReproduction(reproductionRoot) {
   const manifest = JSON.parse(manifestContents);
 
   if (
-    manifest.source?.repository !== SOURCE_REPOSITORY ||
+    manifest.source?.repository !== REPRODUCTION_SOURCE_REPOSITORY ||
     manifest.source?.revision !== REPRODUCTION_SOURCE_REVISION ||
     manifest.source?.packet_path !== "self-pass-follow-up-response.json"
   ) {
@@ -256,48 +259,20 @@ async function readSealedReproduction(reproductionRoot) {
 
 const fixtureRoot = fixtureRootFromEnvironment();
 const reproductionRoot = reproductionRootFromEnvironment();
-const manifestUrl = new URL("fixture-manifest.json", fixtureRoot);
+const manifestUrl = new URL("fixtures/manifest.json", fixtureRoot);
 const manifestContents = await readFile(manifestUrl);
-const manifest = JSON.parse(manifestContents);
-
-if (
-  manifest.source?.repository !== SOURCE_REPOSITORY ||
-  manifest.source?.revision !== CONTRACT_SOURCE_REVISION ||
-  manifest.source?.contract_path !== "contracts/match-api/v1"
-) {
-  throw new Error(
-    "Match API v1 fixture source provenance does not match the pinned contract",
-  );
-}
 
 const actualManifestDigest = sha256(manifestContents);
-if (actualManifestDigest !== EXPECTED_FIXTURE_MANIFEST_SHA256) {
+if (actualManifestDigest !== EXPECTED_CONTRACT_MANIFEST_SHA256) {
   throw new Error(
-    `Match API v1 fixture-manifest digest mismatch: expected ${EXPECTED_FIXTURE_MANIFEST_SHA256}, received ${actualManifestDigest}`,
-  );
-}
-
-const actualFiles = (await collectFixtureFiles(fixtureRoot))
-  .filter((file) => file !== "fixture-manifest.json")
-  .sort();
-const manifestFiles = Object.keys(manifest.sha256).sort();
-
-if (JSON.stringify(actualFiles) !== JSON.stringify(manifestFiles)) {
-  throw new Error(
-    "Match API v1 fixture manifest does not cover exactly the mirror files",
+    `Match API v1 contract manifest digest mismatch: expected ${EXPECTED_CONTRACT_MANIFEST_SHA256}, received ${actualManifestDigest}`,
   );
 }
 
 const fileHashes = [];
-for (const file of manifestFiles) {
+for (const file of (await collectFixtureFiles(fixtureRoot)).sort()) {
   const contents = await readFile(new URL(file, fixtureRoot));
-  const actualHash = sha256(contents);
-  if (actualHash !== manifest.sha256[file]) {
-    throw new Error(
-      `Match API v1 fixture hash mismatch for ${file}: expected ${manifest.sha256[file]}, received ${actualHash}`,
-    );
-  }
-  fileHashes.push([file, actualHash]);
+  fileHashes.push([file, sha256(contents)]);
 }
 
 const actualMirrorTreeDigest = mirrorTreeDigest(fileHashes);
@@ -311,5 +286,5 @@ const reproduction = await readSealedReproduction(reproductionRoot);
 await validateMirroredContract(fixtureRoot, reproduction);
 
 console.log(
-  `Match API v1 fixtures verified: ${manifestFiles.length} files from ${SOURCE_REPOSITORY}@${CONTRACT_SOURCE_REVISION}`,
+  `Match API v1 fixtures verified: ${fileHashes.length} files from ${SOURCE_REPOSITORY}@${CONTRACT_SOURCE_REVISION}`,
 );
