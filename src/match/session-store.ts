@@ -73,8 +73,9 @@ interface MatchSessionActions {
     response: BackendMatchResponse,
     command: MatchCommand,
   ) => boolean;
-  acknowledgeDecisionResult: () => void;
+  acknowledgeDecisionResult: () => MatchSessionData;
   hydrateMatchSession: (payload: HydratedMatchSession) => void;
+  confirmMatchTactics: (payload: HydratedMatchSession) => void;
   setPlaybackMinute: (minute: number) => void;
   markSceneReady: () => void;
   setEffort: (effort: EffortLevel) => void;
@@ -354,6 +355,8 @@ export const useMatchSessionStore = create<MatchSessionStore>((set, get) => ({
     updateSession(set, { type: "RESULT_ACKNOWLEDGED" }),
   hydrateMatchSession: (payload) =>
     updateSession(set, { type: "HYDRATED", payload }),
+  confirmMatchTactics: (payload) =>
+    updateSession(set, { type: "TACTICS_CONFIRMED", payload }),
   setPlaybackMinute: (minute) =>
     updateSession(set, { type: "TIMELINE_TICK", minute }),
   markSceneReady: () => updateSession(set, { type: "SCENE_READY" }),

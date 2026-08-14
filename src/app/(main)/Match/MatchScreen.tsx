@@ -7,6 +7,7 @@ import LoadingScreen from "../../../components/loader/LoadingScreen";
 import { Button } from "../../../components/ui/button";
 import {
   type BackendMatchSnapshot,
+  BackendRequestError,
   createMatchCommand,
   fetchBackendMatch,
   type MatchCommand,
@@ -25,7 +26,18 @@ import {
   settleHydration,
 } from "../../../match/reconnect-hydration";
 import { useMatchSessionStore } from "../../../match/session-store";
+import type { EffortLevel, Playstyle } from "../../../match/session-types";
+import {
+  classifyTimelineEvent,
+  presentTimelineEventDescription,
+  type TimelineEventPresentationType,
+} from "../../../match/timeline-event-presentation";
+import {
+  timelineMinuteDwellMs,
+  timelineTargetMinute,
+} from "../../../match/timeline-playback";
 import { EventFeed } from "./components/EventFeed";
+import { LegendEnergyMeter } from "./components/LegendEnergyMeter";
 import { LiveHeader } from "./components/LiveHeader";
 import { MatchControls } from "./components/MatchControls";
 import {
@@ -37,12 +49,7 @@ type MatchEvent = {
   id: string;
   minute: number;
   text: string;
-  type:
-    | "normal"
-    | "team-goal"
-    | "opponent-goal"
-    | "team-chance"
-    | "opponent-chance";
+  type: TimelineEventPresentationType;
 };
 
 const effortToApi = {
@@ -57,22 +64,16 @@ const playstyleToApi = {
   offensive: "OFFENSIVE",
 } as const;
 
-const INITIAL_TIMELINE_HOLD_MS = 1_500;
-const TIMELINE_MINUTE_INTERVAL_MS = 1_000;
+type TacticsSelection = {
+  effort: EffortLevel;
+  playstyle: Playstyle;
+};
 
-function mapBackendEventType(event: {
-  team: string;
-  my_team_scored: boolean;
-  opponent_team_scored: boolean;
-  player_participates: boolean;
-}): MatchEvent["type"] {
-  if (event.my_team_scored) return "team-goal";
-  if (event.opponent_team_scored) return "opponent-goal";
-  if (event.player_participates && event.team === "MY_TEAM")
-    return "team-chance";
-  if (event.player_participates && event.team === "OPPONENT_TEAM")
-    return "opponent-chance";
-  return "normal";
+function tacticsSelectionsMatch(
+  left: TacticsSelection,
+  right: TacticsSelection,
+) {
+  return left.effort === right.effort && left.playstyle === right.playstyle;
 }
 
 export default function MatchScreen() {
@@ -80,6 +81,10 @@ export default function MatchScreen() {
   const params = useParams();
   const [reloadKey, setReloadKey] = useState(0);
   const [tacticsPending, setTacticsPending] = useState(false);
+  const [queuedTactics, setQueuedTactics] = useState<TacticsSelection | null>(
+    null,
+  );
+  const [tacticsSyncBlocked, setTacticsSyncBlocked] = useState(false);
   const [tacticsError, setTacticsError] = useState<string | null>(null);
   const match = useMatchSessionStore((state) => state.match);
   const myTeam = useMatchSessionStore((state) => state.myTeam);
@@ -106,6 +111,9 @@ export default function MatchScreen() {
   const hydrateMatchSession = useMatchSessionStore(
     (state) => state.hydrateMatchSession,
   );
+  const confirmMatchTactics = useMatchSessionStore(
+    (state) => state.confirmMatchTactics,
+  );
   const beginHydrationLoading = useMatchSessionStore(
     (state) => state.beginHydrationLoading,
   );
@@ -128,13 +136,17 @@ export default function MatchScreen() {
   const hideTransitionLoader = useMatchSessionStore(
     (state) => state.hideTransitionLoader,
   );
+  const showTransitionLoader = useMatchSessionStore(
+    (state) => state.showTransitionLoader,
+  );
   const transitionLoaderVisible = useMatchSessionStore(
     (state) => state.transitionLoader.visible,
   );
-  const fieldTransitionTimeout = useRef<number | null>(null);
   const resumeLock = useRef(false);
   const resumeRequestGeneration = useRef(0);
   const activeResumeCommand = useRef<MatchCommand | null>(null);
+  const queuedTacticsRef = useRef<TacticsSelection | null>(null);
+  const tacticsRetryCount = useRef(0);
   const reconnectHydrationGate = useRef(createReconnectHydrationGate());
   const hydrationRequestGeneration = useRef(0);
   const routeState = {
@@ -152,6 +164,14 @@ export default function MatchScreen() {
   );
   const timelinePresentationReady =
     authoritativeTimelineReady || presentingUnavailableSimulation;
+  const halftimeEnergy = halftimeSummary?.legend_contribution;
+  const currentEnergy =
+    match?.legend_profile?.energy ?? halftimeEnergy?.energy_current;
+  const energyCapacity =
+    match?.legend_profile?.stamina ?? halftimeEnergy?.stamina;
+  const resumePending = phase === "resuming";
+  const selectedTactics = queuedTactics ?? { effort, playstyle };
+  const tacticsSyncRequired = Boolean(queuedTactics && !tacticsSyncBlocked);
 
   const applySnapshot = useCallback(
     (response: BackendMatchSnapshot) => {
@@ -177,37 +197,32 @@ export default function MatchScreen() {
     [hydrateMatchSession],
   );
 
-  const updateTactics = async (
-    nextEffort: typeof effort,
-    nextPlaystyle: typeof playstyle,
-  ) => {
-    if (!match || tacticsPending) return;
-    setTacticsPending(true);
+  const queueTactics = (selection: TacticsSelection) => {
+    queuedTacticsRef.current = selection;
+    tacticsRetryCount.current = 0;
+    setQueuedTactics(selection);
+    setTacticsSyncBlocked(false);
     setTacticsError(null);
-    try {
-      const response = await updateBackendMatchTactics(match, {
-        version: 1,
-        effort: effortToApi[nextEffort],
-        playstyle: playstyleToApi[nextPlaystyle],
-      });
-      applySnapshot(response);
-    } catch (error) {
-      setTacticsError(
-        error instanceof Error ? error.message : "Could not save tactics.",
-      );
-    } finally {
-      setTacticsPending(false);
-    }
   };
 
-  const setEffort = (nextEffort: typeof effort) => {
-    void updateTactics(nextEffort, playstyle);
+  const setEffort = (nextEffort: EffortLevel) => {
+    const current = queuedTacticsRef.current ?? { effort, playstyle };
+    queueTactics({ ...current, effort: nextEffort });
   };
-  const setPlaystyle = (nextPlaystyle: typeof playstyle) => {
-    void updateTactics(effort, nextPlaystyle);
+  const setPlaystyle = (nextPlaystyle: Playstyle) => {
+    const current = queuedTacticsRef.current ?? { effort, playstyle };
+    queueTactics({ ...current, playstyle: nextPlaystyle });
   };
 
-  const targetMinute = pendingAction?.minute || match?.current_time || 0;
+  const targetMinute = timelineTargetMinute(
+    pendingAction?.minute,
+    match?.current_time,
+  );
+  const hasPendingAction = Boolean(pendingAction);
+  const currentMinuteDwellMs = timelineMinuteDwellMs(
+    playbackMinute,
+    timelineEvents,
+  );
   const commandNeedsRouteReconciliation = Boolean(
     pendingCommand?.matchId === params.matchId &&
       (["starting", "resuming", "submitting"].includes(phase) ||
@@ -221,9 +236,16 @@ export default function MatchScreen() {
   useEffect(() => {
     resumeLock.current = false;
     resumeRequestGeneration.current += 1;
+    queuedTacticsRef.current = null;
+    tacticsRetryCount.current = 0;
+    setQueuedTactics(null);
+    setTacticsPending(false);
+    setTacticsSyncBlocked(false);
+    setTacticsError(null);
     return () => {
       resumeRequestGeneration.current += 1;
       resumeLock.current = false;
+      queuedTacticsRef.current = null;
       const command = activeResumeCommand.current;
       activeResumeCommand.current = null;
       if (command) {
@@ -231,6 +253,117 @@ export default function MatchScreen() {
       }
     };
   }, [params.matchId]);
+
+  useEffect(() => {
+    if (
+      !match ||
+      !queuedTactics ||
+      tacticsPending ||
+      tacticsSyncBlocked ||
+      resumePending ||
+      resumeLock.current
+    ) {
+      return;
+    }
+
+    const authoritativeTactics = { effort, playstyle };
+    if (tacticsSelectionsMatch(queuedTactics, authoritativeTactics)) {
+      if (
+        queuedTacticsRef.current &&
+        tacticsSelectionsMatch(queuedTacticsRef.current, queuedTactics)
+      ) {
+        queuedTacticsRef.current = null;
+        setQueuedTactics(null);
+      }
+      return;
+    }
+
+    const submittedTactics = queuedTactics;
+    const requestMatch = match;
+    setTacticsPending(true);
+    setTacticsError(null);
+
+    const syncTactics = async () => {
+      try {
+        const response = await updateBackendMatchTactics(requestMatch, {
+          version: 1,
+          effort: effortToApi[submittedTactics.effort],
+          playstyle: playstyleToApi[submittedTactics.playstyle],
+        });
+        if (useMatchSessionStore.getState().match?.id !== requestMatch.id) {
+          return;
+        }
+        const hydratedPendingAction =
+          response.pending_action &&
+          !response.pending_action.field_state &&
+          response.field_state
+            ? { ...response.pending_action, field_state: response.field_state }
+            : response.pending_action;
+        confirmMatchTactics({
+          match: response.match,
+          myTeam: response.my_team,
+          opponentTeam: response.opponent_team,
+          timelineEvents: response.timeline,
+          pendingAction: hydratedPendingAction,
+          unsupportedScene: response.unsupported_scene,
+          legendAvailability: response.legend_availability,
+          halftimeSummary: response.halftime_summary,
+          fullTimeHandoff: response.full_time_handoff,
+          latestOperation: response.latest_operation,
+        });
+        tacticsRetryCount.current = 0;
+        if (
+          queuedTacticsRef.current &&
+          tacticsSelectionsMatch(queuedTacticsRef.current, submittedTactics)
+        ) {
+          queuedTacticsRef.current = null;
+          setQueuedTactics(null);
+        }
+      } catch (error) {
+        const canReconcileRevision =
+          error instanceof BackendRequestError &&
+          error.status === 409 &&
+          tacticsRetryCount.current === 0;
+        if (canReconcileRevision) {
+          tacticsRetryCount.current = 1;
+          try {
+            const snapshot = await fetchBackendMatch(requestMatch.id);
+            if (useMatchSessionStore.getState().match?.id === requestMatch.id) {
+              applySnapshot(snapshot);
+            }
+          } catch (hydrationError) {
+            setTacticsSyncBlocked(true);
+            setTacticsError(
+              hydrationError instanceof Error
+                ? hydrationError.message
+                : "Tactics could not sync. Tap your choice to retry.",
+            );
+          }
+        } else {
+          setTacticsSyncBlocked(true);
+          setTacticsError(
+            error instanceof Error
+              ? error.message
+              : "Tactics could not sync. Tap your choice to retry.",
+          );
+        }
+      } finally {
+        setTacticsPending(false);
+      }
+    };
+
+    void syncTactics();
+  }, [
+    applySnapshot,
+    confirmMatchTactics,
+    effort,
+    match,
+    playstyle,
+    queuedTactics,
+    resumePending,
+    tacticsPending,
+    tacticsSyncBlocked,
+  ]);
 
   useEffect(() => {
     const matchId = params.matchId;
@@ -333,11 +466,11 @@ export default function MatchScreen() {
       subtitle: "Live feed ready.",
     });
 
-    const timeout = window.setTimeout(() => {
+    const frame = window.requestAnimationFrame(() => {
       hideTransitionLoader();
-    }, 220);
+    });
 
-    return () => window.clearTimeout(timeout);
+    return () => window.cancelAnimationFrame(frame);
   }, [
     timelinePresentationReady,
     hideTransitionLoader,
@@ -361,39 +494,28 @@ export default function MatchScreen() {
 
     const currentMinute = useMatchSessionStore.getState().playbackMinute;
     if (currentMinute >= targetMinute) {
-      if (pendingAction) markSceneReady();
+      if (hasPendingAction) markSceneReady();
       return;
     }
 
-    let interval: number | null = null;
-    const advanceMinute = () => {
+    const tick = window.setTimeout(() => {
       const minute = useMatchSessionStore.getState().playbackMinute;
       const nextMinute = Math.min(targetMinute, minute + 1);
       setPlaybackMinute(nextMinute);
-      if (nextMinute < targetMinute) return true;
-      if (pendingAction) {
+      if (nextMinute >= targetMinute && hasPendingAction) {
         markSceneReady();
       }
-      return false;
-    };
-
-    const firstTick = window.setTimeout(() => {
-      if (!advanceMinute()) return;
-      interval = window.setInterval(() => {
-        if (advanceMinute() || interval === null) return;
-        window.clearInterval(interval);
-        interval = null;
-      }, TIMELINE_MINUTE_INTERVAL_MS);
-    }, INITIAL_TIMELINE_HOLD_MS);
+    }, currentMinuteDwellMs);
 
     return () => {
-      window.clearTimeout(firstTick);
-      if (interval !== null) window.clearInterval(interval);
+      window.clearTimeout(tick);
     };
   }, [
+    currentMinuteDwellMs,
+    hasPendingAction,
     match?.id,
     params.matchId,
-    pendingAction,
+    playbackMinute,
     playbackStatus,
     transitionLoaderVisible,
     setPlaybackMinute,
@@ -409,18 +531,26 @@ export default function MatchScreen() {
       navigate(`/game/${match.id}`, { replace: true });
       return;
     }
-    if (phase !== "scene_ready") return;
+    if (phase !== "scene_ready" || tacticsPending || tacticsSyncRequired) {
+      return;
+    }
 
-    fieldTransitionTimeout.current = window.setTimeout(() => {
-      navigate(`/game/${match.id}`);
-    }, 2000);
-
-    return () => {
-      if (fieldTransitionTimeout.current) {
-        window.clearTimeout(fieldTransitionTimeout.current);
-      }
-    };
-  }, [match?.id, navigate, phase]);
+    showTransitionLoader({
+      title: "YOUR MOVE",
+      subtitle: pendingAction?.title ?? "A chance is opening on the field.",
+      stage: "Opening field",
+      progress: 78,
+    });
+    navigate(`/game/${match.id}`);
+  }, [
+    match?.id,
+    navigate,
+    pendingAction?.title,
+    phase,
+    showTransitionLoader,
+    tacticsPending,
+    tacticsSyncRequired,
+  ]);
 
   const visibleBackendEvents = useMemo(
     () => timelineEvents.filter((event) => event.minute <= playbackMinute),
@@ -432,8 +562,8 @@ export default function MatchScreen() {
       visibleBackendEvents.map((event) => ({
         id: `${event.match_id}_${event.event_id}`,
         minute: event.minute,
-        text: event.description,
-        type: mapBackendEventType(event),
+        text: presentTimelineEventDescription(event.description),
+        type: classifyTimelineEvent(event),
       })),
     [visibleBackendEvents],
   );
@@ -442,21 +572,41 @@ export default function MatchScreen() {
   const homeScore = lastScoreEvent?.my_team_score ?? match?.my_team_score ?? 0;
   const awayScore =
     lastScoreEvent?.opponent_team_score ?? match?.opponent_team_score ?? 0;
+  const scoringEvent = visibleBackendEvents
+    .slice()
+    .reverse()
+    .find(
+      (event) =>
+        event.minute === playbackMinute &&
+        (event.my_team_scored || event.opponent_team_scored),
+    );
+  const scoreChange = scoringEvent
+    ? {
+        side: scoringEvent.my_team_scored
+          ? ("home" as const)
+          : ("away" as const),
+        eventId: `${scoringEvent.match_id}_${scoringEvent.event_id}`,
+      }
+    : null;
 
-  // A retained resume command is retryable only after hydration has shown that
-  // it did not commit. Do not disable the halftime control merely because the
-  // exact command is still kept for that safe retry.
-  const resumePending = phase === "resuming";
-
-  const continueSecondHalf = async () => {
+  const advanceAuthoritativeMatch = useCallback(async () => {
     if (
       !match ||
-      !halftimeSummary?.continue_required ||
       resumeLock.current ||
-      resumePending
+      resumePending ||
+      tacticsPending ||
+      tacticsSyncRequired
     ) {
       return;
     }
+    const resumesHalftime =
+      match.match_status === "HALFTIME" &&
+      halftimeSummary?.continue_required === true;
+    const advancesTimeline =
+      match.match_status === "IN_PROGRESS" &&
+      !pendingAction &&
+      playbackMinute >= match.current_time;
+    if (!resumesHalftime && !advancesTimeline) return;
 
     const retainedCommand =
       pendingCommand?.operation === "resume" &&
@@ -513,15 +663,62 @@ export default function MatchScreen() {
       setError(error);
       resumeLock.current = false;
     }
+  }, [
+    beginResumeCommand,
+    halftimeSummary?.continue_required,
+    match,
+    pendingAction,
+    pendingCommand,
+    playbackMinute,
+    resumePending,
+    setError,
+    setResumeResponse,
+    tacticsPending,
+    tacticsSyncRequired,
+  ]);
+
+  const continueSecondHalf = () => {
+    void advanceAuthoritativeMatch();
   };
+
+  useEffect(() => {
+    if (
+      (phase !== "timeline_playback" &&
+        phase !== "legend_unavailable_simulation") ||
+      match?.match_status !== "IN_PROGRESS" ||
+      pendingAction ||
+      playbackMinute < match.current_time ||
+      resumePending ||
+      tacticsPending ||
+      tacticsSyncRequired ||
+      transitionLoaderVisible
+    ) {
+      return;
+    }
+    const timeout = window.setTimeout(() => {
+      void advanceAuthoritativeMatch();
+    }, currentMinuteDwellMs);
+    return () => window.clearTimeout(timeout);
+  }, [
+    advanceAuthoritativeMatch,
+    currentMinuteDwellMs,
+    match?.current_time,
+    match?.match_status,
+    pendingAction,
+    phase,
+    playbackMinute,
+    resumePending,
+    tacticsPending,
+    tacticsSyncRequired,
+    transitionLoaderVisible,
+  ]);
 
   if (!timelinePresentationReady && !error) {
     return (
       <LoadingScreen
         isLoading={true}
-        progress={loading ? 42 : 18}
         title="Opening live match"
-        detail="Loading authoritative teams, score, and timeline"
+        detail="Bringing the live match back"
         label="Loading live match"
       />
     );
@@ -598,7 +795,7 @@ export default function MatchScreen() {
         isLoading={true}
         progress={42}
         title="Opening live match"
-        detail="Restoring authoritative timeline presentation"
+        detail="Restoring your live match"
         label="Restoring live match"
       />
     );
@@ -610,24 +807,46 @@ export default function MatchScreen() {
       data-session-phase={phase}
       data-session-loading={loading}
       data-playback-minute={playbackMinute}
-      data-effort={effort}
-      data-playstyle={playstyle}
-      className="flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat p-4 text-white"
+      data-minute-dwell-ms={currentMinuteDwellMs}
+      data-effort={selectedTactics.effort}
+      data-playstyle={selectedTactics.playstyle}
+      data-tactics-sync={
+        tacticsPending || tacticsSyncRequired ? "pending" : "settled"
+      }
+      className="overgoal-safe-screen flex h-dvh w-full flex-col items-center overflow-hidden bg-[url('/backgrounds/glitch-bg.webp')] bg-center bg-no-repeat text-white [--overgoal-safe-bottom-min:0.5rem] [--overgoal-safe-inline-min:0.5rem] [--overgoal-safe-top-min:0.5rem] sm:[--overgoal-safe-inline-min:0.75rem]"
     >
-      <div className="z-10 flex h-full w-full max-w-4xl flex-col items-center justify-between gap-4 pb-4">
-        <div className="flex min-h-0 w-full shrink flex-col items-center justify-center rounded-2xl">
+      <div className="z-10 flex h-full min-h-0 w-full max-w-4xl flex-col items-center gap-2">
+        <div className="flex min-h-0 w-full flex-1 flex-col items-center rounded-2xl">
           <LiveHeader
             homeTeamName={myTeam.name}
             awayTeamName={opponentTeam.name}
             homeScore={homeScore}
             awayScore={awayScore}
             time={playbackMinute}
+            scoreChange={scoreChange}
           />
-          <EventFeed events={visibleEvents} />
+          <EventFeed
+            events={visibleEvents}
+            currentMinute={playbackMinute}
+            advancing={resumePending}
+            opportunityIncoming={
+              hasPendingAction && playbackMinute < targetMinute
+            }
+          />
         </div>
 
         <div className="w-full shrink-0">
-          {(phase === "halftime" || phase === "resuming") && halftimeSummary ? (
+          {currentEnergy !== undefined &&
+            energyCapacity !== undefined &&
+            match.match_status !== "HALFTIME" && (
+              <LegendEnergyMeter
+                current={currentEnergy}
+                capacity={energyCapacity}
+              />
+            )}
+          {match.match_status === "HALFTIME" &&
+          playbackMinute >= match.current_time &&
+          halftimeSummary ? (
             <HalftimePanel
               summary={halftimeSummary}
               pending={resumePending}
@@ -641,11 +860,11 @@ export default function MatchScreen() {
             />
           ) : (
             <MatchControls
-              effort={effort}
+              effort={selectedTactics.effort}
               setEffort={setEffort}
-              playstyle={playstyle}
+              playstyle={selectedTactics.playstyle}
               setPlaystyle={setPlaystyle}
-              disabled={tacticsPending}
+              syncing={tacticsPending || tacticsSyncRequired}
               error={tacticsError}
             />
           )}

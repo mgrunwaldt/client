@@ -4,6 +4,7 @@ interface FieldPresentationSnapshot {
 }
 
 let readyPresentation: FieldPresentationSnapshot | null = null;
+let presentedMatchId: string | null = null;
 const listeners = new Set<() => void>();
 
 export function reportFieldPresentationReadiness(
@@ -44,7 +45,16 @@ export function waitForFieldPresentation(
   });
 }
 
+export function reportFieldPresented(matchId: string) {
+  presentedMatchId = matchId;
+}
+
+export function hasPresentedFieldForMatch(matchId: string) {
+  return presentedMatchId === matchId;
+}
+
 export function resetFieldPresentationReadiness() {
   readyPresentation = null;
+  presentedMatchId = null;
   listeners.forEach((listener) => listener());
 }

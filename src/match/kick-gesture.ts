@@ -1,5 +1,5 @@
 export const AIM_MIN_DISTANCE = 0.05;
-export const AIM_POWER_NORMALIZATION_DISTANCE = 32;
+export const AIM_POWER_NORMALIZATION_DISTANCE = 80;
 
 export interface BallAimDraft {
   dragStart: { x: number; y: number; z: number };
@@ -13,6 +13,11 @@ export interface BallAimDraft {
 export function buildBallAimDraft(
   start: { x: number; y: number; z: number },
   current: { x: number; y: number; z: number },
+  screenPullDistance = Math.hypot(
+    start.x - current.x,
+    start.y - current.y,
+    start.z - current.z,
+  ),
 ): BallAimDraft | null {
   const shotVector = {
     x: start.x - current.x,
@@ -34,7 +39,7 @@ export function buildBallAimDraft(
     pullDistance,
     normalizedPower: Math.min(
       1,
-      pullDistance / AIM_POWER_NORMALIZATION_DISTANCE,
+      screenPullDistance / AIM_POWER_NORMALIZATION_DISTANCE,
     ),
   };
 }

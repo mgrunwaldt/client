@@ -51,7 +51,7 @@ export function RandomEventScene({
       data-testid="random-event-scene"
       data-scene-type={event.sceneType}
       aria-labelledby="random-event-title"
-      className="absolute inset-0 z-30 flex min-h-dvh items-end overflow-hidden px-4 pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)] sm:items-center sm:justify-center"
+      className="overgoal-safe-screen absolute inset-0 z-30 flex min-h-dvh items-end overflow-hidden [--overgoal-safe-bottom-min:1rem] [--overgoal-safe-inline-min:1rem] [--overgoal-safe-top-min:1rem] sm:items-center sm:justify-center"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_24%,rgba(34,211,238,0.2),transparent_32%),radial-gradient(circle_at_76%_62%,rgba(217,70,239,0.2),transparent_29%),linear-gradient(180deg,rgba(2,8,22,0.2),rgba(2,8,22,0.9))]" />
       <div className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-cyan-200/35 bg-slate-950/94 px-5 py-6 shadow-[0_0_48px_rgba(34,211,238,0.2)] backdrop-blur-xl sm:px-7 sm:py-8">
@@ -202,7 +202,7 @@ export function UnsupportedEventRecovery({
     <section
       data-testid="unsupported-event-recovery"
       aria-labelledby="unsupported-event-title"
-      className="absolute inset-0 z-40 flex min-h-dvh items-center px-4 py-[max(env(safe-area-inset-bottom),1rem)]"
+      className="overgoal-safe-screen absolute inset-0 z-40 flex min-h-dvh items-center [--overgoal-safe-bottom-min:1rem] [--overgoal-safe-inline-min:1rem] [--overgoal-safe-top-min:1rem]"
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(217,70,239,0.22),transparent_34%),linear-gradient(180deg,rgba(2,8,22,0.52),rgba(2,8,22,0.94))]" />
       <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-fuchsia-300/40 bg-slate-950/95 px-5 py-7 shadow-[0_0_52px_rgba(217,70,239,0.22)] sm:px-7">

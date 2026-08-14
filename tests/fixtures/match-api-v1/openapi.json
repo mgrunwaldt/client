@@ -237,7 +237,7 @@
       "post": {
         "operationId": "resumeMatch",
         "tags": ["Matches"],
-        "summary": "Resume a HALFTIME match and run to the next stop",
+        "summary": "Resume halftime or advance an in-progress match by one authoritative minute",
         "parameters": [
           { "$ref": "#/components/parameters/IdempotencyKey" },
           { "$ref": "#/components/parameters/MatchRevision" }
@@ -627,7 +627,7 @@
     },
     "responses": {
       "MatchProgress": {
-        "description": "The next externally observable stop: a playable scene, halftime, or full time.",
+        "description": "The next authoritative minute or earlier stop: a playable scene, halftime, or full time.",
         "headers": { "Match-API-Version": { "$ref": "#/components/headers/MatchApiVersion" }, "Match-Auth-Profile": { "$ref": "#/components/headers/MatchAuthProfile" }, "X-Request-Id": { "$ref": "#/components/headers/RequestId" }, "traceparent": { "$ref": "#/components/headers/Traceparent" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MatchProgressResponse" } } }
       },
@@ -1168,7 +1168,7 @@
         "properties": {
           "radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9, "description": "Horizontal interception radius in metres before adding ball radius." },
           "height_m": { "type": "number", "minimum": 1.7, "maximum": 2.44, "description": "Inclusive authoritative contact reach in metres; standard players and walls use exactly 2.0 m." },
-          "receive_radius_m": { "type": "number", "minimum": 0.3, "maximum": 0.9, "description": "Forgiving teammate receive radius in metres before adding ball radius." }
+          "receive_radius_m": { "type": "number", "minimum": 0.3, "maximum": 1.5, "description": "Forgiving teammate receive radius in metres before adding ball radius." }
         },
         "additionalProperties": false
       },
@@ -1176,10 +1176,10 @@
         "type": "object",
         "required": ["version", "pitch_width_m", "pitch_length_m", "goal_width_m", "goal_height_m", "goal_depth_m", "goal_post_radius_m", "ball_radius_m", "opponent_goal", "opponent_penalty_area"],
         "properties": {
-          "version": { "const": "regulation-68x105-v1" },
+          "version": { "const": "overgoal-68x105-wide-goal-v2" },
           "pitch_width_m": { "const": 68 },
           "pitch_length_m": { "const": 105 },
-          "goal_width_m": { "const": 7.32 },
+          "goal_width_m": { "const": 10.98 },
           "goal_height_m": { "const": 2.44 },
           "goal_depth_m": { "const": 2 },
           "goal_post_radius_m": { "const": 0.06 },
@@ -1187,7 +1187,7 @@
           "opponent_goal": {
             "type": "object",
             "required": ["line_y", "left_post_x", "right_post_x"],
-            "properties": { "line_y": { "const": 0 }, "left_post_x": { "const": 44.62 }, "right_post_x": { "const": 55.38 } },
+            "properties": { "line_y": { "const": 0 }, "left_post_x": { "const": 41.93 }, "right_post_x": { "const": 58.07 } },
             "additionalProperties": false
           },
           "opponent_penalty_area": {
@@ -1233,7 +1233,7 @@
           "input_mapping_version": { "type": "string", "const": "dribble-lanes-v1" },
           "duration_seconds": { "type": "number", "const": 8 },
           "starting_lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
-          "lane_switch_seconds": { "type": "number", "minimum": 0.4, "maximum": 1.15 },
+          "lane_switch_seconds": { "type": "number", "minimum": 0.25, "maximum": 1.15 },
           "lanes": {
             "type": "array",
             "prefixItems": [
@@ -1867,7 +1867,7 @@
           "defender_lane": { "type": "string", "enum": ["LEFT", "CENTER", "RIGHT"] },
           "player_position": { "type": "number", "minimum": 0, "maximum": 2 },
           "lane_distance": { "type": "number", "minimum": 0, "maximum": 2 },
-          "risk_kind": { "type": "string", "enum": ["DIRECT_COLLISION", "CLOSE_DOWN"] },
+          "risk_kind": { "type": "string", "enum": ["DIRECT_COLLISION", "CLOSE_DOWN", "CLEAR"] },
           "collision_chance": { "type": "number", "minimum": 0, "maximum": 100 },
           "roll": { "type": "number", "minimum": 0, "maximum": 100 },
           "collision": { "type": "boolean" }

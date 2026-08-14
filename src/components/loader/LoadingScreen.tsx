@@ -26,7 +26,7 @@ export default function LoadingScreen({
       role="status"
       aria-live="polite"
       aria-label={label}
-      className="fixed inset-0 z-[190] flex min-h-dvh w-full flex-col items-center justify-center gap-4 overflow-hidden bg-[#020816] px-6 text-white transition-opacity duration-300"
+      className="overgoal-safe-screen fixed inset-0 z-[190] flex min-h-dvh w-full flex-col items-center justify-center gap-4 overflow-hidden bg-[#020816] text-white transition-opacity duration-300 [--overgoal-safe-bottom-min:1.5rem] [--overgoal-safe-inline-min:1.5rem] [--overgoal-safe-top-min:1.5rem]"
     >
       <img
         loading="eager"

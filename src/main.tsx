@@ -20,7 +20,7 @@ interface BootstrapSurfaceProps {
 
 export function BootstrapSurface({ error, onRetry }: BootstrapSurfaceProps) {
   return (
-    <main className="fixed inset-0 flex min-h-dvh items-center justify-center overflow-hidden bg-[#020816] px-6 text-white">
+    <main className="overgoal-safe-screen fixed inset-0 flex min-h-dvh items-center justify-center overflow-hidden bg-[#020816] text-white [--overgoal-safe-bottom-min:1.5rem] [--overgoal-safe-inline-min:1.5rem] [--overgoal-safe-top-min:1.5rem]">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(0,228,232,0.17),transparent_34%),linear-gradient(180deg,#06152b_0%,#020816_100%)]" />
       <div className="absolute inset-y-[8%] left-[7%] w-px bg-linear-to-b from-cyan-300/0 via-cyan-300/28 to-cyan-300/0" />
       <div className="absolute inset-y-[8%] right-[7%] w-px bg-linear-to-b from-cyan-300/0 via-cyan-300/28 to-cyan-300/0" />

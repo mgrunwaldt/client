@@ -18,6 +18,7 @@ export default function MatchTransitionLoader() {
 
   return (
     <div
+      data-testid="match-start-transition"
       role="status"
       aria-live="polite"
       aria-label={`${loader.stage}: ${loader.subtitle}`}
@@ -45,7 +46,7 @@ export default function MatchTransitionLoader() {
 
           <div className="mb-5 text-center">
             <p className="text-[10px] font-bold tracking-[0.42em] text-cyan-300/82 uppercase">
-              Match Transition
+              Match Day
             </p>
             <div className="mt-3 flex justify-center">
               <div className="max-w-[13rem]">
@@ -79,10 +80,6 @@ export default function MatchTransitionLoader() {
                 style={{ width: `${progress}%` }}
               />
             </div>
-
-            <p className="mt-3 min-h-4 text-[10px] font-bold tracking-[0.18em] text-white/52 uppercase">
-              {loader.subtitle}
-            </p>
           </div>
         </div>
       </div>

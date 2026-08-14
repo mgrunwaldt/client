@@ -82,6 +82,21 @@ async function teams() {
 }
 
 describe("match session reducer", () => {
+  it("reports a continue request made outside resolved FIELD playback", () => {
+    const state = matchSessionReducer(createInitialMatchSession(), {
+      type: "RESULT_ACKNOWLEDGED",
+    });
+
+    expect(state).toMatchObject({
+      phase: "recoverable_error",
+      recoveryPhase: "idle",
+      diagnostic: {
+        kind: "illegal_transition",
+        retryable: false,
+      },
+    });
+  });
+
   it("hydrates only backend-confirmed active or scheduled tactics", async () => {
     const snapshot = await readFixture<BackendMatchSnapshot>(
       "server/match-snapshot-engine-7-response.json",
@@ -124,6 +139,81 @@ describe("match session reducer", () => {
       },
     });
     expect(state).toMatchObject({ effort: "high", playstyle: "offensive" });
+  });
+
+  it("keeps a ready scene at its current minute when tactics are confirmed", async () => {
+    const teamFixture = await teams();
+    const waiting = await readFixture<BackendMatchResponse>(
+      "server/waiting-open-play-response.json",
+    );
+    const scene = waiting.pending_action!;
+    const activeMatch = {
+      ...waiting.match,
+      revision: 16,
+    };
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: activeMatch,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: waiting.events,
+        pendingAction: scene,
+        legendAvailability: availableLifecycle.legend_availability,
+      },
+    });
+    state = matchSessionReducer(state, {
+      type: "TIMELINE_TICK",
+      minute: waiting.match.current_time,
+    });
+    state = matchSessionReducer(state, { type: "SCENE_READY" });
+    const phaseBefore = state.phase;
+    const playbackStatusBefore = state.playbackStatus;
+
+    const tacticsPayload = {
+      match: {
+        ...activeMatch,
+        revision: 17,
+        scheduled_tactics: {
+          version: 1 as const,
+          effective_minute: 13,
+          command_sequence: 2,
+          tactics: {
+            version: 1 as const,
+            effort: "HIGH" as const,
+            playstyle: "OFFENSIVE" as const,
+          },
+        },
+      },
+      myTeam: teamFixture.my_team,
+      opponentTeam: teamFixture.opponent_team,
+      timelineEvents: waiting.events,
+      pendingAction: scene,
+      legendAvailability: availableLifecycle.legend_availability,
+    };
+
+    const oldGenericHydration = matchSessionReducer(state, {
+      type: "HYDRATED",
+      payload: tacticsPayload,
+    });
+    expect(oldGenericHydration).toMatchObject({
+      playbackMinute: 0,
+      phase: "timeline_playback",
+    });
+
+    state = matchSessionReducer(state, {
+      type: "TACTICS_CONFIRMED",
+      payload: tacticsPayload,
+    });
+
+    expect(state).toMatchObject({
+      playbackMinute: waiting.match.current_time,
+      phase: phaseBefore,
+      playbackStatus: playbackStatusBefore,
+      playstyle: "offensive",
+      effort: "high",
+    });
+    expect(state.match?.revision).toBe(17);
   });
   it("preserves the server-advertised recovery intent for an unknown future scene", async () => {
     const teamFixture = await teams();
@@ -486,6 +576,55 @@ describe("match session reducer", () => {
     }
   });
 
+  it("keeps an unavailable legend simulation active at an in-progress checkpoint", async () => {
+    const teamFixture = await teams();
+    const scene = await readFixture<BackendPendingAction>(
+      "scenes/open-play.json",
+    );
+    const match: BackendMatch = {
+      ...matchForScene(scene),
+      current_time: 87,
+      prev_time: 86,
+      match_status: "IN_PROGRESS",
+      pending_action: null,
+      player_participation: "OBSERVING",
+    };
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [],
+        legendAvailability: {
+          version: 1,
+          status: "SUBSTITUTED",
+          availability: "UNAVAILABLE",
+          participation: "OBSERVING",
+          interactive_controls: false,
+          unavailable_since_minute: 87,
+        },
+      },
+    });
+
+    expect(state.phase).toBe("legend_unavailable_simulation");
+    state = matchSessionReducer(state, { type: "TIMELINE_TICK", minute: 87 });
+    expect(state.phase).toBe("legend_unavailable_simulation");
+    expect(state.playbackMinute).toBe(87);
+
+    const command = createMatchCommand(
+      "resume",
+      { match_id: match.id },
+      { matchId: match.id, revision: match.revision },
+    );
+    state = matchSessionReducer(state, {
+      type: "RESUME_REQUESTED",
+      command,
+    });
+    expect(state.phase).toBe("resuming");
+    expect(state.pendingCommand).toEqual(command);
+  });
+
   it("models halftime resume and rejects unsolicited command responses", async () => {
     const teamFixture = await teams();
     const response = await readFixture<BackendMatchResponse>(
@@ -564,6 +703,75 @@ describe("match session reducer", () => {
       response,
     });
     expect(unsolicited).toBe(created);
+  });
+
+  it("advances an in-progress match only after playback reaches its authoritative checkpoint", async () => {
+    const teamFixture = await teams();
+    const fixture = await readFixture<BackendMatchResponse>(
+      "server/waiting-open-play-response.json",
+    );
+    const checkpointMatch: BackendMatch = {
+      ...fixture.match,
+      match_status: "IN_PROGRESS",
+      current_time: 5,
+      prev_time: 4,
+      pending_action: null,
+    };
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: checkpointMatch,
+        myTeam: teamFixture.my_team,
+        opponentTeam: teamFixture.opponent_team,
+        timelineEvents: [],
+        pendingAction: null,
+      },
+    });
+    const earlyCommand = createMatchCommand(
+      "resume",
+      { match_id: checkpointMatch.id },
+      { matchId: checkpointMatch.id, revision: checkpointMatch.revision },
+    );
+    const rejected = matchSessionReducer(state, {
+      type: "RESUME_REQUESTED",
+      command: earlyCommand,
+    });
+    expect(rejected.phase).toBe("recoverable_error");
+
+    state = matchSessionReducer(state, { type: "TIMELINE_TICK", minute: 5 });
+    const command = createMatchCommand(
+      "resume",
+      { match_id: checkpointMatch.id },
+      { matchId: checkpointMatch.id, revision: checkpointMatch.revision },
+    );
+    state = matchSessionReducer(state, { type: "RESUME_REQUESTED", command });
+    expect(state.phase).toBe("resuming");
+
+    state = matchSessionReducer(state, {
+      type: "COMMAND_RESOLVED",
+      source: "resume",
+      command,
+      response: {
+        ...fixture,
+        status: "IN_PROGRESS",
+        prev_time: 5,
+        minute: 6,
+        pending_action: null,
+        field_state: null,
+        events: [],
+        match: {
+          ...checkpointMatch,
+          revision: checkpointMatch.revision + 1,
+          current_time: 6,
+          prev_time: 5,
+        },
+      },
+    });
+    expect(state).toMatchObject({
+      phase: "timeline_playback",
+      playbackMinute: 5,
+      pendingCommand: null,
+    });
   });
 
   it("contains unknown API states in a recoverable diagnostic instead of routing a blank screen", async () => {

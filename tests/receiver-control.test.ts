@@ -138,6 +138,23 @@ describe("authoritative receiver control", () => {
     ).toBe(false);
   });
 
+  it("accepts an overhit teammate without inventing receiver control", () => {
+    const response = controlledKickResponse();
+    const overhit = {
+      ...response,
+      decision_result: {
+        ...response.decision_result,
+        success: false,
+        outcome_type: "OVERHIT_PASS",
+        flight_outcome: "OVERHIT_TEAMMATE",
+        receiver_control: undefined,
+        automatic_follow_up: undefined,
+      },
+    };
+
+    expect(BackendMatchResponseSchema.safeParse(overhit).success).toBe(true);
+  });
+
   it("rejects invented or non-monotonic continuation state", () => {
     const response = controlledKickResponse();
     const carrierId = controlledResultExpectation.receiverId;
@@ -167,6 +184,58 @@ describe("authoritative receiver control", () => {
     expect(BackendMatchResponseSchema.safeParse(nonMonotonic).success).toBe(
       false,
     );
+  });
+
+  it("accepts a later pending action after the authoritative possession continuation", () => {
+    const response = structuredClone(controlledKickResponse());
+    const receiverId =
+      response.decision_result!.receiver_control!.carrier_player_id;
+    const laterCarrier = response.field_state.my_team_positions.find(
+      (player) => player.id !== receiverId,
+    )!;
+    const laterMinute = response.minute + 5;
+    const laterField = {
+      ...response.field_state,
+      minute: laterMinute,
+      carrier_player_id: laterCarrier.id,
+      context: {
+        ...response.field_state.context,
+        carrier_player_id: laterCarrier.id,
+      },
+      my_team_positions: response.field_state.my_team_positions.map(
+        (player) => ({
+          ...player,
+          has_ball: player.id === laterCarrier.id || undefined,
+        }),
+      ),
+    };
+    const laterAction = {
+      ...response.pending_action,
+      minute: laterMinute,
+      source: "SIMULATION",
+      context: {
+        ...response.pending_action.context,
+        carrier_player_id: laterCarrier.id,
+      },
+      field_state: laterField,
+    };
+    const advanced = {
+      ...response,
+      minute: laterMinute,
+      pending_action: laterAction,
+      field_state: laterField,
+      match: {
+        ...response.match,
+        current_time: laterMinute,
+        pending_action: laterAction,
+      },
+    };
+
+    const result = BackendMatchResponseSchema.safeParse(advanced);
+    expect(
+      result.success,
+      result.success ? undefined : JSON.stringify(result.error.issues),
+    ).toBe(true);
   });
 
   it("requires the automatic shot actor to be the authoritative receiver", () => {

@@ -125,7 +125,6 @@ export function AuthenticatedLayout() {
     return (
       <LoadingScreen
         isLoading={true}
-        progress={switchingAccount ? 65 : 45}
         title={switchingAccount ? "Switching player" : "Signing in"}
         detail={
           switchingAccount
@@ -144,7 +143,7 @@ export function AuthenticatedLayout() {
 
   if (status === "connected" && authStatus === "error") {
     return (
-      <main className="fixed inset-0 z-[190] flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.16),transparent_34%),linear-gradient(180deg,#061124,#020816)] px-6 text-white">
+      <main className="overgoal-safe-screen fixed inset-0 z-[190] flex min-h-dvh items-center justify-center bg-[radial-gradient(circle_at_50%_25%,rgba(234,36,112,0.16),transparent_34%),linear-gradient(180deg,#061124,#020816)] text-white [--overgoal-safe-bottom-min:1.5rem] [--overgoal-safe-inline-min:1.5rem] [--overgoal-safe-top-min:1.5rem]">
         <section
           role="alert"
           className="w-full max-w-sm rounded-[2rem] border border-pink-400/45 bg-slate-950/84 px-7 py-8 text-center shadow-[0_0_48px_rgba(234,36,112,0.12)]"
@@ -173,7 +172,6 @@ export function AuthenticatedLayout() {
   return (
     <LoadingScreen
       isLoading={true}
-      progress={20}
       title="Returning to login"
       detail="Your match state is safe"
       label="Redirecting to login"

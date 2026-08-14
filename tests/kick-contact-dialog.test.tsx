@@ -38,6 +38,31 @@ describe("kick contact dialog", () => {
     expect(markup).toContain('role="grid"');
     expect(markup.match(/role="gridcell"/gu)).toHaveLength(9);
     expect(markup).toContain('aria-live="polite"');
+    expect(markup).toContain("Driven");
+    expect(markup).toContain("Level");
+    expect(markup).toContain("Straight");
+    expect(markup).not.toMatch(/Submitted power|Server power range|Contact:/u);
+    expect(markup).not.toContain("0.80");
+  });
+
+  it("exposes raw values only when development diagnostics are explicitly enabled", () => {
+    const markup = renderToStaticMarkup(
+      <KickContactDialog
+        envelope={envelope}
+        contact={{ x: 0.25, y: -0.5 }}
+        submittedPower={0.8}
+        submitError={null}
+        isSubmitting={false}
+        onContactChange={() => undefined}
+        onClose={() => undefined}
+        onSubmit={() => undefined}
+        showDiagnostics
+      />,
+    );
+
+    expect(markup).toContain("kick-development-diagnostics");
+    expect(markup).toContain("DEV · power 0.8000");
+    expect(markup).toContain("contact 0.2500, -0.5000");
   });
 
   it("moves through the contact grid without leaving its bounds", () => {

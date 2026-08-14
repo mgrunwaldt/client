@@ -781,7 +781,20 @@ function applyAuthoritativeSnapshot(
       state.phase,
     ) &&
     ["timeline_playback", "legend_unavailable_simulation"].includes(phase);
-  const nextPhase = options.resultPlayback ? "result_playback" : phase;
+  const playbackMinute =
+    options.playbackMinute ??
+    (phase === "timeline_playback" || phase === "legend_unavailable_simulation"
+      ? (payload.match.prev_time ?? 0)
+      : payload.match.current_time);
+  const playsToHalftime =
+    !options.resultPlayback &&
+    phase === "halftime" &&
+    playbackMinute < match.current_time;
+  const nextPhase = options.resultPlayback
+    ? "result_playback"
+    : playsToHalftime
+      ? "timeline_playback"
+      : phase;
   const fieldState = pendingAction?.field_state ?? null;
   const pendingCommand =
     state.pendingCommand &&
@@ -812,13 +825,7 @@ function applyAuthoritativeSnapshot(
         sameMatch ? state.timelineEvents : [],
         payload.timelineEvents,
       ),
-      playbackMinute: preservePlayback
-        ? state.playbackMinute
-        : (options.playbackMinute ??
-          (phase === "timeline_playback" ||
-          phase === "legend_unavailable_simulation"
-            ? (payload.match.prev_time ?? 0)
-            : payload.match.current_time)),
+      playbackMinute: preservePlayback ? state.playbackMinute : playbackMinute,
       pendingCommand,
       retrySafe: false,
       fieldDraft,
@@ -1039,18 +1046,28 @@ export function matchSessionReducer(
     case "RESUME_REQUESTED": {
       const isExactResumeRetry =
         state.phase === "recoverable_error" &&
-        state.recoveryPhase === "halftime" &&
+        (state.recoveryPhase === "halftime" ||
+          state.recoveryPhase === "timeline_playback") &&
         state.retrySafe &&
         matchCommandsExactly(state.pendingCommand, event.command);
+      const advancesTimeline =
+        (state.phase === "timeline_playback" ||
+          state.phase === "legend_unavailable_simulation") &&
+        state.match?.match_status === "IN_PROGRESS" &&
+        !state.pendingAction &&
+        state.playbackMinute >= state.match.current_time;
       if (
-        (state.phase !== "halftime" && !isExactResumeRetry) ||
+        (state.phase !== "halftime" &&
+          !advancesTimeline &&
+          !isExactResumeRetry) ||
         event.command.operation !== "resume" ||
         event.command.actionId !== null ||
         !commandMatchesMatch(state, event.command)
       ) {
         return diagnosticState(state, {
           kind: "illegal_transition",
-          message: "A match can only resume from halftime.",
+          message:
+            "A match can only advance from halftime or its current timeline checkpoint.",
           retryable: true,
         });
       }
@@ -1273,6 +1290,40 @@ export function matchSessionReducer(
       }
       return hydrated;
     }
+    case "TACTICS_CONFIRMED": {
+      if (
+        !state.match ||
+        state.match.id !== event.payload.match.id ||
+        event.payload.match.revision < state.match.revision
+      ) {
+        return state;
+      }
+
+      const currentPresentation = {
+        phase: state.phase,
+        playbackMinute: state.playbackMinute,
+        playbackStatus: state.playbackStatus,
+        decisionResult: state.decisionResult,
+        resultPlayback: state.resultPlayback,
+        fieldDraft: state.fieldDraft,
+      };
+      const updated = applyAuthoritativeSnapshot(state, event.payload, {
+        preservePlayback: false,
+        resultPlayback: Boolean(state.resultPlayback),
+        playbackMinute: state.playbackMinute,
+      });
+      if (
+        updated.phase === "recoverable_error" ||
+        updated.phase === "unsupported_contract"
+      ) {
+        return updated;
+      }
+
+      return {
+        ...updated,
+        ...currentPresentation,
+      };
+    }
     case "COMMAND_RESOLVED": {
       if (!responseMatchesPendingCommand(state, event.source, event.command)) {
         // A response from an unmounted route or replaced request is stale by
@@ -1386,6 +1437,7 @@ export function matchSessionReducer(
       );
       if (
         state.phase === "legend_unavailable_simulation" &&
+        state.match.match_status === "FINISHED" &&
         minute >= state.match.current_time
       ) {
         return withPhase({ ...state, playbackMinute: minute }, "finished");
@@ -1408,7 +1460,13 @@ export function matchSessionReducer(
       }
       return withPhase(state, "scene_ready");
     case "RESULT_ACKNOWLEDGED": {
-      if (state.phase !== "result_playback" || !state.match) return state;
+      if (state.phase !== "result_playback" || !state.match) {
+        return diagnosticState(state, {
+          kind: "illegal_transition",
+          message: "A FIELD result can only continue after it is resolved.",
+          retryable: false,
+        });
+      }
       const acknowledgedResult = resultReceiptIdentity(
         state.match.id,
         state.resultPlayback,
@@ -1437,7 +1495,10 @@ export function matchSessionReducer(
       const playbackPhase =
         phase === "halftime" && state.playbackMinute < state.match.current_time
           ? "timeline_playback"
-          : phase;
+          : state.pendingAction &&
+              state.pendingAction.minute <= state.playbackMinute
+            ? "scene_ready"
+            : phase;
       return withPhase(
         {
           ...state,

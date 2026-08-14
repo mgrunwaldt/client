@@ -169,6 +169,57 @@ test("shows a nonblank fallback while the game scene chunk loads", async ({
   expect(unexpectedDiagnostics).toEqual([]);
 });
 
+test("keeps MAIN playable while its decorative arena is still warming", async ({
+  page,
+}) => {
+  let releasePlayers!: () => void;
+  const playersGate = new Promise<void>((resolve) => {
+    releasePlayers = resolve;
+  });
+  await page.route("**/players.json", async (route) => {
+    await playersGate;
+    await route.continue();
+  });
+
+  await authenticateToHome(page);
+
+  const home = page.getByTestId("home-screen");
+  await expect(home).toBeVisible();
+  await expect(home).toHaveAttribute("data-scene-status", "warming");
+  await expect(page.getByRole("button", { name: "Play" })).toBeEnabled();
+  await expect(
+    page.getByRole("status", { name: "Loading Overgoal" }),
+  ).toHaveCount(0);
+
+  releasePlayers();
+});
+
+test("keeps MAIN playable and offers arena recovery after scene data fails", async ({
+  page,
+}) => {
+  let attempts = 0;
+  await page.route("**/players.json", (route) => {
+    attempts += 1;
+    if (attempts === 1) {
+      return route.fulfill({ status: 503, body: "Unavailable" });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    });
+  });
+
+  await authenticateToHome(page);
+
+  const home = page.getByTestId("home-screen");
+  await expect(home).toHaveAttribute("data-scene-status", "fallback");
+  await expect(page.getByRole("button", { name: "Play" })).toBeEnabled();
+  await page.getByRole("button", { name: "Retry arena" }).click();
+  await expect.poll(() => attempts).toBe(2);
+  await expect(home).not.toHaveAttribute("data-scene-status", "fallback");
+});
+
 test("uses a mobile viewport and dispatches touch input", async ({
   page,
 }, testInfo) => {

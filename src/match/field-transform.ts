@@ -11,8 +11,8 @@ export const FIELD_WORLD_SCALE = {
 export const FIELD_GEOMETRY = {
   opponentGoalCenter: { x: 50, y: 0, z: 0 },
   opponentGoalPosts: [
-    { x: 44.62, y: 0, z: 0 },
-    { x: 55.38, y: 0, z: 0 },
+    { x: 41.93, y: 0, z: 0 },
+    { x: 58.07, y: 0, z: 0 },
   ],
   opponentPenaltyArea: {
     topLeft: { x: 20.35, y: 0, z: 0 },
@@ -38,6 +38,11 @@ export type WorldPoint = {
   x: number;
   y: number;
   z: number;
+};
+
+export type FieldAim = {
+  x: number;
+  y: number;
 };
 
 /** CSS pixel x/y plus the authoritative height carried alongside the label. */
@@ -118,6 +123,25 @@ export function followLegendView(legend: FieldPoint): FieldViewWindow {
 
 export function fixedAttackingView(): FieldViewWindow {
   return { ...FIXED_ATTACKING_VIEW };
+}
+
+/**
+ * Converts a direction drawn on the rendered pitch into the unit vector used
+ * by the backend's normalized 68x105 field coordinates. The renderer's X/Z
+ * axes are already scaled to physical metres, so normalizing them directly
+ * would apply the pitch aspect ratio twice in the authoritative simulation.
+ */
+export function worldVectorToFieldAim(vector: {
+  x: number;
+  z: number;
+}): FieldAim | null {
+  requireFinite(vector.x, "worldVector.x");
+  requireFinite(vector.z, "worldVector.z");
+  const fieldX = vector.x / FIELD_WORLD_SCALE.x;
+  const fieldY = vector.z / FIELD_WORLD_SCALE.z;
+  const magnitude = Math.hypot(fieldX, fieldY);
+  if (magnitude === 0) return null;
+  return { x: fieldX / magnitude, y: fieldY / magnitude };
 }
 
 /**

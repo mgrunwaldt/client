@@ -169,18 +169,18 @@ export interface BackendFieldSequence {
 }
 
 export interface BackendFieldGeometry {
-  version: "regulation-68x105-v1";
+  version: "overgoal-68x105-wide-goal-v2";
   pitch_width_m: 68;
   pitch_length_m: 105;
-  goal_width_m: 7.32;
+  goal_width_m: 10.98;
   goal_height_m: 2.44;
   goal_depth_m: 2;
   goal_post_radius_m: 0.06;
   ball_radius_m: 0.11;
   opponent_goal: {
     line_y: 0;
-    left_post_x: 44.62;
-    right_post_x: 55.38;
+    left_post_x: 41.93;
+    right_post_x: 58.07;
   };
   opponent_penalty_area: {
     min_x: 20.35;
@@ -366,6 +366,15 @@ export interface BackendTimelineEvent {
   my_team_scored: boolean;
   opponent_team_scored: boolean;
   player_participates: boolean;
+  meta?: {
+    source?: string;
+    outcome_type?: string;
+    yellow_card?: boolean;
+    red_card?: boolean;
+    loose_possession?: boolean;
+    success?: boolean;
+    [key: string]: unknown;
+  } | null;
   [key: string]: unknown;
 }
 
@@ -655,7 +664,7 @@ export const BackendCollisionShapeSchema: z.ZodType<BackendCollisionShape> = z
   .object({
     radius_m: z.number().finite().min(0.3).max(0.9),
     height_m: z.number().finite().min(1.7).max(2.44),
-    receive_radius_m: z.number().finite().min(0.3).max(0.9),
+    receive_radius_m: z.number().finite().min(0.3).max(1.5),
   })
   .strict();
 
@@ -763,10 +772,10 @@ export const BackendFieldSequenceSchema: z.ZodType<BackendFieldSequence> = z
 
 export const BackendFieldGeometrySchema: z.ZodType<BackendFieldGeometry> = z
   .object({
-    version: z.literal("regulation-68x105-v1"),
+    version: z.literal("overgoal-68x105-wide-goal-v2"),
     pitch_width_m: z.literal(68),
     pitch_length_m: z.literal(105),
-    goal_width_m: z.literal(7.32),
+    goal_width_m: z.literal(10.98),
     goal_height_m: z.literal(2.44),
     goal_depth_m: z.literal(2),
     goal_post_radius_m: z.literal(0.06),
@@ -774,8 +783,8 @@ export const BackendFieldGeometrySchema: z.ZodType<BackendFieldGeometry> = z
     opponent_goal: z
       .object({
         line_y: z.literal(0),
-        left_post_x: z.literal(44.62),
-        right_post_x: z.literal(55.38),
+        left_post_x: z.literal(41.93),
+        right_post_x: z.literal(58.07),
       })
       .strict(),
     opponent_penalty_area: z
@@ -1848,7 +1857,7 @@ export const BackendDecisionResultSchema: z.ZodType<BackendDecisionResult> = z
       }
     }
 
-    if (result.flight_outcome !== "TEAMMATE_CONTROL" && !result.receiver) {
+    if (result.flight_outcome !== "TEAMMATE_CONTROL") {
       return;
     }
     if (!result.receiver) {
@@ -2233,14 +2242,6 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
           path: ["field_state"],
         });
       }
-      if (isPossessionHandoff) {
-        context.addIssue({
-          code: "custom",
-          message:
-            "A successful teammate handoff requires an authoritative continuation.",
-          path: ["pending_action"],
-        });
-      }
       return;
     }
 
@@ -2278,7 +2279,9 @@ export const BackendMatchResponseSchema: z.ZodType<BackendMatchResponse> = z
         path: ["pending_action"],
       });
     }
-    if (!isPossessionHandoff || !receiverControl) {
+    const isImmediatePossessionContinuation =
+      isPossessionHandoff && pendingAction.source === "POSSESSION_CHAIN";
+    if (!isImmediatePossessionContinuation || !receiverControl) {
       return;
     }
 

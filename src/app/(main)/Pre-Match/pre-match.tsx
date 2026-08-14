@@ -18,8 +18,10 @@ import {
   hasAuthoritativeMatchIdentity,
   hasAuthoritativePrematchState,
 } from "../../../match/authoritative-route-state";
-import { waitForFieldPresentation } from "../../../match/field-presentation-readiness";
-import { preloadMatchExperience } from "../../../match/match-preload";
+import {
+  preloadMatchExperience,
+  preloadMatchTimeline,
+} from "../../../match/match-preload";
 import {
   beginHydration,
   createReconnectHydrationGate,
@@ -235,6 +237,7 @@ export default function PreMatchScreen() {
 
     let requestGeneration = startRequestGeneration.current;
     try {
+      performance.mark("overgoal:match-start-requested");
       const matchSnapshot = match;
       if (!matchSnapshot) {
         throw new Error("Match state is unavailable. Reconnect and try again.");
@@ -271,13 +274,31 @@ export default function PreMatchScreen() {
         }
         activeStartCommand.current = command;
 
+        let kickoffReady = false;
+        let timelineReady = false;
+        const updateRealProgress = () => {
+          const progress =
+            8 + (kickoffReady ? 72 : 0) + (timelineReady ? 20 : 0);
+          updateTransitionLoader({
+            stage: progress === 100 ? "Ready" : "Kickoff",
+            progress,
+            subtitle:
+              progress === 100
+                ? "The match is ready."
+                : "Getting both teams onto the pitch.",
+          });
+        };
         showTransitionLoader({
           title: "Starting Match",
-          subtitle: "Waiting for the authoritative kickoff state.",
-          stage: "Match engine",
+          subtitle: "Getting both teams onto the pitch.",
+          stage: "Kickoff",
           progress: 8,
         });
         requestGeneration = ++startRequestGeneration.current;
+        const timelinePreload = preloadMatchTimeline().then(() => {
+          timelineReady = true;
+          updateRealProgress();
+        });
         const response = await startBackendMatch(matchSnapshot, command);
         if (requestGeneration !== startRequestGeneration.current) {
           if (activeStartCommand.current === command) {
@@ -290,11 +311,8 @@ export default function PreMatchScreen() {
           startLock.current = false;
           return;
         }
-        updateTransitionLoader({
-          stage: "Backend response",
-          progress: 38,
-          subtitle: "Kickoff state and live events received.",
-        });
+        kickoffReady = true;
+        updateRealProgress();
         if (!setStartResponse(response, command)) {
           activeStartCommand.current = null;
           startLock.current = false;
@@ -304,36 +322,29 @@ export default function PreMatchScreen() {
         }
         activeStartCommand.current = null;
         startCompleted.current = true;
+        await timelinePreload;
       } else {
         showTransitionLoader({
           title: "Starting Match",
-          subtitle: "Retrying the local match presentation.",
-          stage: "Match presentation",
-          progress: 38,
+          subtitle: "Opening the live match.",
+          stage: "Kickoff",
+          progress: 80,
+        });
+        await preloadMatchTimeline();
+        updateTransitionLoader({
+          stage: "Ready",
+          progress: 100,
+          subtitle: "The match is ready.",
         });
       }
-
-      await preloadMatchExperience((update) => {
-        if (requestGeneration !== startRequestGeneration.current) return;
-        updateTransitionLoader({
-          stage: update.stage,
-          progress: 40 + update.progress * 0.54,
-          subtitle: update.detail,
-        });
-      });
-      updateTransitionLoader({
-        stage: "Match scene",
-        progress: 95,
-        subtitle: "Rendering the field before the live timeline opens.",
-      });
-      await waitForFieldPresentation(matchId);
       if (requestGeneration !== startRequestGeneration.current) return;
       if (!startCompleted.current) return;
-      updateTransitionLoader({
-        stage: "Live feed",
-        progress: 96,
-        subtitle: "Opening the minute-by-minute timeline.",
-      });
+      performance.mark("overgoal:match-start-ready");
+      performance.measure(
+        "overgoal:prematch-to-timeline-ready",
+        "overgoal:match-start-requested",
+        "overgoal:match-start-ready",
+      );
       preserveTransitionLoader.current = true;
       navigate(`/match/${matchId}`);
     } catch (error) {
@@ -362,7 +373,7 @@ export default function PreMatchScreen() {
         isLoading={true}
         progress={loading ? 32 : 18}
         title="Preparing matchup"
-        detail="Loading authoritative teams and match state"
+        detail="Bringing both teams together"
         label="Loading pre-match data"
       />
     );
@@ -419,108 +430,115 @@ export default function PreMatchScreen() {
         isLoading={true}
         progress={32}
         title="Preparing matchup"
-        detail="Restoring authoritative match presentation"
+        detail="Restoring your match"
         label="Restoring pre-match data"
       />
     );
   }
 
   return (
-    <div
+    <main
       data-testid="prematch-screen"
       data-session-phase={phase}
       data-session-loading={loading}
-      className="bg-overgoal-dark-blue h-full min-h-dvh w-full p-4"
+      className="overgoal-safe-screen bg-overgoal-dark-blue relative isolate flex h-dvh w-full items-center justify-center overflow-hidden [--overgoal-safe-bottom-min:0.5rem] [--overgoal-safe-inline-min:0.75rem] [--overgoal-safe-top-min:0.5rem]"
     >
       <img
         src={preMatchBackground}
         alt="pre-match-background"
-        className="absolute inset-0 z-0 h-screen min-h-dvh w-full object-cover"
+        className="absolute inset-0 -z-10 h-full w-full object-cover"
       />
-      <div className="relative z-100! flex w-full flex-col items-center justify-between">
-        <BackButton className="mr-auto h-12 w-12" to="/" />
+      <div className="flex h-full min-h-0 w-full max-w-md flex-col gap-2">
+        <header className="grid shrink-0 grid-cols-[44px_1fr_44px] items-center">
+          <BackButton
+            data-testid="prematch-back"
+            className="h-11 w-11"
+            to="/"
+          />
+          <GlitchText
+            className="text-center text-[clamp(1rem,5vw,1.5rem)]"
+            text="Get ready to play"
+          />
+        </header>
 
-        <div className="z-100! flex h-full w-full flex-col items-center justify-center gap-4 py-8">
-          <GlitchText className="text-2xl" text="Get ready to play" />
-
-          <div className="relative flex h-full w-full flex-row items-center justify-center gap-1">
-            <PreMatchTeam
-              teamName={myTeam.name}
-              teamImage={teamImageFor(myTeam)}
-              side="left"
-              isMyTeam={true}
-            />
-
-            <span className="font-orbitron text-2xl font-bold text-white uppercase">
-              vs
-            </span>
-
-            <PreMatchTeam
-              teamName={opponentTeam.name}
-              teamImage={teamImageFor(opponentTeam)}
-              side="right"
-              isMyTeam={false}
-            />
-          </div>
-
-          <PreMatchLegend
-            legendPlayerId={legendPlayerId}
-            legendProfile={legendProfile}
+        <section
+          aria-label="Matchup"
+          className="relative flex min-h-0 w-full flex-1 items-center justify-center gap-1 overflow-hidden"
+        >
+          <PreMatchTeam
+            teamName={myTeam.name}
+            teamImage={teamImageFor(myTeam)}
+            side="left"
+            isMyTeam={true}
           />
 
-          <div className="mt-16 flex w-full flex-col items-center justify-center">
-            <div
-              className={cn(
-                "z-100 h-full max-h-[73px] w-full max-w-[236px]",
-                "flex items-center justify-center",
-                "bg-[url('/homepage/play_button.svg')] bg-contain bg-center",
-                "disabled:opacity-90",
-                "bg-no-repeat",
-              )}
+          <span className="font-orbitron z-20 shrink-0 text-lg font-bold text-white uppercase">
+            vs
+          </span>
+
+          <PreMatchTeam
+            teamName={opponentTeam.name}
+            teamImage={teamImageFor(opponentTeam)}
+            side="right"
+            isMyTeam={false}
+          />
+        </section>
+
+        <PreMatchLegend legendProfile={legendProfile} />
+
+        <div className="flex w-full shrink-0 flex-col items-center justify-center">
+          <div
+            className={cn(
+              "z-100 h-16 w-full max-w-[236px]",
+              "flex items-center justify-center",
+              "bg-[url('/homepage/play_button.svg')] bg-contain bg-center",
+              "disabled:opacity-90",
+              "bg-no-repeat",
+            )}
+          >
+            <Button
+              data-testid="prematch-play"
+              className="h-full min-h-11 w-full"
+              onClick={() => {
+                const exactRetryAuthorized = Boolean(
+                  error &&
+                    retrySafe &&
+                    diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
+                    pendingCommand?.operation === "start" &&
+                    pendingCommand.matchId === match.id,
+                );
+                if (error && !exactRetryAuthorized) {
+                  setReloadKey((value) => value + 1);
+                  return;
+                }
+                void handleStartMatch();
+              }}
+              disabled={loading}
+              aria-describedby={error ? "start-match-error" : undefined}
             >
-              <Button
-                className="h-full w-full"
-                onClick={() => {
-                  const exactRetryAuthorized = Boolean(
-                    error &&
-                      retrySafe &&
-                      diagnostic?.recoveryAction === "RETRY_SAME_REQUEST" &&
-                      pendingCommand?.operation === "start" &&
-                      pendingCommand.matchId === match.id,
-                  );
-                  if (error && !exactRetryAuthorized) {
-                    setReloadKey((value) => value + 1);
-                    return;
-                  }
-                  void handleStartMatch();
-                }}
-                disabled={loading}
-                aria-describedby={error ? "start-match-error" : undefined}
-              >
-                <p className="airstrike-normal !text-5xl text-white uppercase">
-                  {loading
-                    ? "..."
-                    : error
-                      ? retrySafe &&
-                        diagnostic?.recoveryAction === "RETRY_SAME_REQUEST"
-                        ? "Retry"
-                        : "Refresh"
-                      : "Play"}
-                </p>
-              </Button>
-            </div>
-            {error ? (
-              <p
-                id="start-match-error"
-                role="alert"
-                className="mt-4 w-full max-w-sm rounded-xl border border-pink-400/45 bg-slate-950/90 px-4 py-3 text-center text-sm text-pink-100"
-              >
-                {error}
+              <p className="airstrike-normal text-4xl text-white uppercase">
+                {loading
+                  ? "..."
+                  : error
+                    ? retrySafe &&
+                      diagnostic?.recoveryAction === "RETRY_SAME_REQUEST"
+                      ? "Retry"
+                      : "Refresh"
+                    : "Play"}
               </p>
-            ) : null}
+            </Button>
           </div>
+          {error ? (
+            <p
+              id="start-match-error"
+              role="alert"
+              className="mt-4 w-full max-w-sm rounded-xl border border-pink-400/45 bg-slate-950/90 px-4 py-3 text-center text-sm text-pink-100"
+            >
+              {error}
+            </p>
+          ) : null}
         </div>
       </div>
-    </div>
+    </main>
   );
 }

@@ -20,7 +20,7 @@
     "my_team_positions": [{ "id": "team_1_ST_10", "role": "ST", "x": 72, "y": 36.91, "is_legend": true, "has_ball": true, "collision_shape": { "radius_m": 0.42, "height_m": 2, "receive_radius_m": 0.85 } }],
     "opponent_positions": [{ "id": "team_2_CB_3", "role": "CB", "x": 65, "y": 28 }],
     "legend_player_id": "team_1_ST_10", "carrier_player_id": "team_1_ST_10", "distance_to_goal": 24.5, "ball_x": 72, "ball_y": 36.2,
-    "geometry": { "version": "regulation-68x105-v1", "pitch_width_m": 68, "pitch_length_m": 105, "goal_width_m": 7.32, "goal_height_m": 2.44, "goal_depth_m": 2, "goal_post_radius_m": 0.06, "ball_radius_m": 0.11, "opponent_goal": { "line_y": 0, "left_post_x": 44.62, "right_post_x": 55.38 }, "opponent_penalty_area": { "min_x": 20.35, "max_x": 79.65, "min_y": 0, "max_y": 15.71, "penalty_spot": { "x": 50, "y": 10.48 } } },
+    "geometry": { "version": "overgoal-68x105-wide-goal-v2", "pitch_width_m": 68, "pitch_length_m": 105, "goal_width_m": 10.98, "goal_height_m": 2.44, "goal_depth_m": 2, "goal_post_radius_m": 0.06, "ball_radius_m": 0.11, "opponent_goal": { "line_y": 0, "left_post_x": 41.93, "right_post_x": 58.07 }, "opponent_penalty_area": { "min_x": 20.35, "max_x": 79.65, "min_y": 0, "max_y": 15.71, "penalty_spot": { "x": 50, "y": 10.48 } } },
     "context": { "seed": 12001, "distance_to_goal": 24.5, "side_of_pitch": "RIGHT", "pressure": 63, "attack_phase": "SETTLED", "numerical_advantage": 0, "quality_band": "PROGRESSIVE", "previous_outcome": "SIMILAR", "possession_state": "PASS_RECEIVED", "carrier_player_id": "team_1_ST_10" }
   }
 }

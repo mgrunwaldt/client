@@ -3,6 +3,7 @@ import { useThree } from "@react-three/fiber";
 import { type PointerEvent, useEffect, useRef } from "react";
 import * as THREE from "three";
 
+import { screenPointToWorldPlane } from "../../match/field-camera";
 import { type BallAimDraft, buildBallAimDraft } from "../../match/kick-gesture";
 
 const REQUIRED_STABLE_FOCUS_FRAMES = 2;
@@ -25,16 +26,11 @@ function aimPointFromEvent(
   height: number,
 ) {
   const bounds = canvas.getBoundingClientRect();
-  const pointer = new THREE.Vector2(
-    ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
-    -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
-  );
-  const raycaster = new THREE.Raycaster();
-  raycaster.setFromCamera(pointer, camera);
-  const point = new THREE.Vector3();
-  return raycaster.ray.intersectPlane(
-    new THREE.Plane(new THREE.Vector3(0, 1, 0), -height),
-    point,
+  return screenPointToWorldPlane(
+    { x: event.clientX - bounds.left, y: event.clientY - bounds.top },
+    camera,
+    { width: bounds.width, height: bounds.height },
+    height,
   );
 }
 
@@ -53,6 +49,8 @@ export function BallAimSurface({
   const targetRef = useRef<HTMLButtonElement>(null);
   const dragStartRef = useRef<THREE.Vector3 | null>(null);
   const dragCurrentRef = useRef<THREE.Vector3 | null>(null);
+  const dragStartScreenRef = useRef<{ x: number; y: number } | null>(null);
+  const dragScreenDistanceRef = useRef(0);
 
   useEffect(() => {
     if (!enabled || !focusOnMount) return;
@@ -117,12 +115,16 @@ export function BallAimSurface({
   const clearDrag = () => {
     dragStartRef.current = null;
     dragCurrentRef.current = null;
+    dragStartScreenRef.current = null;
+    dragScreenDistanceRef.current = 0;
   };
 
   const handlePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     const start = new THREE.Vector3(...position);
     dragStartRef.current = start;
     dragCurrentRef.current = start.clone();
+    dragStartScreenRef.current = { x: event.clientX, y: event.clientY };
+    dragScreenDistanceRef.current = 0;
     event.currentTarget.setPointerCapture(event.pointerId);
     onAimChange(null);
   };
@@ -132,8 +134,13 @@ export function BallAimSurface({
     if (!start) return;
     const point = aimPointFromEvent(event, camera, gl.domElement, start.y);
     if (!point) return;
+    const screenStart = dragStartScreenRef.current;
+    const screenDistance = screenStart
+      ? Math.hypot(event.clientX - screenStart.x, event.clientY - screenStart.y)
+      : 0;
     dragCurrentRef.current = point;
-    onAimChange(buildBallAimDraft(start, point));
+    dragScreenDistanceRef.current = screenDistance;
+    onAimChange(buildBallAimDraft(start, point, screenDistance));
   };
 
   const handlePointerUp = (event: PointerEvent<HTMLButtonElement>) => {
@@ -141,7 +148,11 @@ export function BallAimSurface({
     const current = dragCurrentRef.current;
     if (!start || !current) return;
     event.currentTarget.releasePointerCapture(event.pointerId);
-    const draft = buildBallAimDraft(start, current);
+    const draft = buildBallAimDraft(
+      start,
+      current,
+      dragScreenDistanceRef.current,
+    );
     clearDrag();
     if (draft) {
       onAimRelease(draft);

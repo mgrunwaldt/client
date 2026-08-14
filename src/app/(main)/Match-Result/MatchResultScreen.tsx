@@ -236,61 +236,141 @@ export default function MatchResultScreen() {
   }
 
   const contribution = handoff.legend_contribution;
+  const resultTone = {
+    WIN: {
+      accent: "#b8ff4d",
+      glow: "rgba(184,255,77,0.34)",
+      kicker: "Victory secured",
+    },
+    DRAW: {
+      accent: "#56e7ff",
+      glow: "rgba(86,231,255,0.3)",
+      kicker: "Honours even",
+    },
+    LOSS: {
+      accent: "#ff3d9a",
+      glow: "rgba(255,61,154,0.3)",
+      kicker: "Final whistle",
+    },
+    NO_CONTEST: {
+      accent: "#ffd166",
+      glow: "rgba(255,209,102,0.3)",
+      kicker: "Match closed",
+    },
+  }[handoff.result];
+  const highlights = handoff.key_events
+    .filter(
+      (event) => event.action !== "HALFTIME" && event.action !== "MATCH_END",
+    )
+    .slice(-3);
+  const teamCrest = (teamName: string) =>
+    teamName.toLowerCase().includes("dojo")
+      ? "/teams/dojoUnited.webp"
+      : "/teams/Cartridge City.webp";
   return (
     <main
       data-testid="match-result-screen"
       data-session-phase={phase}
       data-session-loading={loading}
-      className="min-h-dvh bg-[url('/backgrounds/glitch-bg.webp')] bg-cover bg-center px-4 py-8 text-white"
+      className="overgoal-safe-screen relative h-dvh overflow-hidden bg-[#020816] text-white [--overgoal-safe-bottom-min:1.5rem] [--overgoal-safe-inline-min:1rem] [--overgoal-safe-top-min:1.5rem]"
     >
-      <section className="mx-auto w-full max-w-lg rounded-[2rem] border border-cyan-300/45 bg-slate-950/90 p-6 shadow-[0_0_44px_rgba(34,211,238,0.15)]">
-        <p className="font-orbitron text-center text-xs font-bold tracking-[0.34em] text-cyan-300 uppercase">
-          Full time
-        </p>
-        <h1 className="font-orbitron mt-3 text-center text-3xl font-black text-white uppercase">
-          {handoff.result}
-        </h1>
-        <p className="font-orbitron mt-4 text-center text-4xl text-cyan-100">
-          {handoff.final_score.my_team} - {handoff.final_score.opponent_team}
-        </p>
-        <p className="mt-3 text-center text-sm text-slate-300">
-          {myTeam.name} vs {opponentTeam.name}
-        </p>
-        <p className="font-orbitron mt-5 text-center text-xs tracking-[0.18em] text-lime-200 uppercase">
-          {pointsLabel(handoff.season_points_delta)}
-        </p>
+      <div className="pointer-events-none absolute inset-0 bg-[url('/backgrounds/glitch-bg.webp')] bg-cover bg-center opacity-75" />
+      <div
+        className="pointer-events-none absolute -top-36 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full blur-3xl"
+        style={{ background: resultTone.glow }}
+      />
+      <section className="relative mx-auto flex h-full min-h-0 w-full max-w-lg flex-col overflow-hidden rounded-[2.4rem] border border-cyan-300/40 bg-[linear-gradient(155deg,rgba(2,18,40,0.97),rgba(2,3,20,0.98)_60%,rgba(22,3,35,0.98))] shadow-[0_0_48px_rgba(34,211,238,0.16)]">
+        <div className="relative px-5 pt-8 pb-6 text-center">
+          <p className="font-orbitron text-[10px] font-black tracking-[0.34em] text-cyan-200 uppercase">
+            {resultTone.kicker}
+          </p>
+          <h1
+            className="font-orbitron mt-2 text-5xl font-black uppercase italic drop-shadow-[0_0_18px_currentColor]"
+            style={{ color: resultTone.accent }}
+          >
+            {handoff.result === "NO_CONTEST" ? "No contest" : handoff.result}
+          </h1>
 
-        <div className="mt-7 border-t border-cyan-300/20 pt-5">
-          <h2 className="font-orbitron text-sm tracking-[0.2em] text-cyan-200 uppercase">
-            Legend contribution
-          </h2>
-          <p className="mt-3 text-sm text-slate-200">
-            {contribution.minutes_played}&apos; played ·{" "}
-            {contribution.interventions} interventions ·{" "}
-            {contribution.successful_actions} successful actions
-          </p>
-          <p className="mt-2 text-sm text-slate-200">
-            {contribution.goals} goals · {contribution.assists} assists
-          </p>
+          <div className="mt-7 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <div className="min-w-0">
+              <img
+                src={teamCrest(myTeam.name)}
+                alt=""
+                className="mx-auto h-16 w-16 object-contain drop-shadow-[0_0_16px_rgba(114,247,0,0.24)]"
+              />
+              <p className="font-orbitron mt-2 truncate text-[10px] font-bold tracking-[0.12em] text-lime-300 uppercase">
+                {myTeam.name}
+              </p>
+            </div>
+            <div className="font-orbitron flex items-center gap-3 text-5xl font-black text-white">
+              <span>{handoff.final_score.my_team}</span>
+              <span className="text-2xl text-cyan-200/65">:</span>
+              <span>{handoff.final_score.opponent_team}</span>
+            </div>
+            <div className="min-w-0">
+              <img
+                src={teamCrest(opponentTeam.name)}
+                alt=""
+                className="mx-auto h-16 w-16 object-contain drop-shadow-[0_0_16px_rgba(234,36,112,0.24)]"
+              />
+              <p className="font-orbitron mt-2 truncate text-[10px] font-bold tracking-[0.12em] text-pink-400 uppercase">
+                {opponentTeam.name}
+              </p>
+            </div>
+          </div>
+
+          <div className="font-orbitron mx-auto mt-5 inline-flex rounded-full border border-lime-300/35 bg-lime-300/10 px-4 py-2 text-xs font-black tracking-[0.16em] text-lime-200 uppercase">
+            {pointsLabel(handoff.season_points_delta)}
+          </div>
         </div>
 
-        <div className="mt-6 border-t border-cyan-300/20 pt-5">
-          <h2 className="font-orbitron text-sm tracking-[0.2em] text-cyan-200 uppercase">
-            Key events
-          </h2>
-          <ul className="mt-3 space-y-2 text-sm text-slate-200">
-            {handoff.key_events.map((event) => (
-              <li key={`${event.event_id}-${event.minute}`}>
-                {event.minute}&apos; · {event.description}
-              </li>
-            ))}
-          </ul>
+        <div className="mx-4 grid grid-cols-3 overflow-hidden rounded-2xl border border-cyan-300/25 bg-black/30">
+          {[
+            ["Goals", contribution.goals],
+            ["Assists", contribution.assists],
+            ["Won", contribution.successful_actions],
+          ].map(([label, value], index) => (
+            <div
+              key={label}
+              className={`px-2 py-4 text-center ${index > 0 ? "border-l border-cyan-300/15" : ""}`}
+            >
+              <strong className="font-orbitron block text-2xl text-white">
+                {value}
+              </strong>
+              <span className="mt-1 block text-[9px] font-black tracking-[0.2em] text-cyan-200/70 uppercase">
+                {label}
+              </span>
+            </div>
+          ))}
         </div>
+
+        {highlights.length > 0 && (
+          <div className="mx-4 mt-5">
+            <p className="font-orbitron mb-3 text-[10px] font-black tracking-[0.28em] text-cyan-200 uppercase">
+              Match flashes
+            </p>
+            <ul className="space-y-2">
+              {highlights.map((event) => (
+                <li
+                  key={`${event.event_id}-${event.minute}`}
+                  className="flex items-center gap-3 rounded-xl border border-cyan-300/15 bg-cyan-300/5 px-3 py-2.5"
+                >
+                  <span className="font-orbitron min-w-10 text-sm font-black text-lime-200">
+                    {event.minute}&apos;
+                  </span>
+                  <span className="line-clamp-2 text-xs leading-4 text-cyan-50/85">
+                    {event.description}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {handoff.administrative_result && (
           <div
             data-testid="administrative-result"
-            className="mt-6 rounded-xl border border-amber-300/35 bg-amber-300/10 p-4 text-sm text-amber-100"
+            className="mx-4 mt-5 rounded-xl border border-amber-300/35 bg-amber-300/10 p-4 text-sm text-amber-100"
           >
             Administrative outcome:{" "}
             {
@@ -302,21 +382,11 @@ export default function MatchResultScreen() {
           </div>
         )}
 
-        <div className="mt-6 border-t border-cyan-300/20 pt-5 text-sm text-slate-200">
-          <p className="font-orbitron text-xs tracking-[0.18em] text-cyan-200 uppercase">
-            Settlement handoff
-          </p>
-          <p className="mt-2">
-            {handoff.pending_settlement_events.length} pending event
-            {handoff.pending_settlement_events.length === 1 ? "" : "s"} ·{" "}
-            {handoff.settlement_status}
-          </p>
-        </div>
         <Button
-          className="font-orbitron mt-7 min-h-12 w-full border border-cyan-300 bg-cyan-300/10 tracking-[0.2em] text-cyan-100 uppercase"
+          className="font-orbitron mx-4 mt-auto mb-5 min-h-14 w-auto border border-cyan-200 bg-[linear-gradient(90deg,rgba(0,228,232,0.22),rgba(148,0,255,0.22))] tracking-[0.22em] text-cyan-50 uppercase shadow-[0_0_24px_rgba(0,228,232,0.18)]"
           onClick={returnToHome}
         >
-          Back to home
+          Continue
         </Button>
       </section>
     </main>

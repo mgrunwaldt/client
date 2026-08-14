@@ -104,6 +104,43 @@ function resumedSecondHalf(matchId: string): BackendMatchResponse {
   };
 }
 
+function secondHalfInteraction(matchId: string): BackendMatchResponse {
+  const response = responseWithMatchId(
+    structuredClone(waitingOpenPlayResponse) as BackendMatchResponse,
+    matchId,
+  );
+  const pendingAction = {
+    ...response.pending_action!,
+    id: "action-second-half-47",
+    action_sequence: 2,
+    minute: 47,
+    field_state_id: "field-second-half-47",
+    field_state: {
+      ...response.pending_action!.field_state!,
+      id: "field-second-half-47",
+      action_sequence: 2,
+      minute: 47,
+    },
+  };
+  return {
+    ...response,
+    minute: 47,
+    prev_time: 46,
+    pending_action: pendingAction,
+    field_state: pendingAction.field_state,
+    events: response.events.map((event) => ({ ...event, minute: 47 })),
+    match: {
+      ...response.match,
+      revision: 3,
+      current_time: 47,
+      prev_time: 46,
+      match_status: "WAITING_FOR_DECISION",
+      pending_action: pendingAction,
+      player_participation: "PARTICIPATING",
+    },
+  };
+}
+
 function prematchSnapshot(matchId: string): BackendMatchSnapshot {
   const response = responseWithMatchId(
     structuredClone(createMatchResponse) as Pick<
@@ -349,6 +386,7 @@ test("retries a rejected halftime resume with the exact command identity", async
     matchId,
   );
   const accepted = resumedSecondHalf(matchId);
+  const nextInteraction = secondHalfInteraction(matchId);
   const requests: RequestEvidence[] = [];
 
   await context.route(`**/api/match/${matchId}`, (route) =>
@@ -366,7 +404,11 @@ test("retries a rejected halftime resume with the exact command identity", async
       headers: apiHeaders,
       contentType: "application/json",
       body: JSON.stringify(
-        requests.length === 1 ? retrySameRequestError("resume") : accepted,
+        requests.length === 1
+          ? retrySameRequestError("resume")
+          : requests.length === 2
+            ? accepted
+            : nextInteraction,
       ),
     });
   });
@@ -387,14 +429,10 @@ test("retries a rejected halftime resume with the exact command identity", async
   await expect.poll(() => requests.length).toBe(2);
   expect(requests[1]).toEqual(requests[0]);
 
-  await expect(page.getByTestId("timeline-screen")).toHaveAttribute(
-    "data-session-phase",
-    "timeline_playback",
-  );
-  await expect(page.getByTestId("timeline-screen")).toHaveAttribute(
-    "data-playback-minute",
-    "46",
-  );
+  await expect.poll(() => requests.length).toBe(3);
+  expect(requests[2]?.idempotencyKey).not.toBe(requests[1]?.idempotencyKey);
+  await expect(page).toHaveURL(new RegExp(`/game/${matchId}$`, "u"));
+  await expect(page.getByTestId("game-field")).toBeVisible();
 });
 
 test("reconciles a committed halftime resume after leaving TIMELINE", async ({
@@ -407,6 +445,7 @@ test("reconciles a committed halftime resume after leaving TIMELINE", async ({
     matchId,
   );
   const accepted = resumedSecondHalf(matchId);
+  const nextInteraction = secondHalfInteraction(matchId);
   let committed = false;
   let hydrations = 0;
   const requests: RequestEvidence[] = [];
@@ -430,14 +469,16 @@ test("reconciles a committed halftime resume after leaving TIMELINE", async ({
   });
   await context.route("**/api/resumeMatch", async (route) => {
     requests.push(recordRequest(route));
-    committed = true;
-    markResumeStarted();
-    await resumeGate;
+    if (requests.length === 1) {
+      committed = true;
+      markResumeStarted();
+      await resumeGate;
+    }
     await route.fulfill({
       status: 200,
       headers: apiHeaders,
       contentType: "application/json",
-      body: JSON.stringify(accepted),
+      body: JSON.stringify(requests.length === 1 ? accepted : nextInteraction),
     });
   });
 
@@ -464,6 +505,7 @@ test("reconciles a committed halftime resume after leaving TIMELINE", async ({
     "46",
   );
   await expect(page.getByRole("alert")).toHaveCount(0);
-  expect(requests).toHaveLength(1);
+  await expect.poll(() => requests).toHaveLength(2);
+  expect(requests[1]?.idempotencyKey).not.toBe(requests[0]?.idempotencyKey);
   expect(hydrations).toBeGreaterThanOrEqual(2);
 });

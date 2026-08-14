@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   createFieldTransform,
   FIELD_GEOMETRY,
+  FIELD_WORLD_SCALE,
   type FieldPoint,
   type FieldViewport,
   fixedAttackingView,
   followLegendView,
+  worldVectorToFieldAim,
 } from "../src/match/field-transform";
 
 const mobile: FieldViewport = { width: 390, height: 844 };
@@ -32,6 +34,28 @@ function expectWorldClose(
 }
 
 describe("M2-I8 field transform", () => {
+  it("preserves the visible kick direction when converting to backend field aim", () => {
+    const visibleDirection = { x: 1, z: -1 };
+    const aim = worldVectorToFieldAim(visibleDirection);
+
+    expect(aim).not.toBeNull();
+    const simulatedWorldDirection = {
+      x: aim!.x * FIELD_WORLD_SCALE.x,
+      z: aim!.y * FIELD_WORLD_SCALE.z,
+    };
+    const simulatedMagnitude = Math.hypot(
+      simulatedWorldDirection.x,
+      simulatedWorldDirection.z,
+    );
+    expectClose(simulatedWorldDirection.x / simulatedMagnitude, Math.SQRT1_2);
+    expectClose(simulatedWorldDirection.z / simulatedMagnitude, -Math.SQRT1_2);
+    expect(Math.hypot(aim!.x, aim!.y)).toBeCloseTo(1);
+  });
+
+  it("rejects a zero-length world kick vector", () => {
+    expect(worldVectorToFieldAim({ x: 0, z: 0 })).toBeNull();
+  });
+
   it("maps the opponent goal, posts, and penalty-area corners to one world pitch", () => {
     const transform = createFieldTransform({
       viewport: desktop,
@@ -44,11 +68,11 @@ describe("M2-I8 field transform", () => {
     );
     expectWorldClose(
       transform.fieldToWorld(FIELD_GEOMETRY.opponentGoalPosts[0]),
-      { x: -3.6584, y: 0, z: -52.5 },
+      { x: -5.4876, y: 0, z: -52.5 },
     );
     expectWorldClose(
       transform.fieldToWorld(FIELD_GEOMETRY.opponentGoalPosts[1]),
-      { x: 3.6584, y: 0, z: -52.5 },
+      { x: 5.4876, y: 0, z: -52.5 },
     );
     expectWorldClose(
       transform.fieldToWorld(FIELD_GEOMETRY.opponentPenaltyArea.topLeft),

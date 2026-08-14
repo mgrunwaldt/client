@@ -8,7 +8,9 @@ import {
   type DribbleLane,
   type DribbleLaneTracePoint,
   type DribblePattern,
+  type DribblePresentationState,
   elapsedDribbleSeconds,
+  firstDribbleCollisionAtSecond,
   pressureWindowForDribbleAttempt,
   roundDribbleSecond,
 } from "../../match/dribble-input";
@@ -22,26 +24,32 @@ function laneProgress(lane: DribbleLane) {
 }
 
 export function DribbleControls({
+  actionId,
   pattern,
   disabled,
   onSubmit,
+  onPresentationChange,
 }: {
+  actionId: string;
   pattern: DribblePattern;
   disabled: boolean;
   onSubmit: (decision: DribbleDecision) => void;
+  onPresentationChange: (state: DribblePresentationState) => void;
 }) {
   const [elapsed, setElapsed] = useState(0);
   const [trace, setTrace] = useState<DribbleLaneTracePoint[]>([
     { at_second: 0, lane: pattern.starting_lane },
   ]);
   const [submitted, setSubmitted] = useState(false);
-  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [startedAt] = useState(() => performance.now());
   const traceRef = useRef(trace);
   const elapsedRef = useRef(0);
   const submittedRef = useRef(false);
-  const startedAtRef = useRef<number | null>(null);
+  const startedAtRef = useRef<number | null>(startedAt);
   const frameRef = useRef<number | null>(null);
+  const deadlineRef = useRef<number | null>(null);
   const e2eClockPausedRef = useRef(false);
+  const lastPresentationReportRef = useRef(Number.NEGATIVE_INFINITY);
 
   const submitDecision = (
     choice: "DRIBBLE_RUN" | "SIMULATE_FOUL",
@@ -63,19 +71,26 @@ export function DribbleControls({
 
   useEffect(() => {
     if (disabled) return;
+    startedAtRef.current = startedAt;
+    deadlineRef.current = window.setTimeout(
+      completeRun,
+      pattern.duration_seconds * 1000,
+    );
     const tick = (now: number) => {
       if (e2eClockPausedRef.current) return;
-      if (startedAtRef.current === null) {
-        startedAtRef.current = now;
-        setStartedAt(now);
-      }
       const nextElapsed = elapsedDribbleSeconds(
-        startedAtRef.current,
+        startedAt,
         now,
         pattern.duration_seconds,
       );
       elapsedRef.current = nextElapsed;
       setElapsed(nextElapsed);
+      if (
+        firstDribbleCollisionAtSecond(pattern, traceRef.current, nextElapsed)
+      ) {
+        completeRun();
+        return;
+      }
       if (nextElapsed >= pattern.duration_seconds) {
         completeRun();
         return;
@@ -87,14 +102,19 @@ export function DribbleControls({
       if (frameRef.current !== null)
         window.cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
+      if (deadlineRef.current !== null) {
+        window.clearTimeout(deadlineRef.current);
+        deadlineRef.current = null;
+      }
     };
-  }, [disabled, pattern.duration_seconds]);
+  }, [disabled, pattern, startedAt]);
 
   useEffect(() => {
     if (import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE !== "true") return;
     const bridge = globalThis as typeof globalThis & {
       __OVERGOAL_E2E_DRIBBLE_ADVANCE__?: (second: number) => void;
       __OVERGOAL_E2E_DRIBBLE_READ__?: () => {
+        actionId: string;
         elapsed: number;
         trace: DribbleLaneTracePoint[];
       };
@@ -105,13 +125,33 @@ export function DribbleControls({
         Math.min(pattern.duration_seconds, second),
       );
       e2eClockPausedRef.current = true;
+      if (deadlineRef.current !== null) {
+        window.clearTimeout(deadlineRef.current);
+        deadlineRef.current = null;
+      }
+      lastPresentationReportRef.current = Number.NEGATIVE_INFINITY;
       startedAtRef.current = performance.now() - nextElapsed * 1000;
-      setStartedAt(startedAtRef.current);
       elapsedRef.current = nextElapsed;
       setElapsed(nextElapsed);
+      onPresentationChange({
+        elapsed: nextElapsed,
+        playerLanePosition:
+          laneProgress(
+            traceRef.current[traceRef.current.length - 1]?.lane ??
+              pattern.starting_lane,
+          ) / 50,
+        trace: traceRef.current,
+      });
+      if (
+        firstDribbleCollisionAtSecond(pattern, traceRef.current, nextElapsed)
+      ) {
+        completeRun();
+        return;
+      }
       if (nextElapsed >= pattern.duration_seconds) completeRun();
     };
     const read = () => ({
+      actionId,
       elapsed: elapsedRef.current,
       trace: traceRef.current.map((point) => ({ ...point })),
     });
@@ -125,7 +165,7 @@ export function DribbleControls({
         delete bridge.__OVERGOAL_E2E_DRIBBLE_READ__;
       }
     };
-  }, [pattern.duration_seconds]);
+  }, [actionId, onPresentationChange, pattern]);
 
   const currentLane = trace[trace.length - 1]?.lane ?? pattern.starting_lane;
   const roundedElapsed = roundDribbleSecond(elapsed);
@@ -135,6 +175,27 @@ export function DribbleControls({
     roundedElapsed,
   );
   const canSimulate = Boolean(pressureWindow) && !disabled && !submitted;
+
+  useEffect(() => {
+    if (
+      elapsed < pattern.duration_seconds &&
+      elapsed - lastPresentationReportRef.current < 0.05
+    ) {
+      return;
+    }
+    lastPresentationReportRef.current = elapsed;
+    onPresentationChange({
+      elapsed,
+      playerLanePosition: laneProgress(currentLane) / 50,
+      trace,
+    });
+  }, [
+    currentLane,
+    elapsed,
+    onPresentationChange,
+    pattern.duration_seconds,
+    trace,
+  ]);
 
   const switchLane = (nextLane: DribbleLane) => {
     const inputElapsed =
@@ -165,7 +226,10 @@ export function DribbleControls({
   };
 
   const switchRelative = (direction: -1 | 1) => {
-    const next = DRIBBLE_LANES[DRIBBLE_LANES.indexOf(currentLane) + direction];
+    const liveLane =
+      traceRef.current[traceRef.current.length - 1]?.lane ??
+      pattern.starting_lane;
+    const next = DRIBBLE_LANES[DRIBBLE_LANES.indexOf(liveLane) + direction];
     if (next) switchLane(next);
   };
 
@@ -205,10 +269,33 @@ export function DribbleControls({
       />
 
       <div
+        data-testid="dribble-lane-stage"
+        aria-hidden="true"
+        className="absolute inset-0 z-0 overflow-hidden bg-[linear-gradient(90deg,rgba(3,211,252,0.04),rgba(3,211,252,0.01)_33%,rgba(190,242,100,0.035)_33%,rgba(190,242,100,0.015)_66%,rgba(244,114,182,0.04)_66%)]"
+      >
+        <div className="absolute inset-y-0 left-1/3 w-px bg-cyan-200/55 shadow-[0_0_14px_rgba(103,232,249,0.55)]" />
+        <div className="absolute inset-y-0 left-2/3 w-px bg-cyan-200/55 shadow-[0_0_14px_rgba(103,232,249,0.55)]" />
+        <div className="absolute inset-x-0 top-[34%] h-px bg-cyan-200/18" />
+        <div className="absolute inset-x-0 top-[70%] h-px bg-cyan-200/18" />
+        {DRIBBLE_LANES.map((lane) => (
+          <span
+            key={lane}
+            className="absolute top-[26%] -translate-x-1/2 font-mono text-[10px] font-black tracking-[0.28em] text-cyan-100/55 uppercase"
+            style={{
+              left: `${16.667 + DRIBBLE_LANES.indexOf(lane) * 33.333}%`,
+            }}
+          >
+            {laneLabel(lane)}
+          </span>
+        ))}
+      </div>
+
+      <div
         data-testid="dribble-controls"
+        data-action-id={actionId}
         data-lane-trace={JSON.stringify(trace)}
         data-run-started-at-ms={startedAt ?? ""}
-        className="pointer-events-auto relative z-10 mx-3 mt-[calc(env(safe-area-inset-top)+0.75rem)] max-w-md overflow-hidden rounded-[1.65rem] border border-cyan-300/55 bg-[linear-gradient(140deg,rgba(3,19,52,0.94),rgba(5,39,67,0.91)_55%,rgba(40,8,67,0.92))] shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_1px_rgba(255,255,255,0.16)] backdrop-blur-md sm:mx-auto"
+        className="pointer-events-auto relative z-10 mx-[max(var(--overgoal-safe-left),var(--overgoal-safe-right),0.75rem)] mt-[calc(var(--overgoal-safe-top)+0.75rem)] max-w-md overflow-hidden rounded-[1.35rem] border border-cyan-300/55 bg-[linear-gradient(140deg,rgba(3,19,52,0.9),rgba(5,39,67,0.88)_55%,rgba(40,8,67,0.9))] shadow-[0_0_35px_rgba(34,211,238,0.22),inset_0_1px_rgba(255,255,255,0.16)] backdrop-blur-md sm:mx-auto"
       >
         <div className="border-b border-cyan-300/25 px-4 pt-3 pb-2">
           <div className="flex items-end justify-between gap-3">
@@ -227,7 +314,7 @@ export function DribbleControls({
               {Math.max(0, pattern.duration_seconds - elapsed).toFixed(1)}
             </output>
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-950/80">
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-950/80">
             <div
               className="h-full rounded-full bg-[linear-gradient(90deg,#22d3ee,#b8ff4d_55%,#f472b6)] transition-[width] duration-100"
               style={{
@@ -242,11 +329,11 @@ export function DribbleControls({
           aria-label="Dribble lane"
           tabIndex={0}
           onKeyDown={handleKeyDown}
-          className="relative mx-3 mt-3 grid grid-cols-3 gap-2 rounded-2xl border border-cyan-200/20 bg-slate-950/45 p-2 outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+          className="relative mx-3 mt-2 grid grid-cols-3 gap-1 rounded-xl border border-cyan-200/20 bg-slate-950/45 p-1 outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
         >
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-lime-200/80 bg-lime-300/20 shadow-[0_0_20px_rgba(190,242,100,0.52)] transition-[left] duration-200 motion-reduce:transition-none"
+            className="pointer-events-none absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-lime-200/80 bg-lime-300/20 shadow-[0_0_20px_rgba(190,242,100,0.52)] transition-[left] duration-200 motion-reduce:transition-none"
             style={{
               left: `calc(${laneProgress(currentLane)}% / 1.5 + 16.6667%)`,
             }}
@@ -266,14 +353,13 @@ export function DribbleControls({
                 data-dribble-lane={lane}
                 data-testid={`dribble-lane-${lane.toLowerCase()}`}
                 disabled={disabled || !isReachable}
-                className={`relative min-h-14 rounded-xl border px-2 py-2 text-xs font-black tracking-[0.16em] uppercase transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:opacity-45 ${
+                className={`relative min-h-10 rounded-lg border px-1 py-1 text-[10px] font-black tracking-[0.14em] uppercase transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:opacity-45 ${
                   selected
                     ? "border-lime-200/80 bg-lime-300/14 text-lime-100"
                     : "border-cyan-200/22 bg-cyan-400/5 text-cyan-100"
                 }`}
                 onClick={() => switchLane(lane)}
               >
-                <span className="block text-[9px] text-cyan-200/70">Lane</span>
                 {laneLabel(lane)}
               </button>
             );
@@ -282,7 +368,7 @@ export function DribbleControls({
 
         <p
           id="dribble-instructions"
-          className="px-4 pt-2 text-center text-[11px] text-cyan-100/75"
+          className="px-4 pt-2 text-center text-[10px] text-cyan-100/75"
         >
           Tap either side of the field, choose a neighbouring lane, or use the
           arrow keys.
@@ -291,16 +377,16 @@ export function DribbleControls({
           {`${laneLabel(currentLane)} lane. ${pressureWindow ? "Pressure window active." : "No pressure window."}`}
         </p>
 
-        <div className="grid grid-cols-[1fr_auto] gap-2 px-3 pt-3 pb-3">
-          <div className="rounded-xl border border-cyan-200/16 bg-black/25 px-3 py-2 text-[10px] tracking-[0.12em] text-cyan-100/75 uppercase">
-            Trace: {trace.length} input{trace.length === 1 ? "" : "s"}
+        <div className="grid grid-cols-[1fr_auto] gap-2 px-3 pt-2 pb-2">
+          <div className="flex items-center rounded-lg border border-cyan-200/16 bg-black/25 px-3 text-[9px] tracking-[0.12em] text-cyan-100/75 uppercase">
+            Stay clear · {laneLabel(currentLane)}
           </div>
           <button
             type="button"
             data-testid="dribble-simulate-foul"
             disabled={!canSimulate}
-            className="min-h-11 rounded-xl border border-amber-300/55 bg-[linear-gradient(135deg,rgba(251,146,60,0.32),rgba(244,63,94,0.28))] px-3 text-xs font-black tracking-[0.1em] text-amber-50 uppercase shadow-[0_0_16px_rgba(251,146,60,0.2)] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/35 disabled:shadow-none"
-            onClick={() => submitDecision("SIMULATE_FOUL", elapsedRef.current)}
+            className="min-h-9 rounded-lg border border-amber-300/55 bg-[linear-gradient(135deg,rgba(251,146,60,0.32),rgba(244,63,94,0.28))] px-3 text-[10px] font-black tracking-[0.1em] text-amber-50 uppercase shadow-[0_0_16px_rgba(251,146,60,0.2)] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-white/35 disabled:shadow-none"
+            onClick={() => submitDecision("SIMULATE_FOUL", roundedElapsed)}
           >
             Simulate Foul
             {pressureWindow

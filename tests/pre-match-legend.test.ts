@@ -6,10 +6,9 @@ import PreMatchLegend from "../src/app/(main)/Pre-Match/components/pre-match-leg
 import PreMatchTeam from "../src/app/(main)/Pre-Match/components/pre-match-team";
 
 describe("pre-match authoritative Legend presentation", () => {
-  it("renders backend Legend identity and every authoritative profile value", () => {
+  it("renders player-facing identity and essential authoritative readiness", () => {
     const markup = renderToStaticMarkup(
       createElement(PreMatchLegend, {
-        legendPlayerId: "legend-api-9",
         legendProfile: {
           stamina: 63,
           energy: 41,
@@ -24,13 +23,13 @@ describe("pre-match authoritative Legend presentation", () => {
       }),
     );
 
-    expect(markup).toContain("legend-api-9");
+    expect(markup).toContain("Your Legend");
+    expect(markup).not.toContain("legend-api-9");
     expect(markup).toMatch(/data-testid="legend-stamina"[^>]*>63</u);
     expect(markup).toMatch(/data-testid="legend-energy"[^>]*>41</u);
     for (const value of [92, 88, 81, 79, 75, 54, 90]) {
-      expect(markup).toContain(`>${value}<`);
+      expect(markup).not.toContain(`>${value}<`);
     }
-    expect(markup).not.toContain(">10<");
   });
 
   it("keeps an unknown backend team identity while using only generic V1 artwork", () => {
