@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import {
   BrowserRouter,
   matchPath,
@@ -11,6 +11,7 @@ import {
 // Import layout components
 import { useAuthSessionStore } from "../auth/session-store";
 import { AuthenticatedLayout } from "../components/layout/AuthenticatedLayout";
+import { resetFieldPresentationReadiness } from "../match/field-presentation-readiness";
 import MatchTransitionLoader from "../match/MatchTransitionLoader";
 import { useMatchSessionStore } from "../match/session-store";
 // Import all routes
@@ -80,7 +81,7 @@ function RouteLoadingSurface() {
       role="status"
       aria-label="Loading Overgoal"
       aria-live="polite"
-      className="fixed inset-0 z-[190] flex min-h-dvh items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_22%,rgba(34,211,238,0.14),transparent_30%),linear-gradient(180deg,#061124_0%,#020816_100%)] px-6 text-white"
+      className="overgoal-safe-screen fixed inset-0 z-[190] flex min-h-dvh items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_50%_22%,rgba(34,211,238,0.14),transparent_30%),linear-gradient(180deg,#061124_0%,#020816_100%)] text-white [--overgoal-safe-bottom-min:1.5rem] [--overgoal-safe-inline-min:1.5rem] [--overgoal-safe-top-min:1.5rem]"
     >
       <div className="w-full max-w-xs rounded-3xl border border-cyan-300/30 bg-slate-950/70 px-8 py-9 text-center shadow-[0_0_48px_rgba(34,211,238,0.12)]">
         <div className="mx-auto mb-5 h-10 w-10 animate-spin rounded-full border-2 border-cyan-300/20 border-t-cyan-300" />
@@ -100,14 +101,23 @@ function PersistentGameSceneHost() {
   const pathname = location.pathname;
   const gameRouteMatch = matchPath({ path: game, end: true }, pathname);
   const gameMatchId = gameRouteMatch?.params.matchId ?? null;
-  const hasRenderableField = useMatchSessionStore((state) =>
-    Boolean(state.pendingAction?.field_state ?? state.fieldState),
-  );
+  const matchSession = useMatchSessionStore((state) => state.match);
   const authStatus = useAuthSessionStore((state) => state.status);
+  const onResidentMatchRoute =
+    pathname.startsWith("/match/") || pathname.startsWith("/pre-match/");
+  const hasActiveResidentMatch = Boolean(
+    matchSession &&
+      matchSession.match_status !== "NOT_STARTED" &&
+      matchSession.match_status !== "FINISHED",
+  );
   const shouldMount =
-    (Boolean(gameRouteMatch) && authStatus === "authenticated") ||
-    (hasRenderableField &&
-      (pathname.startsWith("/match/") || pathname.startsWith("/pre-match/")));
+    authStatus === "authenticated" &&
+    (Boolean(gameRouteMatch) ||
+      (onResidentMatchRoute && hasActiveResidentMatch));
+
+  useEffect(() => {
+    if (!shouldMount) resetFieldPresentationReadiness();
+  }, [shouldMount]);
 
   if (!shouldMount) {
     return null;

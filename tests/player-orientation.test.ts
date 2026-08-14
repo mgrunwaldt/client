@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   advancePlayerRotation,
+  minDistanceToFieldPath,
   normalizePlayerAngle,
   rotationTowardsFieldTarget,
 } from "../src/match/player-orientation";
@@ -35,5 +36,14 @@ describe("M2-I8 player orientation", () => {
 
   it("does not advance when frame time is non-positive", () => {
     expect(advancePlayerRotation(0.4, 1.2, -1, 9)).toBeCloseTo(0.4, 6);
+  });
+
+  it("detects players beside a trajectory segment between sparse samples", () => {
+    const path = [
+      { x: 10, y: 20 },
+      { x: 90, y: 20 },
+    ];
+
+    expect(minDistanceToFieldPath({ x: 50, y: 21 }, path)).toBeCloseTo(1.05, 6);
   });
 });

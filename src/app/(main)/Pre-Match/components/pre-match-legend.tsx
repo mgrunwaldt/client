@@ -1,100 +1,60 @@
 import { StaminaBar } from "../../../../components/ui/stamina-bar";
 import type { BackendLegendProfile } from "../../../../lib/backend-match";
-import CyberContainer from "../../Home/components/cyber-container";
-import SemiSquareContainer from "../../Home/components/semi-square/semi-square-container";
-
 type PreMatchLegendProps = {
-  legendPlayerId: string;
   legendProfile: BackendLegendProfile;
 };
 
-const profileStats = [
-  ["SHOOT", "shoot"],
-  ["DRIBBLE", "dribble"],
-  ["SPEED", "speed"],
-  ["PASS", "passing"],
-  ["HEADING", "heading"],
-  ["DEFENSE", "defense"],
-  ["IQ", "intelligence"],
-] as const;
+export default function PreMatchLegend({ legendProfile }: PreMatchLegendProps) {
+  const energyPercent = Math.round(
+    (legendProfile.energy / Math.max(1, legendProfile.stamina)) * 100,
+  );
 
-export default function PreMatchLegend({
-  legendPlayerId,
-  legendProfile,
-}: PreMatchLegendProps) {
   return (
     <section
-      aria-label="Authoritative Legend profile"
-      className="border-overgoal-positive flex w-full flex-col gap-2 border-1 bg-[#002601] p-2 text-center text-white"
+      aria-label="Legend readiness"
+      className="border-overgoal-positive/70 flex w-full shrink-0 items-center gap-3 rounded-2xl border bg-[#001b19]/90 p-3 text-white shadow-[inset_0_0_24px_rgba(0,255,209,0.05)]"
     >
-      <div className="flex w-full flex-row items-center justify-between gap-3">
-        <img
-          src="/logo.png"
-          alt=""
-          className="h-14 w-14 shrink-0 object-cover"
-        />
-        <div className="min-w-0 shrink text-left">
-          <p className="font-orbitron text-overgoal-lime-green text-[10px] font-bold tracking-[0.22em] uppercase">
-            Legend profile
-          </p>
-          <p
-            data-testid="legend-player-id"
-            className="font-orbitron truncate text-xs font-bold text-white uppercase"
-          >
-            {legendPlayerId}
-          </p>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col gap-1 text-left">
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-orbitron text-[9px] font-bold text-white/80 uppercase">
-              Stamina
-            </span>
+      <img
+        src="/logo.png"
+        alt=""
+        className="h-11 w-11 shrink-0 rounded-full border border-cyan-300/40 object-cover"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0 text-left">
+            <p className="font-orbitron text-[8px] font-bold tracking-[0.24em] text-cyan-200/70 uppercase">
+              Legend ready
+            </p>
+            <p
+              data-testid="legend-player-name"
+              className="font-orbitron truncate text-xs font-black text-white uppercase"
+            >
+              Your Legend
+            </p>
+          </div>
+          <div className="font-orbitron flex shrink-0 items-baseline gap-1 text-[9px] font-bold text-white/60 uppercase">
+            Stamina
             <output
               data-testid="legend-stamina"
-              className="font-orbitron text-overgoal-lime-green text-xs font-bold"
+              className="text-overgoal-lime-green text-xs"
             >
               {legendProfile.stamina}
             </output>
           </div>
-          <CyberContainer className="!h-5 !w-full">
-            <StaminaBar
-              value={legendProfile.stamina}
-              className="h-full w-full"
-            />
-          </CyberContainer>
         </div>
-        <SemiSquareContainer
-          bgColor="#002601"
-          noShadow={true}
-          borderColor="var(--color-overgoal-positive)"
-          className="flex h-12 w-12 shrink-0 flex-col items-center justify-center"
-        >
-          <span className="font-orbitron text-[8px] font-bold text-white/70 uppercase">
+        <div className="mt-2 flex items-center gap-2">
+          <span className="font-orbitron shrink-0 text-[9px] font-bold tracking-wider text-cyan-100 uppercase">
             Energy
           </span>
+          <StaminaBar value={energyPercent} className="h-2.5 min-w-0 flex-1" />
           <output
             data-testid="legend-energy"
-            className="font-orbitron text-overgoal-lime-green text-sm font-bold"
+            className="font-orbitron text-overgoal-lime-green w-7 shrink-0 text-right text-xs font-black"
           >
             {legendProfile.energy}
           </output>
-        </SemiSquareContainer>
+        </div>
       </div>
-      <dl className="grid grid-cols-4 gap-1" aria-label="Legend attributes">
-        {profileStats.map(([label, stat]) => (
-          <div
-            key={stat}
-            className="border-overgoal-positive/40 border bg-black/15 px-1 py-1"
-          >
-            <dt className="font-orbitron text-[8px] font-bold text-white/65 uppercase">
-              {label}
-            </dt>
-            <dd className="font-orbitron text-[11px] font-bold text-white">
-              {legendProfile[stat]}
-            </dd>
-          </div>
-        ))}
-      </dl>
     </section>
   );
 }

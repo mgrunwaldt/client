@@ -15,7 +15,14 @@ export async function registerOvergoalPwa(): Promise<PwaRegistrationState> {
   try {
     const registration = await navigator.serviceWorker.register("/sw.js", {
       scope: "/",
+      updateViaCache: "none",
     });
+    // Test runners and restrictive webviews may expose the API while blocking
+    // registration. Treat that as supported-but-unregistered, not a page error.
+    if (!registration) {
+      return { registration: null, supported: true };
+    }
+    void registration.update().catch(() => undefined);
     return { registration, supported: true };
   } catch (error) {
     console.warn("Overgoal offline shell could not be registered.", error);

@@ -1,5 +1,7 @@
+import { Gauge, MoveUp, RotateCcw, RotateCw } from "lucide-react";
 import { useEffect, useRef } from "react";
 
+import { kickContactFeedback } from "../../match/kick-contact-feedback";
 import {
   ballFaceContactFromPercent,
   ballFacePercentFromContact,
@@ -41,6 +43,7 @@ export function KickContactDialog({
   onContactChange,
   onClose,
   onSubmit,
+  showDiagnostics = false,
 }: {
   envelope: KickControlEnvelope;
   contact: { x: number; y: number };
@@ -50,6 +53,7 @@ export function KickContactDialog({
   onContactChange: (contact: { x: number; y: number }) => void;
   onClose: () => void;
   onSubmit: () => void;
+  showDiagnostics?: boolean;
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const contactGridRef = useRef<HTMLDivElement>(null);
@@ -115,7 +119,9 @@ export function KickContactDialog({
   };
 
   const contactPercent = ballFacePercentFromContact(contact);
-  const announcement = `${CONTACT_GRID_LABELS[selectedIndex]} contact, x ${contact.x.toFixed(2)}, y ${contact.y.toFixed(2)}`;
+  const feedback = kickContactFeedback(submittedPower, contact);
+  const announcement = `${CONTACT_GRID_LABELS[selectedIndex]} contact. ${feedback.power.label}. ${feedback.flight}. ${feedback.curve}.`;
+  const CurveIcon = feedback.curve === "Curl right" ? RotateCw : RotateCcw;
 
   return (
     <div
@@ -125,9 +131,12 @@ export function KickContactDialog({
       aria-labelledby="kick-contact-title"
       aria-describedby="kick-contact-instructions"
       onKeyDown={handleDialogKeyDown}
-      className="absolute inset-0 z-30 flex items-end justify-center bg-black/18 px-4 py-6 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] backdrop-blur-[1px]"
+      className="absolute inset-0 z-30 flex items-end justify-center bg-black/10 px-4 pt-[calc(var(--overgoal-safe-top)+1.5rem)] pr-[max(var(--overgoal-safe-right),1rem)] pb-[calc(var(--overgoal-safe-bottom)+1.5rem)] pl-[max(var(--overgoal-safe-left),1rem)] backdrop-blur-[1px]"
     >
-      <div className="w-full max-w-sm rounded-[2rem] border border-cyan-300/45 bg-linear-to-b from-cyan-400/18 via-slate-950/88 to-[#14235c]/92 p-4 shadow-[0_0_40px_rgba(34,211,238,0.18)]">
+      <div
+        data-testid="kick-contact-panel"
+        className="w-full max-w-sm rounded-[2rem] border border-cyan-300/45 bg-linear-to-b from-cyan-400/18 via-slate-950/78 to-[#14235c]/88 p-4 shadow-[0_0_40px_rgba(34,211,238,0.18)]"
+      >
         <div className="mb-3 flex items-center justify-between px-1">
           <div>
             <p className="text-[10px] font-bold tracking-[0.32em] text-cyan-200/80 uppercase">
@@ -158,7 +167,7 @@ export function KickContactDialog({
             ref={contactGridRef}
             role="grid"
             aria-label="Ball contact point"
-            className="relative mx-auto grid aspect-square w-full max-w-[260px] cursor-crosshair grid-cols-3 grid-rows-3 overflow-hidden rounded-full border-2 border-cyan-300/70 bg-radial-[circle_at_35%_35%] from-cyan-100/95 via-sky-400/28 to-[#091132] shadow-[0_0_30px_rgba(56,189,248,0.28)]"
+            className="relative mx-auto grid aspect-square w-full max-w-[min(260px,36dvh)] cursor-crosshair grid-cols-3 grid-rows-3 overflow-hidden rounded-full border-2 border-cyan-300/70 bg-radial-[circle_at_35%_35%] from-cyan-100/95 via-sky-400/28 to-[#091132] shadow-[0_0_30px_rgba(56,189,248,0.28)]"
             onPointerUp={handleContactPointer}
           >
             <div className="pointer-events-none absolute inset-[10%] rounded-full border border-cyan-200/18" />
@@ -202,6 +211,7 @@ export function KickContactDialog({
             ))}
             <div
               aria-hidden="true"
+              data-testid="kick-contact-marker"
               className="pointer-events-none absolute z-20 h-16 w-16 -translate-x-1/2 -translate-y-1/2 rounded-full border-[3px] border-orange-400/95 shadow-[0_0_22px_rgba(251,146,60,0.65)]"
               style={{
                 left: `${contactPercent.x}%`,
@@ -217,19 +227,84 @@ export function KickContactDialog({
           <p className="sr-only" aria-live="polite">
             {announcement}
           </p>
-          <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-white/72">
-            <div className="rounded-2xl bg-black/22 px-3 py-2">
-              Submitted power: {Math.round(submittedPower * 100)}%
+          <div className="mt-4 grid grid-cols-[1.2fr_1fr_1fr] gap-2">
+            <div
+              data-testid="kick-power-feedback"
+              aria-label={`${feedback.power.label} power`}
+              className="rounded-2xl border border-cyan-200/15 bg-black/24 px-3 py-2"
+            >
+              <div className="flex items-center gap-1.5 text-[9px] font-bold tracking-[0.2em] text-cyan-100/60 uppercase">
+                <Gauge aria-hidden="true" className="h-3.5 w-3.5" />
+                Power
+              </div>
+              <p className="mt-1 text-xs font-black tracking-wide text-white uppercase">
+                {feedback.power.label}
+              </p>
+              <div className="mt-2 flex gap-1" aria-hidden="true">
+                {[1, 2, 3, 4, 5].map((level) => (
+                  <span
+                    key={level}
+                    className={`h-1.5 flex-1 skew-x-[-12deg] rounded-sm ${
+                      level <= feedback.power.level
+                        ? "bg-linear-to-r from-cyan-300 to-lime-300 shadow-[0_0_8px_rgba(103,232,249,0.55)]"
+                        : "bg-white/10"
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-            <div className="rounded-2xl bg-black/22 px-3 py-2">
-              Contact: {contact.x.toFixed(2)}, {contact.y.toFixed(2)}
+            <div
+              data-testid="kick-flight-feedback"
+              className="rounded-2xl border border-cyan-200/15 bg-black/24 px-2 py-2 text-center"
+            >
+              <MoveUp
+                aria-hidden="true"
+                className={`mx-auto h-5 w-5 text-cyan-200 ${
+                  feedback.flight === "Skimming"
+                    ? "rotate-90"
+                    : feedback.flight === "Lofted"
+                      ? "-translate-y-0.5"
+                      : ""
+                }`}
+              />
+              <p className="mt-1 text-[9px] font-bold tracking-[0.18em] text-cyan-100/55 uppercase">
+                Flight
+              </p>
+              <p className="text-[11px] font-black text-white uppercase">
+                {feedback.flight}
+              </p>
             </div>
-            <div className="col-span-2 rounded-2xl bg-black/22 px-3 py-2">
-              Server power range: {Math.round(envelope.minimum_power * 100)}% -{" "}
-              {Math.round(envelope.maximum_power * 100)}%; short pulls use the
-              server floor.
+            <div
+              data-testid="kick-curve-feedback"
+              className="rounded-2xl border border-cyan-200/15 bg-black/24 px-2 py-2 text-center"
+            >
+              <CurveIcon
+                aria-hidden="true"
+                className={`mx-auto h-5 w-5 ${
+                  feedback.curve === "Straight"
+                    ? "text-white/35"
+                    : "text-fuchsia-300"
+                }`}
+              />
+              <p className="mt-1 text-[9px] font-bold tracking-[0.18em] text-cyan-100/55 uppercase">
+                Bend
+              </p>
+              <p className="text-[11px] font-black text-white uppercase">
+                {feedback.curve}
+              </p>
             </div>
           </div>
+          {showDiagnostics && (
+            <div
+              data-testid="kick-development-diagnostics"
+              className="mt-2 rounded-xl border border-amber-300/30 bg-black/45 px-3 py-2 font-mono text-[10px] text-amber-100/80"
+            >
+              DEV · power {submittedPower.toFixed(4)} · contact{" "}
+              {contact.x.toFixed(4)}, {contact.y.toFixed(4)} · envelope{" "}
+              {envelope.minimum_power.toFixed(4)}-
+              {envelope.maximum_power.toFixed(4)}
+            </div>
+          )}
           {submitError && (
             <div
               role="alert"

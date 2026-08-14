@@ -54,7 +54,7 @@ export const DribblePatternSchema = z
     input_mapping_version: z.literal("dribble-lanes-v1"),
     duration_seconds: z.literal(8),
     starting_lane: laneSchema,
-    lane_switch_seconds: z.number().finite().min(0.4).max(1.15),
+    lane_switch_seconds: z.number().finite().min(0.25).max(0.65),
     lanes: z.tuple([
       z.literal("LEFT"),
       z.literal("CENTER"),
@@ -135,6 +135,29 @@ export type DribbleDecision =
       simulate_at_second: number;
     };
 
+export type DribblePresentationState = {
+  elapsed: number;
+  playerLanePosition: number;
+  trace: DribbleLaneTracePoint[];
+};
+
+export function selectDribbleDefenderTemplate<T extends { role: string }>(
+  opponents: T[],
+  waveIndex: number,
+) {
+  const outfield = opponents.filter((player) => player.role !== "GK");
+  if (outfield.length > 0) return outfield[waveIndex % outfield.length];
+  return opponents[waveIndex % opponents.length] ?? null;
+}
+
+export const DRIBBLE_PRESENTATION = {
+  ballLead: 1.8,
+  defenderExitY: 47,
+  defenderSpawnY: 1,
+  laneFieldX: [100 / 6, 50, 500 / 6] as const,
+  playerY: 38,
+} as const;
+
 export function parseDribblePattern(value: unknown) {
   const result = DribblePatternSchema.safeParse(value);
   return result.success
@@ -185,7 +208,8 @@ export function validateDribbleLaneTrace(
     return (
       point.at_second > previous.at_second &&
       Math.abs(laneIndex(point.lane) - laneIndex(previous.lane)) === 1 &&
-      point.at_second - previous.at_second >= pattern.lane_switch_seconds &&
+      (index === 1 ||
+        point.at_second - previous.at_second >= pattern.lane_switch_seconds) &&
       point.at_second + pattern.lane_switch_seconds <= pattern.duration_seconds
     );
   });
@@ -202,9 +226,59 @@ export function canSwitchDribbleLane(
   const roundedSecond = roundDribbleSecond(atSecond);
   return (
     Math.abs(laneIndex(nextLane) - laneIndex(current.lane)) === 1 &&
-    roundedSecond - current.at_second >= pattern.lane_switch_seconds &&
+    (trace.length === 1 ||
+      roundedSecond - current.at_second >= pattern.lane_switch_seconds) &&
     roundedSecond + pattern.lane_switch_seconds <= pattern.duration_seconds
   );
+}
+
+export function dribblePresentationAtSecond(
+  pattern: DribblePattern,
+  trace: DribbleLaneTracePoint[],
+  elapsed: number,
+) {
+  const second = roundDribbleSecond(elapsed);
+  const playerLanePosition = playerLaneAtSecond(pattern, trace, second);
+  const playerX =
+    DRIBBLE_PRESENTATION.laneFieldX[0] +
+    playerLanePosition *
+      (DRIBBLE_PRESENTATION.laneFieldX[1] - DRIBBLE_PRESENTATION.laneFieldX[0]);
+  const defenders = pattern.defender_waves.map((wave) => {
+    const approachSeconds = Math.max(0.9, 1.35 - wave.speed * 0.004);
+    const exitSeconds = 0.8;
+    const startSecond = wave.at_second - approachSeconds;
+    const endSecond = wave.at_second + exitSeconds;
+    let y = DRIBBLE_PRESENTATION.defenderSpawnY;
+    if (second >= wave.at_second) {
+      const progress = Math.min(1, (second - wave.at_second) / exitSeconds);
+      y =
+        DRIBBLE_PRESENTATION.playerY +
+        (DRIBBLE_PRESENTATION.defenderExitY - DRIBBLE_PRESENTATION.playerY) *
+          progress;
+    } else if (second > startSecond) {
+      const progress = (second - startSecond) / approachSeconds;
+      y =
+        DRIBBLE_PRESENTATION.defenderSpawnY +
+        (DRIBBLE_PRESENTATION.playerY - DRIBBLE_PRESENTATION.defenderSpawnY) *
+          progress;
+    }
+    return {
+      ...wave,
+      active: second >= startSecond && second <= endSecond,
+      x: DRIBBLE_PRESENTATION.laneFieldX[laneIndex(wave.lane)],
+      y,
+    };
+  });
+
+  return {
+    ball: {
+      x: playerX,
+      y: DRIBBLE_PRESENTATION.playerY - DRIBBLE_PRESENTATION.ballLead,
+    },
+    defenders,
+    player: { x: playerX, y: DRIBBLE_PRESENTATION.playerY },
+    playerLanePosition,
+  };
 }
 
 export function playerLaneAtSecond(
@@ -244,6 +318,31 @@ export function pressureWindowForDribbleAttempt(
         Math.abs(playerLane - laneIndex(window.lane)) <=
           pattern.parameters.pressure_lane_radius,
     ) ?? null
+  );
+}
+
+export function firstDribbleCollisionAtSecond(
+  pattern: DribblePattern,
+  trace: DribbleLaneTracePoint[],
+  atSecond: number,
+) {
+  const second = roundDribbleSecond(atSecond);
+  return (
+    pattern.defender_waves.find((wave) => {
+      if (wave.at_second > second) return false;
+      const laneDistance = Math.abs(
+        playerLaneAtSecond(pattern, trace, wave.at_second) -
+          laneIndex(wave.lane),
+      );
+      const collisionRadius = Math.max(
+        0.08,
+        Math.min(
+          0.48,
+          0.26 + wave.speed / 500 - pattern.parameters.lane_forgiveness,
+        ),
+      );
+      return laneDistance <= collisionRadius;
+    }) ?? null
   );
 }
 

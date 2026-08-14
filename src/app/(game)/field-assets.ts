@@ -43,8 +43,9 @@ DefaultLoadingManager.setURLModifier((url) => {
 });
 
 const fieldTextures = [
-  "/models/in-game/Pitch desing.png",
+  "/models/in-game/textures/pitch/regulation-lines.svg",
   "/models/in-game/Net.png",
+  "/models/in-game/textures/pitch/overgoal-turf.webp",
   "/field/aim-arrow-shaft.svg",
   "/field/aim-arrow-head.svg",
   "/field/aim-arrow-tip-glow.svg",

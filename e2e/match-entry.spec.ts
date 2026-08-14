@@ -351,7 +351,10 @@ test("enters a production match once and reports truthful loading stages", async
     page.getByRole("heading", { name: "API Eclipse XI" }),
   ).toBeVisible();
   await expect(page.getByText("Backend Comets", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("legend-player-id")).toHaveText("legend-api-9");
+  await expect(page.getByTestId("legend-player-name")).toHaveText(
+    "Your Legend",
+  );
+  await expect(page.getByText("legend-api-9", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("legend-stamina")).toHaveText("63");
   await expect(page.getByTestId("legend-energy")).toHaveText("41");
 
@@ -384,7 +387,10 @@ test("enters a production match once and reports truthful loading stages", async
     page.getByRole("heading", { name: "API Eclipse XI" }),
   ).toBeVisible();
   await expect(page.getByText("Backend Comets", { exact: true })).toBeVisible();
-  await expect(page.getByTestId("legend-player-id")).toHaveText("legend-api-9");
+  await expect(page.getByTestId("legend-player-name")).toHaveText(
+    "Your Legend",
+  );
+  await expect(page.getByText("legend-api-9", { exact: true })).toHaveCount(0);
   await expect(page.getByTestId("legend-stamina")).toHaveText("63");
   await expect(page.getByTestId("legend-energy")).toHaveText("41");
 
@@ -404,13 +410,16 @@ test("enters a production match once and reports truthful loading stages", async
   const startClickedAt = Date.now();
   await startButton.dblclick();
 
-  const transition = page
-    .getByRole("status")
-    .filter({ hasText: "Starting Match" });
+  const transition = page.getByTestId("match-start-transition");
   await expect(transition).toBeVisible();
   const firstFeedbackMs = Date.now() - startClickedAt;
   expect(firstFeedbackMs).toBeLessThan(1_000);
-  await expect(transition).toContainText("Match engine");
+  await expect(transition).toContainText("Kickoff");
+  await expect(page.getByTestId("match-start-transition")).toHaveCount(1);
+  await expect(page.getByTestId("field-loading-overlay")).toBeHidden();
+  await expect(transition).not.toContainText(
+    /authoritative|backend|engine|field assets|\.png|\.fbx/iu,
+  );
   await testInfo.attach("match-transition", {
     body: await page.screenshot(),
     contentType: "image/png",
@@ -432,6 +441,15 @@ test("enters a production match once and reports truthful loading stages", async
   await expect(page.getByText("LIVE", { exact: true }).first()).toBeVisible();
   await expect(page.getByText("00'", { exact: true })).toBeVisible();
   await expect(transition).toBeHidden();
+  const startTiming = await page.evaluate(() => {
+    const [measure] = performance.getEntriesByName(
+      "overgoal:prematch-to-timeline-ready",
+      "measure",
+    );
+    return measure?.duration ?? null;
+  });
+  expect(startTiming).not.toBeNull();
+  expect(startTiming!).toBeLessThan(3_000);
   expect(startCalls).toBe(2);
   expect(startCommandKeys[0]).toBeTruthy();
   expect(startCommandKeys[1]).toBe(startCommandKeys[0]);
@@ -529,6 +547,7 @@ test("enters a production match once and reports truthful loading stages", async
         {
           project: testInfo.project.name,
           firstFeedbackMs,
+          prematchToTimelineReadyMs: startTiming,
           startAttempts: startCalls,
           duplicateCommandReused: startCommandKeys[1] === startCommandKeys[0],
         },

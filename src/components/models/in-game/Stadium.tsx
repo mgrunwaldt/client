@@ -8,7 +8,13 @@ import { JSX, useMemo } from "react";
 import * as THREE from "three";
 import { GLTF } from "three-stdlib";
 
-import { STADIUM_REGISTRATION } from "../../../match/stadium-registration";
+import {
+  registeredEmbeddedGoalFrameX,
+  STADIUM_REGISTRATION,
+} from "../../../match/stadium-registration";
+
+const TURF_TEXTURE_PATH = "/models/in-game/textures/pitch/overgoal-turf.webp";
+const TURF_TEXTURE_REPEAT: [number, number] = [3.5, 5.4];
 
 type GLTFResult = GLTF & {
   nodes: {
@@ -28,8 +34,11 @@ type GLTFResult = GLTF & {
 export default function Stadium(props: JSX.IntrinsicElements["group"]) {
   const { nodes } = useGLTF("/models/in-game/ST.glb") as unknown as GLTFResult;
 
-  const alphaMap = useTexture("/models/in-game/Pitch desing.png");
+  const alphaMap = useTexture(
+    "/models/in-game/textures/pitch/regulation-lines.svg",
+  );
   const netTexture = useTexture("/models/in-game/Net.png");
+  const turfTexture = useTexture(TURF_TEXTURE_PATH);
 
   const pitchMaterial = useMemo(() => {
     const material = new THREE.MeshStandardMaterial();
@@ -53,20 +62,39 @@ export default function Stadium(props: JSX.IntrinsicElements["group"]) {
     return material;
   }, [netTexture]);
 
+  const stadiumGeometry = useMemo(() => {
+    const geometry = nodes.Stadiump1.geometry.clone();
+    const positions = geometry.attributes.position;
+    for (let index = 0; index < positions.count; index += 1) {
+      const x = positions.getX(index);
+      positions.setX(
+        index,
+        registeredEmbeddedGoalFrameX(x, positions.getZ(index)),
+      );
+    }
+    positions.needsUpdate = true;
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    return geometry;
+  }, [nodes.Stadiump1.geometry]);
+
   const grassMaterial = useMemo(() => {
     const originalMat = nodes.Grass_mesh.material as THREE.MeshStandardMaterial;
     const mat = originalMat.clone();
-    if (mat.map) {
-      mat.map = mat.map.clone();
-      mat.map.wrapS = THREE.RepeatWrapping;
-      mat.map.wrapT = THREE.RepeatWrapping;
-      mat.map.colorSpace = THREE.SRGBColorSpace;
-      mat.map.repeat.set(12, 12);
-      mat.map.offset.set(0, 0);
-    }
-    // Reduce contrast by lifting shadows with emissive
+    const map = turfTexture.clone();
+    map.wrapS = THREE.RepeatWrapping;
+    map.wrapT = THREE.RepeatWrapping;
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.repeat.set(...TURF_TEXTURE_REPEAT);
+    map.offset.set(0, 0);
+    map.anisotropy = 8;
+    map.needsUpdate = true;
+
+    mat.map = map;
+    mat.color.set("#ffffff");
+    mat.needsUpdate = true;
     return mat;
-  }, [nodes.Grass_mesh.material]);
+  }, [nodes.Grass_mesh.material, turfTexture]);
 
   return (
     <group {...props} dispose={null}>
@@ -77,7 +105,7 @@ export default function Stadium(props: JSX.IntrinsicElements["group"]) {
         <mesh
           castShadow
           receiveShadow
-          geometry={nodes.Stadiump1.geometry}
+          geometry={stadiumGeometry}
           material={nodes.Stadiump1.material}
         >
           <Outlines thickness={0.5} color="black" angle={0} />

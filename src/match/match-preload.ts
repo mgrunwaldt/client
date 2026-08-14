@@ -7,6 +7,7 @@ export interface MatchPreloadUpdate {
 type MatchPreloadReporter = (update: MatchPreloadUpdate) => void;
 
 let matchExperiencePreload: Promise<void> | null = null;
+let matchTimelinePreload: Promise<void> | null = null;
 let latestUpdate: MatchPreloadUpdate | null = null;
 const reporters = new Set<MatchPreloadReporter>();
 
@@ -36,7 +37,7 @@ export function preloadMatchExperience(reporter?: MatchPreloadReporter) {
 
   matchExperiencePreload = (async () => {
     report(8, "Live feed", "Loading the match timeline.");
-    await import("../app/(main)/Match/MatchScreen");
+    await preloadMatchTimeline();
 
     report(20, "Field runtime", "Loading the 3D match renderer.");
     const [fieldAssets] = await Promise.all([
@@ -63,4 +64,16 @@ export function preloadMatchExperience(reporter?: MatchPreloadReporter) {
   });
 
   return trackReporter(matchExperiencePreload, reporter);
+}
+
+export function preloadMatchTimeline() {
+  if (!matchTimelinePreload) {
+    matchTimelinePreload = import("../app/(main)/Match/MatchScreen")
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        matchTimelinePreload = null;
+        throw error;
+      });
+  }
+  return matchTimelinePreload;
 }

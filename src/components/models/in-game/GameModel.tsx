@@ -104,6 +104,11 @@ export default function GameModel(props: GameModelProps) {
 
   const [currentAction, setCurrentAction] = useState("DefensiveIdle");
 
+  useEffect(() => {
+    if (!renderOnly || !props.animationName) return;
+    setCurrentAction(props.animationName);
+  }, [props.animationName, renderOnly]);
+
   // Get texture URL based on goalkeeper/defender status
   const { type } = props.goalkeeper;
   const skinTextureUrl = useMemo(() => {

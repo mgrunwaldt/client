@@ -4,7 +4,6 @@ import * as React from "react";
 import { useNavigate } from "react-router";
 
 import { cn } from "../../utils/utils";
-import { Button } from "./button";
 
 export interface BackButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -14,7 +13,17 @@ export interface BackButtonProps
 }
 
 const BackButton = React.forwardRef<HTMLButtonElement, BackButtonProps>(
-  ({ className, asChild = false, to, onClick, ...props }, ref) => {
+  (
+    {
+      className,
+      asChild = false,
+      to,
+      onClick,
+      "aria-label": ariaLabel,
+      ...props
+    },
+    ref,
+  ) => {
     const navigate = useNavigate();
 
     const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -36,13 +45,10 @@ const BackButton = React.forwardRef<HTMLButtonElement, BackButtonProps>(
         )}
         ref={ref}
         onClick={handleClick}
+        aria-label={ariaLabel ?? "Back"}
         {...props}
       >
-        <div>
-          <Button className="h-full w-full text-white opacity-100">
-            <ChevronLeft className="h-6 w-6 text-white" />
-          </Button>
-        </div>
+        <ChevronLeft aria-hidden="true" className="h-6 w-6 text-white" />
       </Comp>
     );
   },

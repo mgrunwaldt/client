@@ -17,6 +17,7 @@ describe("installable mobile shell", () => {
 
     expect(manifest).toMatchObject({
       display: "standalone",
+      display_override: ["fullscreen", "standalone"],
       orientation: "portrait",
       start_url: "/",
       theme_color: "#020816",
@@ -33,6 +34,38 @@ describe("installable mobile shell", () => {
     );
     expect(worker).toContain('request.mode === "navigate"');
     expect(worker).toContain('url.pathname.startsWith("/api/")');
+    expect(worker).toContain('url.pathname.startsWith("/assets/")');
     expect(worker).toContain('cache.match("/index.html")');
+    expect(worker).not.toContain("skipWaiting");
+  });
+
+  it("uses shared safe-area tokens across every match-facing surface", async () => {
+    const css = await readFile(
+      new URL("../src/styles/globals.css", import.meta.url),
+      "utf8",
+    );
+    expect(css).toContain("--overgoal-safe-top: env(safe-area-inset-top");
+    expect(css).toContain(".overgoal-safe-screen");
+
+    const safeScreenSources = [
+      "../src/app/(login)/Login/LoginScreen.tsx",
+      "../src/app/(main)/Home/HomePage.tsx",
+      "../src/app/(main)/Pre-Match/pre-match.tsx",
+      "../src/app/(main)/Match/MatchScreen.tsx",
+      "../src/app/(main)/Match-Result/MatchResultScreen.tsx",
+      "../src/components/loader/LoadingScreen.tsx",
+    ];
+    for (const source of safeScreenSources) {
+      expect(
+        await readFile(new URL(source, import.meta.url), "utf8"),
+      ).toContain("overgoal-safe-screen");
+    }
+
+    const fieldSource = await readFile(
+      new URL("../src/app/(game)/GameScene.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(fieldSource).toContain("var(--overgoal-safe-top)");
+    expect(fieldSource).toContain("var(--overgoal-safe-bottom)");
   });
 });

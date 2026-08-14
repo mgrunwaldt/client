@@ -18,6 +18,92 @@ async function fixture<T>(name: string) {
 }
 
 describe("M2-I6 authoritative match lifecycle", () => {
+  it("plays to the authoritative 45th minute after result playback", async () => {
+    const halftime = await fixture<BackendMatchResponse>("halftime-response");
+    let state = matchSessionReducer(
+      {
+        ...createInitialMatchSession(),
+        phase: "result_playback",
+        playbackStatus: "field_ready",
+        match: halftime.match,
+        playbackMinute: 44,
+        halftimeSummary: halftime.halftime_summary,
+      },
+      { type: "RESULT_ACKNOWLEDGED" },
+    );
+
+    expect(state).toMatchObject({
+      phase: "timeline_playback",
+      playbackStatus: "timeline_playing",
+      playbackMinute: 44,
+      halftimeSummary: { minute: 45 },
+    });
+
+    state = matchSessionReducer(state, { type: "TIMELINE_TICK", minute: 45 });
+    expect(state).toMatchObject({
+      phase: "halftime",
+      playbackStatus: "idle",
+      playbackMinute: 45,
+    });
+  });
+
+  it("plays the final first-half minute before pausing at halftime", async () => {
+    const halftime = await fixture<BackendMatchResponse>("halftime-response");
+    const created = await fixture<{
+      my_team: BackendMatchSnapshot["my_team"];
+      opponent_team: BackendMatchSnapshot["opponent_team"];
+    }>("create-match-response");
+    const checkpointMatch = {
+      ...halftime.match,
+      revision: halftime.match.revision - 1,
+      match_status: "IN_PROGRESS" as const,
+      current_time: 44,
+      prev_time: 43,
+      pending_action: null,
+    };
+    let state = matchSessionReducer(createInitialMatchSession(), {
+      type: "HYDRATED",
+      payload: {
+        match: checkpointMatch,
+        myTeam: created.my_team,
+        opponentTeam: created.opponent_team,
+        timelineEvents: [],
+        pendingAction: null,
+      },
+    });
+    state = matchSessionReducer(state, { type: "TIMELINE_TICK", minute: 44 });
+    const command = createMatchCommand(
+      "resume",
+      { match_id: checkpointMatch.id },
+      { matchId: checkpointMatch.id, revision: checkpointMatch.revision },
+    );
+    state = matchSessionReducer(state, { type: "RESUME_REQUESTED", command });
+    state = matchSessionReducer(state, {
+      type: "COMMAND_RESOLVED",
+      source: "resume",
+      command,
+      response: {
+        ...halftime,
+        prev_time: 44,
+        match: { ...halftime.match, prev_time: 44 },
+      },
+    });
+
+    expect(state).toMatchObject({
+      phase: "timeline_playback",
+      playbackStatus: "timeline_playing",
+      playbackMinute: 44,
+      match: { match_status: "HALFTIME", current_time: 45 },
+    });
+
+    state = matchSessionReducer(state, { type: "TIMELINE_TICK", minute: 45 });
+    expect(state).toMatchObject({
+      phase: "halftime",
+      playbackStatus: "idle",
+      playbackMinute: 45,
+    });
+  });
+
   it("hydrates the persisted halftime summary and resumes once from minute 46", async () => {
     const halftime = await fixture<BackendMatchResponse>("halftime-response");
     const startOfSecondHalf = await fixture<BackendMatchResponse>(

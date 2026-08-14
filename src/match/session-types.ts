@@ -137,6 +137,7 @@ export type MatchSessionEvent =
   | { type: "RESUME_REQUESTED"; command: MatchCommand }
   | { type: "ACTION_REQUESTED"; command: MatchCommand }
   | { type: "HYDRATED"; payload: HydratedMatchSession }
+  | { type: "TACTICS_CONFIRMED"; payload: HydratedMatchSession }
   | {
       type: "COMMAND_RESOLVED";
       command: MatchCommand;

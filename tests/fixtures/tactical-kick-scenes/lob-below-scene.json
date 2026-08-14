@@ -520,18 +520,18 @@
       "carrier_player_id": "team_1_RB_2"
     },
     "geometry": {
-      "version": "regulation-68x105-v1",
+      "version": "overgoal-68x105-wide-goal-v2",
       "pitch_width_m": 68,
       "pitch_length_m": 105,
-      "goal_width_m": 7.32,
+      "goal_width_m": 10.98,
       "goal_height_m": 2.44,
       "goal_depth_m": 2,
       "goal_post_radius_m": 0.06,
       "ball_radius_m": 0.11,
       "opponent_goal": {
         "line_y": 0,
-        "left_post_x": 44.62,
-        "right_post_x": 55.38
+        "left_post_x": 41.93,
+        "right_post_x": 58.07
       },
       "opponent_penalty_area": {
         "min_x": 20.35,

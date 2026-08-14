@@ -8,5 +8,7 @@ export const PLAYER_MODEL_REGISTRATION = {
   legacyLengthScale: 2.8,
   metricLengthScale: 1.05,
   authoritativeReachHeightM: 2,
-  visualScale: 0.1 * (1.05 / 2.8),
+  minimumSourceBodyWidth: 77.21851881989699,
+  visualScale: 0.045,
+  portraitWidthCompensation: 1.38,
 } as const;

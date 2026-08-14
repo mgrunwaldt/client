@@ -17,11 +17,12 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate } from "react-router";
 import * as THREE from "three";
 
@@ -38,24 +39,36 @@ import {
   type MatchCommand,
   processBackendMatchAction,
 } from "../../lib/backend-match";
+import {
+  type AutomaticFinishPresentation,
+  automaticFinishPresentation,
+} from "../../match/automatic-finish-presentation";
 import { BALL_MODEL_REGISTRATION } from "../../match/ball-registration";
 import {
   createDribbleSubmissionGate,
   type DribbleDecision,
+  dribblePresentationAtSecond,
+  type DribblePresentationState,
   parseDribblePattern,
+  selectDribbleDefenderTemplate,
 } from "../../match/dribble-input";
 import {
   createFieldCameraPose,
   type FieldCameraPose,
 } from "../../match/field-camera";
-import { reportFieldPresentationReadiness } from "../../match/field-presentation-readiness";
+import {
+  reportFieldPresentationReadiness,
+  reportFieldPresented,
+} from "../../match/field-presentation-readiness";
 import {
   createFieldTransform,
   FIELD_WORLD_SCALE,
   type FieldViewWindow,
   fixedAttackingView,
   followLegendView,
+  worldVectorToFieldAim,
 } from "../../match/field-transform";
+import { deriveFieldVisualPhase } from "../../match/field-visual-phase";
 import {
   buildCanonicalKickDecision,
   createKickSubmissionGate,
@@ -63,7 +76,12 @@ import {
   parseKickControlEnvelope,
 } from "../../match/kick-input";
 import {
+  type KickFailurePresentation,
+  kickFailurePresentation,
+} from "../../match/kick-outcome-presentation";
+import {
   advancePlayerRotation,
+  minDistanceToFieldPath,
   rotationTowardsFieldTarget,
 } from "../../match/player-orientation";
 import { PLAYER_MODEL_REGISTRATION } from "../../match/player-registration";
@@ -85,9 +103,11 @@ import {
   requestReconnectHydration,
   settleHydration,
 } from "../../match/reconnect-hydration";
+import { shouldAdoptResidentFieldScene } from "../../match/resident-field-scene";
 import {
   isDebugResultContinuationEnabled,
   RESULT_HOLD_MS,
+  shouldContinueResultDirectlyToField,
 } from "../../match/result-continuation";
 import {
   actionCommandMatchesDecision,
@@ -97,6 +117,8 @@ import { useMatchSessionStore } from "../../match/session-store";
 import {
   authoritativeTrajectoryPlayback,
   completeAuthoritativeFlightPath,
+  sampleAuthoritativeFlightPath,
+  trajectoryPlaybackDurationMs,
 } from "../../match/trajectory-playback";
 import {
   outcomeFeedbackCue,
@@ -111,17 +133,20 @@ import {
   UnsupportedEventRecovery,
 } from "./RandomEventScene";
 import {
+  canvasCoversViewport,
   createRenderReadinessState,
+  fieldRenderSceneKey,
   invalidateRenderReadiness,
   observeRenderFrame,
 } from "./render-readiness";
 
 const FIELD_SURFACE_Y = 0;
 const DEFAULT_BALL_RADIUS_M = BALL_MODEL_REGISTRATION.radiusM;
+const DRIBBLE_PLAYER_MODEL_SCALE = PLAYER_MODEL_REGISTRATION.legacyVisualScale;
 const OPPONENT_NEAR_BALL_DISTANCE_M = 7;
 const PLAYER_TRAJECTORY_TRACK_DISTANCE_M = 7;
 const PLAYER_TRACK_TURN_SPEED = 9;
-const DEFAULT_STRIKE_CONTACT = { x: 0.45, y: -0.15 };
+const DEFAULT_STRIKE_CONTACT = { x: 0, y: 0 };
 const DEFAULT_CAMERA_WINDOW = {
   maxFieldY: 30,
   minFieldX: 25,
@@ -129,6 +154,9 @@ const DEFAULT_CAMERA_WINDOW = {
 };
 const E2E_RENDER_PROBES =
   import.meta.env.VITE_E2E_MATCH_SESSION_BRIDGE === "true";
+const KICK_DEVELOPMENT_DIAGNOSTICS =
+  import.meta.env.DEV &&
+  import.meta.env.VITE_OVERGOAL_KICK_DIAGNOSTICS === "true";
 const WORLD_FIELD_TRANSFORM = createFieldTransform({
   viewport: { width: 1, height: 1 },
   view: fixedAttackingView(),
@@ -170,6 +198,14 @@ function fieldToWorld(x: number, y: number, z = 0): [number, number, number] {
   return [world.x, world.y, world.z];
 }
 
+function fieldAimForDraft(draft: BallAimDraft) {
+  const aim = worldVectorToFieldAim(draft.shotVector);
+  if (!aim) {
+    throw new Error("A released kick needs a horizontal field direction.");
+  }
+  return aim;
+}
+
 function distanceInFieldMeters(
   a: { x: number; y: number },
   b: { x: number; y: number },
@@ -179,37 +215,11 @@ function distanceInFieldMeters(
   return Math.hypot(dx, dy);
 }
 
-function sampleFlightPath(
-  path: Array<{ x: number; y: number; z: number; t: number }>,
-  t: number,
-) {
-  for (let index = 1; index < path.length; index += 1) {
-    const previous = path[index - 1];
-    const current = path[index];
-    if (t <= current.t) {
-      const span = current.t - previous.t || 1;
-      const alpha = (t - previous.t) / span;
-      return {
-        x: previous.x + (current.x - previous.x) * alpha,
-        y: previous.y + (current.y - previous.y) * alpha,
-        z: previous.z + (current.z - previous.z) * alpha,
-      };
-    }
-  }
-
-  const lastPoint = path[path.length - 1];
-  return lastPoint ? { x: lastPoint.x, y: lastPoint.y, z: lastPoint.z } : null;
-}
-
 function minDistanceToFlightPath(
   player: { x: number; y: number },
   path: Array<{ x: number; y: number }>,
 ) {
-  let best = Number.POSITIVE_INFINITY;
-  path.forEach((point) => {
-    best = Math.min(best, distanceInFieldMeters(player, point));
-  });
-  return best;
+  return minDistanceToFieldPath(player, path);
 }
 
 type StagedKickResult = {
@@ -252,7 +262,7 @@ function FieldCameraController({
     camera.right = pose.frustum.right;
     camera.top = pose.frustum.top;
     camera.bottom = pose.frustum.bottom;
-    camera.zoom = 1;
+    camera.zoom = pose.zoom;
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     framedKeyRef.current = framingKey;
@@ -304,11 +314,10 @@ function FieldRenderReadiness({
     const canvas = gl.domElement;
     const bounds = canvas.getBoundingClientRect();
     gl.getDrawingBufferSize(drawingBufferSize.current);
-    const coversViewport =
-      Math.abs(bounds.x) <= 1 &&
-      Math.abs(bounds.y) <= 1 &&
-      Math.abs(bounds.width - window.innerWidth) <= 1 &&
-      Math.abs(bounds.height - window.innerHeight) <= 1;
+    const coversViewport = canvasCoversViewport(bounds, {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    });
     const hasCompleteDrawingBuffer =
       drawingBufferSize.current.x >= Math.floor(bounds.width) &&
       drawingBufferSize.current.y >= Math.floor(bounds.height);
@@ -423,6 +432,47 @@ function PlayerLabel({
   );
 }
 
+function PlayerPresenceAura({ tone }: { tone: "legend" | "pressure" }) {
+  const auraRef = useRef<THREE.Mesh>(null);
+  const color = tone === "legend" ? "#baff45" : "#ff2f84";
+  const reduceMotion = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+
+  useFrame(({ clock }) => {
+    const aura = auraRef.current;
+    if (!aura || reduceMotion) return;
+    const speed = tone === "legend" ? 2.6 : 4.1;
+    const phase = (Math.sin(clock.elapsedTime * speed) + 1) / 2;
+    const scale = 0.94 + phase * 0.16;
+    aura.scale.set(scale, scale, scale);
+    const material = aura.material as THREE.MeshBasicMaterial;
+    material.opacity = (tone === "legend" ? 0.28 : 0.18) + phase * 0.2;
+  });
+
+  return (
+    <mesh
+      ref={auraRef}
+      position={[0, 0.035, 0]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      renderOrder={2}
+    >
+      <ringGeometry args={[0.82, tone === "legend" ? 1.08 : 1, 32]} />
+      <meshBasicMaterial
+        color={color}
+        transparent
+        opacity={0.3}
+        depthWrite={false}
+        toneMapped={false}
+        blending={THREE.AdditiveBlending}
+      />
+    </mesh>
+  );
+}
+
 function PlayerScreenAnchor({
   testId,
   playerId,
@@ -454,13 +504,21 @@ function PlayerScreenAnchor({
 }
 
 function PlayerRenderProbe({
+  automaticPhase,
+  automaticRole,
   player,
   groupRef,
+  reactionGroupRef,
+  reactionFamily,
   targetRotation,
   worldPosition,
 }: {
+  automaticPhase: AutomaticFinishPhase;
+  automaticRole: "actor" | "responder" | null;
   player: BackendFieldPlayer;
   groupRef: RefObject<THREE.Group | null>;
+  reactionGroupRef: RefObject<THREE.Group | null>;
+  reactionFamily: KickFailurePresentation["family"] | null;
   targetRotation: number;
   worldPosition: [number, number, number];
 }) {
@@ -469,8 +527,14 @@ function PlayerRenderProbe({
   useFrame(() => {
     const probe = probeRef.current;
     const group = groupRef.current;
+    const reactionGroup = reactionGroupRef.current;
     if (!probe || !group) return;
     probe.dataset.rotationY = String(group.rotation.y);
+    probe.dataset.reactionFamily = reactionFamily ?? "none";
+    probe.dataset.reactionOffsetZ = String(reactionGroup?.position.z ?? 0);
+    probe.dataset.reactionRotationX = String(reactionGroup?.rotation.x ?? 0);
+    probe.dataset.automaticPhase = automaticPhase ?? "none";
+    probe.dataset.automaticRole = automaticRole ?? "none";
   });
 
   return (
@@ -538,6 +602,13 @@ function BallRenderProbe({
 }
 
 type BallFlightPoint = { x: number; y: number; z: number };
+type AutomaticFinishPhase =
+  | "incoming"
+  | "control"
+  | "shot"
+  | "response"
+  | "confirmed"
+  | null;
 
 type BallFlightPlayback = {
   completed: boolean;
@@ -545,6 +616,7 @@ type BallFlightPlayback = {
   finalPoint: BallFlightPoint;
   id: number;
   path: Array<BallFlightPoint & { t: number }>;
+  segment: "automatic-incoming" | "automatic-shot" | "single";
   startedAt: number;
 };
 
@@ -568,7 +640,11 @@ function BallFlightController({
       playback.durationMs,
       performance.now() - playback.startedAt,
     );
-    const point = sampleFlightPath(playback.path, elapsedMs / 1000);
+    const point = sampleAuthoritativeFlightPath(
+      playback.path,
+      elapsedMs,
+      playback.durationMs,
+    );
     if (!point) return;
 
     livePointRef.current = point;
@@ -604,6 +680,33 @@ function FieldCameraAnchorProbe() {
       <span
         style={{ display: "block", height: 2, width: 2 }}
         data-testid="field-camera-anchor"
+      />
+    </Html>
+  );
+}
+
+function FieldGroundProbe({
+  fieldPosition,
+  testId,
+}: {
+  fieldPosition: { x: number; y: number };
+  testId: string;
+}) {
+  const worldPosition = fieldToWorld(
+    fieldPosition.x,
+    fieldPosition.y,
+    FIELD_SURFACE_Y,
+  );
+  return (
+    <Html
+      position={worldPosition}
+      center
+      zIndexRange={[0, 0]}
+      style={{ height: 2, opacity: 0, pointerEvents: "none", width: 2 }}
+    >
+      <span
+        style={{ display: "block", height: 2, width: 2 }}
+        data-testid={testId}
       />
     </Html>
   );
@@ -687,7 +790,26 @@ function FieldBackdrop() {
   );
 }
 
+function FieldAtmosphere({ active }: { active: boolean }) {
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="field-atmosphere"
+      className={`field-atmosphere ${active ? "field-atmosphere--active" : ""}`}
+    >
+      <div className="field-atmosphere__edge" />
+      <div className="field-atmosphere__scanlines" />
+      <div className="field-atmosphere__sweep" />
+      <div className="field-atmosphere__vignette" />
+    </div>
+  );
+}
+
 function BackendPlayerModel({
+  automaticFinish,
+  automaticFinishPhase,
+  automaticResponderPlayerId,
+  automaticShotTarget,
   player,
   isTeammate,
   ballFieldPosition,
@@ -697,7 +819,15 @@ function BackendPlayerModel({
   legendPlayerId,
   screenAnchorTestId = null,
   showPlayerLabel = true,
+  visible = true,
+  modelScale = PLAYER_MODEL_REGISTRATION.visualScale,
+  resultReaction,
+  resultReactionVisible,
 }: {
+  automaticFinish: AutomaticFinishPresentation | null;
+  automaticFinishPhase: AutomaticFinishPhase;
+  automaticResponderPlayerId: string | null;
+  automaticShotTarget: BallFlightPoint | null;
   player: BackendFieldPlayer;
   isTeammate: boolean;
   ballFieldPosition: { x: number; y: number };
@@ -707,7 +837,16 @@ function BackendPlayerModel({
   legendPlayerId: string | null;
   screenAnchorTestId?: string | null;
   showPlayerLabel?: boolean;
+  visible?: boolean;
+  modelScale?: number;
+  resultReaction: KickFailurePresentation | null;
+  resultReactionVisible: boolean;
 }) {
+  const viewportSize = useThree((state) => state.size);
+  const portraitWidthCompensation =
+    viewportSize.height > viewportSize.width
+      ? PLAYER_MODEL_REGISTRATION.portraitWidthCompensation
+      : 1;
   const worldPosition = fieldToWorld(player.x, player.y);
   const renderWorldPosition = worldPosition;
   const modelVariant = buildModelVariant(player, isTeammate);
@@ -752,7 +891,29 @@ function BackendPlayerModel({
                   ? 0
                   : Math.PI;
   const groupRef = useRef<THREE.Group>(null);
+  const reactionGroupRef = useRef<THREE.Group>(null);
+  const reactionStartedAtRef = useRef(0);
+  const automaticPhaseStartedAtRef = useRef(0);
   const currentRotationRef = useRef(rotationY);
+  const reactsToResult =
+    resultReactionVisible && resultReaction?.involvedPlayerId === player.id;
+  const isAutomaticActor = automaticFinish?.actorPlayerId === player.id;
+  const isAutomaticResponder = automaticResponderPlayerId === player.id;
+  const automaticRole = isAutomaticActor
+    ? "actor"
+    : isAutomaticResponder
+      ? "responder"
+      : null;
+
+  useEffect(() => {
+    if (reactsToResult) reactionStartedAtRef.current = performance.now();
+  }, [reactsToResult]);
+
+  useEffect(() => {
+    if (automaticRole && automaticFinishPhase) {
+      automaticPhaseStartedAtRef.current = performance.now();
+    }
+  }, [automaticFinishPhase, automaticRole]);
 
   useFrame((_state, delta) => {
     const group = groupRef.current;
@@ -761,10 +922,24 @@ function BackendPlayerModel({
     }
 
     const liveBallPosition = liveBallFlightPointRef.current;
+    const automaticRotationTarget =
+      isAutomaticActor &&
+      automaticShotTarget &&
+      (automaticFinishPhase === "control" ||
+        automaticFinishPhase === "shot" ||
+        automaticFinishPhase === "response")
+        ? rotationTowardsFieldTarget(player, automaticShotTarget)
+        : isAutomaticResponder &&
+            liveBallPosition &&
+            (automaticFinishPhase === "shot" ||
+              automaticFinishPhase === "response")
+          ? rotationTowardsFieldTarget(player, liveBallPosition)
+          : null;
     const liveRotationTarget =
-      isResultAnimating && shouldTrackBall && liveBallPosition
+      automaticRotationTarget ??
+      (isResultAnimating && shouldTrackBall && liveBallPosition
         ? rotationTowardsFieldTarget(player, liveBallPosition)
-        : rotationY;
+        : rotationY);
     currentRotationRef.current = advancePlayerRotation(
       currentRotationRef.current,
       liveRotationTarget,
@@ -772,39 +947,123 @@ function BackendPlayerModel({
       PLAYER_TRACK_TURN_SPEED,
     );
     group.rotation.y = currentRotationRef.current;
+
+    const reactionGroup = reactionGroupRef.current;
+    if (!reactionGroup) return;
+    const automaticElapsed = Math.max(
+      0,
+      performance.now() - automaticPhaseStartedAtRef.current,
+    );
+    if (automaticFinish && automaticFinishPhase && automaticRole) {
+      const pulse = Math.sin(Math.min(1, automaticElapsed / 700) * Math.PI);
+      if (isAutomaticActor && automaticFinishPhase === "control") {
+        reactionGroup.position.z = -pulse * 0.12;
+        reactionGroup.scale.set(1 + pulse * 0.04, 1 - pulse * 0.05, 1.04);
+        reactionGroup.rotation.x = pulse * 0.08;
+        return;
+      }
+      if (isAutomaticActor && automaticFinishPhase === "response") {
+        if (automaticFinish.outcome === "goal") {
+          reactionGroup.position.y =
+            Math.abs(Math.sin(automaticElapsed / 130)) * 0.16;
+          reactionGroup.rotation.z = Math.sin(automaticElapsed / 180) * 0.08;
+        }
+        return;
+      }
+      if (isAutomaticResponder && automaticFinishPhase === "response") {
+        const direction =
+          Math.sign((automaticShotTarget?.x ?? player.x) - player.x) || 1;
+        reactionGroup.position.x = direction * pulse * 0.34;
+        reactionGroup.rotation.z = -direction * pulse * 0.28;
+        reactionGroup.rotation.x =
+          automaticFinish.outcome === "saved" ||
+          automaticFinish.outcome === "blocked"
+            ? pulse * 0.14
+            : -pulse * 0.12;
+        return;
+      }
+    }
+    if (!reactsToResult || !resultReaction) {
+      reactionGroup.position.set(0, 0, 0);
+      reactionGroup.rotation.set(0, 0, 0);
+      reactionGroup.scale.set(1, 1, 1);
+      return;
+    }
+
+    const elapsed = Math.max(
+      0,
+      performance.now() - reactionStartedAtRef.current,
+    );
+    const progress = Math.min(1, elapsed / resultReaction.holdMs);
+    const impact = Math.sin(progress * Math.PI);
+    if (resultReaction.family === "overhit") {
+      reactionGroup.position.z = impact * 0.28;
+      reactionGroup.rotation.x = -impact * 0.24;
+      reactionGroup.rotation.z = Math.sin(progress * Math.PI * 4) * 0.06;
+    } else {
+      const brace = 1 + impact * 0.08;
+      reactionGroup.scale.set(brace, 1 - impact * 0.05, brace);
+      reactionGroup.rotation.x = impact * 0.12;
+    }
   });
 
   return (
     <>
-      <group ref={groupRef} position={renderWorldPosition}>
-        <GameModel
-          {...modelVariant}
-          isTeamMate={isTeammate}
-          animationName="DefensiveIdle"
-          position={[0, 0, 0]}
-          rotation={[0, 0, 0]}
-          scale={PLAYER_MODEL_REGISTRATION.visualScale}
-          targetPosition={null}
-          renderOnly={true}
-        />
+      <group
+        position={renderWorldPosition}
+        visible={visible}
+        scale={[portraitWidthCompensation, 1, 1]}
+      >
+        {player.id === legendPlayerId && <PlayerPresenceAura tone="legend" />}
+        {!isTeammate && opponentNearBall && (
+          <PlayerPresenceAura tone="pressure" />
+        )}
+        <group ref={groupRef}>
+          <group ref={reactionGroupRef}>
+            <GameModel
+              {...modelVariant}
+              isTeamMate={isTeammate}
+              animationName={
+                isAutomaticActor && automaticFinishPhase === "shot"
+                  ? "StrikeForwardJog"
+                  : "DefensiveIdle"
+              }
+              position={[0, 0, 0]}
+              rotation={[0, 0, 0]}
+              scale={modelScale}
+              targetPosition={null}
+              renderOnly={true}
+            />
+          </group>
+        </group>
       </group>
-      <PlayerLabel
-        player={player}
-        legendPlayerId={legendPlayerId}
-        isTeammate={isTeammate}
-        visible={showPlayerLabel}
-        worldPosition={renderWorldPosition}
-      />
-      <PlayerScreenAnchor
-        testId={screenAnchorTestId}
-        playerId={player.id}
-        worldPosition={renderWorldPosition}
-      />
-      {E2E_RENDER_PROBES && (
+      {visible && (
+        <>
+          <PlayerLabel
+            player={player}
+            legendPlayerId={legendPlayerId}
+            isTeammate={isTeammate}
+            visible={showPlayerLabel}
+            worldPosition={renderWorldPosition}
+          />
+          <PlayerScreenAnchor
+            testId={screenAnchorTestId}
+            playerId={player.id}
+            worldPosition={renderWorldPosition}
+          />
+        </>
+      )}
+      {E2E_RENDER_PROBES && visible && (
         <>
           <PlayerRenderProbe
+            automaticPhase={automaticFinishPhase}
+            automaticRole={automaticRole}
             player={player}
             groupRef={groupRef}
+            reactionGroupRef={reactionGroupRef}
+            reactionFamily={
+              reactsToResult ? (resultReaction?.family ?? null) : null
+            }
             targetRotation={rotationY}
             worldPosition={renderWorldPosition}
           />
@@ -819,6 +1078,172 @@ function BackendPlayerModel({
         </>
       )}
     </>
+  );
+}
+
+function KickOutcomeImpact({
+  presentation,
+  point,
+  visible,
+}: {
+  presentation: KickFailurePresentation | null;
+  point: BallFlightPoint | null;
+  visible: boolean;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+  const reduceMotion = useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    [],
+  );
+
+  useFrame(({ clock }) => {
+    const group = groupRef.current;
+    if (!group || reduceMotion) return;
+    const pulse = 1 + Math.sin(clock.elapsedTime * 13) * 0.12;
+    group.scale.set(pulse, pulse, pulse);
+    group.rotation.y += 0.025;
+  });
+
+  if (!visible || !presentation || !point) return null;
+  const color =
+    presentation.family === "overhit"
+      ? "#ffb52e"
+      : presentation.family === "interception"
+        ? "#ff2f84"
+        : "#4de7ff";
+  const [x, y, z] = fieldToWorld(point.x, point.y, Math.max(0.12, point.z));
+
+  return (
+    <group ref={groupRef} position={[x, y + 0.08, z]} renderOrder={8}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.55, 0.82, 32]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.88}
+          depthWrite={false}
+          toneMapped={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+      {presentation.family === "overhit" && (
+        <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
+          <ringGeometry args={[0.92, 1.02, 4]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={0.7}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+      {presentation.family === "interception" && (
+        <mesh position={[0, 0.48, 0]}>
+          <octahedronGeometry args={[0.34, 0]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={0.6}
+            wireframe
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+      {presentation.family === "missed-target" && (
+        <group position={[0, 0.5, 0]} rotation={[0, Math.PI / 4, 0]}>
+          <mesh rotation={[0, 0, Math.PI / 4]}>
+            <boxGeometry args={[0.12, 0.9, 0.12]} />
+            <meshBasicMaterial color={color} toneMapped={false} />
+          </mesh>
+          <mesh rotation={[0, 0, -Math.PI / 4]}>
+            <boxGeometry args={[0.12, 0.9, 0.12]} />
+            <meshBasicMaterial color={color} toneMapped={false} />
+          </mesh>
+        </group>
+      )}
+    </group>
+  );
+}
+
+function AutomaticFinishImpact({
+  phase,
+  point,
+  presentation,
+}: {
+  phase: AutomaticFinishPhase;
+  point: BallFlightPoint | null;
+  presentation: AutomaticFinishPresentation | null;
+}) {
+  const groupRef = useRef<THREE.Group>(null);
+
+  useFrame(({ clock }) => {
+    const group = groupRef.current;
+    if (!group) return;
+    const pulse = 1 + Math.sin(clock.elapsedTime * 12) * 0.12;
+    group.scale.set(pulse, pulse, pulse);
+    group.rotation.y += 0.02;
+  });
+
+  if (phase !== "response" || !presentation || !point) return null;
+  const color =
+    presentation.outcome === "goal"
+      ? "#baff45"
+      : presentation.outcome === "saved"
+        ? "#4de7ff"
+        : presentation.outcome === "blocked"
+          ? "#ff2f84"
+          : "#f6c453";
+  const [x, y, z] = fieldToWorld(point.x, point.y, Math.max(0.12, point.z));
+
+  return (
+    <group ref={groupRef} position={[x, y + 0.08, z]} renderOrder={9}>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.65, 0.95, 32]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={0.88}
+          depthWrite={false}
+          toneMapped={false}
+          blending={THREE.AdditiveBlending}
+        />
+      </mesh>
+      {presentation.outcome === "goal" ? (
+        <>
+          <mesh position={[0, 0.9, 0]}>
+            <cylinderGeometry args={[0.08, 0.28, 1.8, 12]} />
+            <meshBasicMaterial
+              color={color}
+              transparent
+              opacity={0.55}
+              depthWrite={false}
+              toneMapped={false}
+              blending={THREE.AdditiveBlending}
+            />
+          </mesh>
+          <mesh rotation={[-Math.PI / 2, 0, Math.PI / 4]}>
+            <ringGeometry args={[1.08, 1.2, 4]} />
+            <meshBasicMaterial color={color} toneMapped={false} />
+          </mesh>
+        </>
+      ) : (
+        <mesh position={[0, 0.45, 0]}>
+          <octahedronGeometry args={[0.34, 0]} />
+          <meshBasicMaterial
+            color={color}
+            transparent
+            opacity={0.7}
+            wireframe
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+      )}
+    </group>
   );
 }
 
@@ -848,6 +1273,10 @@ export default function GameScene({
   );
   const pendingAction = useMatchSessionStore((state) => state.pendingAction);
   const fieldState = useMatchSessionStore((state) => state.fieldState);
+  const [residentScene, setResidentScene] = useState(() => ({
+    pendingAction,
+    fieldState,
+  }));
   const resultPlayback = useMatchSessionStore((state) => state.resultPlayback);
   const legendAvailability = useMatchSessionStore(
     (state) => state.legendAvailability,
@@ -868,6 +1297,12 @@ export default function GameScene({
   );
   const setLoading = useMatchSessionStore((state) => state.setLoading);
   const setError = useMatchSessionStore((state) => state.setError);
+  const updateTransitionLoader = useMatchSessionStore(
+    (state) => state.updateTransitionLoader,
+  );
+  const hideTransitionLoader = useMatchSessionStore(
+    (state) => state.hideTransitionLoader,
+  );
   const hydrateMatchSession = useMatchSessionStore(
     (state) => state.hydrateMatchSession,
   );
@@ -908,14 +1343,28 @@ export default function GameScene({
     z: number;
   } | null>(null);
   const [isResultAnimating, setIsResultAnimating] = useState(false);
+  const [resultReactionVisible, setResultReactionVisible] = useState(false);
+  const [automaticFinishPhase, setAutomaticFinishPhase] =
+    useState<AutomaticFinishPhase>(null);
+  const [completedBallPlayback, setCompletedBallPlayback] = useState<{
+    id: number;
+    point: BallFlightPoint;
+    segment: BallFlightPlayback["segment"];
+  } | null>(null);
+  const [resultContinuing, setResultContinuing] = useState(false);
+  const [dribblePresentationState, setDribblePresentationState] =
+    useState<DribblePresentationState | null>(null);
   const [readySceneKey, setReadySceneKey] = useState("");
+  const [interactionReadySceneKey, setInteractionReadySceneKey] = useState("");
+  const hasRenderedSceneRef = useRef(false);
   const [rehydrationKey, setRehydrationKey] = useState(0);
   const ballRenderGroupRef = useRef<THREE.Group | null>(null);
   const ballFlightPlaybackRef = useRef<BallFlightPlayback | null>(null);
   const liveBallFlightPointRef = useRef<BallFlightPoint | null>(null);
   const ballFlightSequenceRef = useRef(0);
   const terminalFrameTimeoutRef = useRef<number | null>(null);
-  const resultTimerRef = useRef<number | null>(null);
+  const resultReactionScheduledRef = useRef(false);
+  const resultContinuationGateRef = useRef(false);
   const kickSubmissionGateRef = useRef(createKickSubmissionGate());
   const dribbleSubmissionGateRef = useRef(createDribbleSubmissionGate());
   const randomEventSubmissionGateRef = useRef(
@@ -929,6 +1378,10 @@ export default function GameScene({
   const playedOperationIdRef = useRef<string | null>(null);
   const feedbackOperationIdRef = useRef<string | null>(null);
   const stagedDecisionResult = stagedKickResult?.response.decision_result;
+  const stagedFailurePresentation =
+    kickFailurePresentation(stagedDecisionResult);
+  const stagedAutomaticFinish =
+    automaticFinishPresentation(stagedDecisionResult);
 
   useLayoutEffect(() => {
     activeRouteRef.current = { active, matchId: routeMatchId };
@@ -938,15 +1391,21 @@ export default function GameScene({
   }, [active, routeMatchId]);
 
   useLayoutEffect(() => {
+    if (!shouldAdoptResidentFieldScene(phase)) return;
+    setResidentScene((current) =>
+      current.pendingAction === pendingAction &&
+      current.fieldState === fieldState
+        ? current
+        : { pendingAction, fieldState },
+    );
+  }, [fieldState, pendingAction, phase]);
+
+  useLayoutEffect(() => {
     ballFlightPlaybackRef.current = null;
     liveBallFlightPointRef.current = null;
     if (terminalFrameTimeoutRef.current) {
       window.clearTimeout(terminalFrameTimeoutRef.current);
       terminalFrameTimeoutRef.current = null;
-    }
-    if (resultTimerRef.current) {
-      window.clearTimeout(resultTimerRef.current);
-      resultTimerRef.current = null;
     }
     setReleasedAimDraft(null);
     setActiveAimDraft(null);
@@ -958,6 +1417,12 @@ export default function GameScene({
     setResolvedSceneFieldState(null);
     setAnimatedBallFlightPoint(null);
     setIsResultAnimating(false);
+    setResultReactionVisible(false);
+    setAutomaticFinishPhase(null);
+    setCompletedBallPlayback(null);
+    resultReactionScheduledRef.current = false;
+    setResultContinuing(false);
+    setDribblePresentationState(null);
     // The hidden prewarmed field becomes active by gaining a route match id.
     // Preserve its readiness; renderSceneKey invalidates actual scene changes.
     kickSubmissionGateRef.current = createKickSubmissionGate();
@@ -968,6 +1433,7 @@ export default function GameScene({
     assetErrorBaselineRef.current = null;
     playedOperationIdRef.current = null;
     feedbackOperationIdRef.current = null;
+    resultContinuationGateRef.current = false;
     return () => {
       const command = activeActionCommandRef.current;
       activeActionCommandRef.current = null;
@@ -1242,6 +1708,9 @@ export default function GameScene({
       if (!ready) {
         setActiveAimDraft(null);
         setReleasedAimDraft(null);
+        setInteractionReadySceneKey((current) =>
+          current === sceneKey ? "" : current,
+        );
       }
       setReadySceneKey((current) => {
         if (ready) return sceneKey;
@@ -1254,16 +1723,25 @@ export default function GameScene({
     ? authoritativeContinuationFieldState(stagedKickResult.response)
     : null;
   const stagedFieldState =
-    !isResultAnimating && continuationFieldState
+    !isResultAnimating && continuationFieldState && !stagedFailurePresentation
       ? continuationFieldState
       : null;
+  const renderPendingAction = residentScene.pendingAction;
+  const residentFieldState = residentScene.fieldState;
   // Keep the submitted scene visible during authoritative trajectory playback.
   // The authoritative continuation replaces it only after the flight completes.
   const displayFieldState =
-    stagedFieldState || resolvedSceneFieldState || fieldState;
-  const sequenceFieldState = resolvedSceneFieldState || fieldState;
+    stagedFieldState || resolvedSceneFieldState || residentFieldState;
+  const sequenceFieldState = resolvedSceneFieldState || residentFieldState;
   const myPlayers = displayFieldState?.my_team_positions || [];
   const opponentPlayers = displayFieldState?.opponent_positions || [];
+  const automaticShotTarget =
+    stagedDecisionResult?.automatic_follow_up?.final_point ?? null;
+  const automaticResponderPlayerId = stagedAutomaticFinish
+    ? (stagedAutomaticFinish.contactPlayerId ??
+      opponentPlayers.find((player) => player.role === "GK")?.id ??
+      null)
+    : null;
   const legendPlayer = displayFieldState?.legend_player_id
     ? myPlayers.find(
         (player) => player.id === displayFieldState.legend_player_id,
@@ -1286,11 +1764,21 @@ export default function GameScene({
     : followLegendView(sequenceAnchorPlayer ?? { x: 50, y: 25 });
   const fieldViewWindow =
     sequenceFieldState?.sequence?.camera.view_window ?? fallbackCameraView;
-  const fieldCameraPose = createFieldCameraPose(fieldViewWindow);
+  const cornerFieldX =
+    sequenceFieldState?.sequence?.camera.mode === "CORNER_ATTACKING_THIRD"
+      ? sequenceFieldState.ball_x
+      : undefined;
+  const fieldCameraPose = createFieldCameraPose(
+    fieldViewWindow,
+    cornerFieldX,
+    sequenceFieldState?.sequence?.camera.mode === "FOLLOW_LEGEND"
+      ? "FOLLOW_LEGEND"
+      : "FIXED_ATTACKING_THIRD",
+  );
   const fieldCameraFramingKey =
     sequenceFieldState?.sequence?.sequence_id ??
     sequenceFieldState?.id ??
-    pendingAction?.id ??
+    renderPendingAction?.id ??
     "no-action";
   const penaltyNonparticipantCount =
     displayFieldState?.scene_family === "PENALTY"
@@ -1299,37 +1787,67 @@ export default function GameScene({
         (legendPlayer ? 1 : 0) -
         opponentPlayers.filter((player) => player.role === "GK").length
       : null;
-  const isDribbleScene = pendingAction?.scene_type === "DRIBBLE";
-  const isRandomEventScene = isRandomEventAction(pendingAction);
+  const isDribbleScene = renderPendingAction?.scene_type === "DRIBBLE";
+  const isRandomEventScene = isRandomEventAction(renderPendingAction);
   const isStagedRandomEvent = Boolean(
     stagedKickResult && isRandomEventSceneType(stagedKickResult.sceneType),
   );
-  const parsedRandomEvent = parseRandomEventAction(pendingAction);
+  const parsedRandomEvent = parseRandomEventAction(renderPendingAction);
   // Drei Html labels share the DOM overlay with the active-scene HUD. Hide the
   // legend label whenever either dribble or a result takes over that region.
   const showLegendPlayerLabel =
     !isDribbleScene && !isRandomEventScene && !stagedKickResult;
-  const dribbleDefenderId =
-    isDribbleScene && legendPlayer
-      ? (opponentPlayers.reduce<BackendFieldPlayer | null>(
-          (closest, player) => {
-            if (!closest) return player;
-            return distanceInFieldMeters(player, legendPlayer) <
-              distanceInFieldMeters(closest, legendPlayer)
-              ? player
-              : closest;
-          },
-          null,
-        )?.id ?? null)
-      : null;
   const parsedDribblePattern = isDribbleScene
     ? parseDribblePattern(displayFieldState?.dribble_pattern)
     : { pattern: null, error: null };
   const dribblePattern = parsedDribblePattern.pattern;
+  const dribblePresentation = dribblePattern
+    ? dribblePresentationAtSecond(
+        dribblePattern,
+        dribblePresentationState?.trace ?? [
+          { at_second: 0, lane: dribblePattern.starting_lane },
+        ],
+        dribblePresentationState?.elapsed ?? 0,
+      )
+    : null;
+  const dribbleLegend =
+    isDribbleScene && legendPlayer && dribblePresentation
+      ? {
+          ...legendPlayer,
+          x: dribblePresentation.player.x,
+          y: dribblePresentation.player.y,
+        }
+      : null;
+  const dribbleDefenders =
+    isDribbleScene && dribblePresentation
+      ? dribblePresentation.defenders.reduce<
+          Array<{ active: boolean; player: BackendFieldPlayer }>
+        >((players, wave, index) => {
+          const template = selectDribbleDefenderTemplate(
+            opponentPlayers,
+            index,
+          );
+          if (template) {
+            players.push({
+              active: wave.active,
+              player: {
+                ...template,
+                id: `dribble-wave-${wave.id}`,
+                x: wave.x,
+                y: wave.y,
+              },
+            });
+          }
+          return players;
+        }, [])
+      : [];
   const baseBallFieldPosition = displayFieldState
     ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
     : { x: 50, y: 25 };
-  const ballFieldPosition = animatedBallFlightPoint || baseBallFieldPosition;
+  const ballFieldPosition =
+    dribblePresentation?.ball ||
+    animatedBallFlightPoint ||
+    baseBallFieldPosition;
   const ballCenterHeight =
     animatedBallFlightPoint?.z ??
     displayFieldState?.geometry?.ball_radius_m ??
@@ -1338,21 +1856,46 @@ export default function GameScene({
     ? fieldToWorld(ballFieldPosition.x, ballFieldPosition.y, ballCenterHeight)
     : [0, DEFAULT_BALL_RADIUS_M, 0];
   const kickControlEnvelope = parseKickControlEnvelope(
-    pendingAction?.control_envelope,
+    renderPendingAction?.control_envelope,
   );
-  const renderSceneKey = [
-    pendingAction?.id ?? "no-action",
-    displayFieldState?.scene_family ?? "no-scene",
-    displayFieldState?.ball_x ?? "no-ball-x",
-    displayFieldState?.ball_y ?? "no-ball-y",
-    myPlayers.length,
-    opponentPlayers.length,
-  ].join(":");
+  const renderSceneKey = fieldRenderSceneKey({
+    actionId: renderPendingAction?.id ?? null,
+    sceneFamily: displayFieldState?.scene_family ?? null,
+    ball: displayFieldState
+      ? { x: displayFieldState.ball_x, y: displayFieldState.ball_y }
+      : null,
+    myPlayers,
+    opponentPlayers,
+    view: fieldViewWindow,
+    cornerFieldX,
+  });
   const isCanvasReady = readySceneKey === renderSceneKey;
-  const isFieldInteractionReady =
+  const isFieldInteractionCurrentlyReady =
     isCanvasReady &&
     !assetsActive &&
     (assetsTotal === 0 || assetsLoaded >= assetsTotal);
+  const isFieldInteractionReady =
+    isFieldInteractionCurrentlyReady ||
+    interactionReadySceneKey === renderSceneKey;
+  const hasBlockingSessionError =
+    phase === "recoverable_error" || phase === "unsupported_contract";
+  const fieldVisualPhase = deriveFieldVisualPhase({
+    active: Boolean(active),
+    hasBlockingError: hasBlockingSessionError,
+    hasRenderedScene: hasRenderedSceneRef.current,
+    hasResult: Boolean(stagedKickResult),
+    interactionReady: isFieldInteractionReady,
+    resultAnimating: isResultAnimating,
+    resultContinuing,
+    sessionPhase: phase,
+  });
+
+  useEffect(() => {
+    if (isFieldInteractionCurrentlyReady) {
+      hasRenderedSceneRef.current = true;
+      setInteractionReadySceneKey(renderSceneKey);
+    }
+  }, [isFieldInteractionCurrentlyReady, renderSceneKey]);
 
   useEffect(() => {
     if (!match?.id) return;
@@ -1361,7 +1904,27 @@ export default function GameScene({
     return () => reportFieldPresentationReadiness(snapshot, false);
   }, [isFieldInteractionReady, match?.id, renderSceneKey]);
 
+  useEffect(() => {
+    if (active && isFieldInteractionReady && match?.id) {
+      reportFieldPresented(match.id);
+      updateTransitionLoader({
+        progress: 100,
+        stage: "Field ready",
+        subtitle: "Your move is ready.",
+      });
+      const frame = window.requestAnimationFrame(hideTransitionLoader);
+      return () => window.cancelAnimationFrame(frame);
+    }
+  }, [
+    active,
+    hideTransitionLoader,
+    isFieldInteractionReady,
+    match?.id,
+    updateTransitionLoader,
+  ]);
+
   const canAim =
+    fieldVisualPhase === "playable" &&
     authoritativeRouteReady &&
     isFieldInteractionReady &&
     !stagedKickResult &&
@@ -1371,6 +1934,7 @@ export default function GameScene({
     pendingAction.available_choices.some((choice) => choice.id === "KICK") &&
     Boolean(kickControlEnvelope);
   const canDribble =
+    fieldVisualPhase === "playable" &&
     authoritativeRouteReady &&
     isFieldInteractionReady &&
     !stagedKickResult &&
@@ -1386,6 +1950,7 @@ export default function GameScene({
       (choice) => choice.id === "SIMULATE_FOUL",
     );
   const canResolveRandomEvent =
+    fieldVisualPhase === "playable" &&
     authoritativeRouteReady &&
     isFieldInteractionReady &&
     !stagedKickResult &&
@@ -1400,15 +1965,12 @@ export default function GameScene({
     releasedAimDraft && kickControlEnvelope
       ? buildCanonicalKickDecision(
           kickControlEnvelope,
-          {
-            x: releasedAimDraft.normalizedDirection.x,
-            y: releasedAimDraft.normalizedDirection.z,
-          },
+          fieldAimForDraft(releasedAimDraft),
           releasedAimDraft.normalizedPower,
           strikeContact,
         )
       : null;
-  const showFieldLoadingOverlay = !isFieldInteractionReady;
+  const showFieldLoadingOverlay = fieldVisualPhase === "loading";
 
   useEffect(() => {
     return () => {
@@ -1416,9 +1978,6 @@ export default function GameScene({
       liveBallFlightPointRef.current = null;
       if (terminalFrameTimeoutRef.current) {
         window.clearTimeout(terminalFrameTimeoutRef.current);
-      }
-      if (resultTimerRef.current) {
-        window.clearTimeout(resultTimerRef.current);
       }
     };
   }, []);
@@ -1456,7 +2015,7 @@ export default function GameScene({
     setError(new Error(`Unable to load match asset ${failedAsset}.`));
   }, [active, assetErrors, setError]);
 
-  const clearStagedKickResult = () => {
+  const clearStagedKickResult = useCallback(() => {
     ballFlightPlaybackRef.current = null;
     liveBallFlightPointRef.current = null;
     if (terminalFrameTimeoutRef.current) {
@@ -1467,32 +2026,142 @@ export default function GameScene({
     setResolvedSceneFieldState(null);
     setAnimatedBallFlightPoint(null);
     setIsResultAnimating(false);
-  };
+    setResultReactionVisible(false);
+    setAutomaticFinishPhase(null);
+    setCompletedBallPlayback(null);
+    resultReactionScheduledRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    if (!stagedKickResult && phase !== "result_playback") {
+      resultContinuationGateRef.current = false;
+      setResultContinuing(false);
+    }
+  }, [phase, stagedKickResult]);
 
   const completeBallPlayback = useCallback(
     (playbackId: number, finalPoint: BallFlightPoint) => {
-      if (ballFlightPlaybackRef.current?.id !== playbackId) return;
-      ballFlightPlaybackRef.current = null;
-      liveBallFlightPointRef.current = finalPoint;
-      setAnimatedBallFlightPoint(finalPoint);
-
-      const response = stagedKickResult?.response;
-      if (response && authoritativeContinuationFieldState(response)) {
-        terminalFrameTimeoutRef.current = window.setTimeout(() => {
-          terminalFrameTimeoutRef.current = null;
-          liveBallFlightPointRef.current = null;
-          setAnimatedBallFlightPoint(null);
-          setIsResultAnimating(false);
-        }, 100);
-      } else {
-        setIsResultAnimating(false);
-      }
+      const segment = ballFlightPlaybackRef.current?.segment ?? "single";
+      setCompletedBallPlayback({ id: playbackId, point: finalPoint, segment });
     },
-    [stagedKickResult],
+    [],
   );
+
+  useLayoutEffect(() => {
+    if (!completedBallPlayback || !stagedKickResult) return;
+    const activePlayback = ballFlightPlaybackRef.current;
+    if (
+      activePlayback &&
+      activePlayback.id !== completedBallPlayback.id &&
+      !activePlayback.completed
+    ) {
+      setCompletedBallPlayback(null);
+      return;
+    }
+
+    ballFlightPlaybackRef.current = null;
+    liveBallFlightPointRef.current = completedBallPlayback.point;
+    setAnimatedBallFlightPoint(completedBallPlayback.point);
+    setCompletedBallPlayback(null);
+
+    if (
+      completedBallPlayback.segment === "automatic-incoming" &&
+      stagedDecisionResult?.automatic_follow_up
+    ) {
+      const followUp = stagedDecisionResult.automatic_follow_up;
+      setAutomaticFinishPhase("control");
+      setIsResultAnimating(true);
+      terminalFrameTimeoutRef.current = window.setTimeout(() => {
+        terminalFrameTimeoutRef.current = null;
+        const flightPath = followUp.flight_path;
+        const durationMs = trajectoryPlaybackDurationMs(flightPath);
+        const initialPoint = sampleAuthoritativeFlightPath(
+          flightPath,
+          0,
+          durationMs,
+        );
+        const playbackId = (ballFlightSequenceRef.current += 1);
+        ballFlightPlaybackRef.current = {
+          completed: false,
+          durationMs,
+          finalPoint: followUp.final_point,
+          id: playbackId,
+          path: flightPath,
+          segment: "automatic-shot",
+          startedAt: performance.now(),
+        };
+        liveBallFlightPointRef.current = initialPoint;
+        setAnimatedBallFlightPoint(initialPoint);
+        flushSync(() => setAutomaticFinishPhase("shot"));
+      }, 650);
+      return;
+    }
+
+    if (stagedAutomaticFinish) {
+      if (resultReactionScheduledRef.current) return;
+      resultReactionScheduledRef.current = true;
+      setAutomaticFinishPhase("response");
+      setIsResultAnimating(true);
+      terminalFrameTimeoutRef.current = window.setTimeout(() => {
+        terminalFrameTimeoutRef.current = null;
+        const confirm = () => {
+          setAutomaticFinishPhase("confirmed");
+          setIsResultAnimating(false);
+        };
+        const e2eState = globalThis as typeof globalThis & {
+          __OVERGOAL_E2E_HOLD_AUTOMATIC_RESPONSE__?: boolean;
+          __OVERGOAL_E2E_RELEASE_AUTOMATIC_RESPONSE__?: () => void;
+        };
+        if (
+          E2E_RENDER_PROBES &&
+          e2eState.__OVERGOAL_E2E_HOLD_AUTOMATIC_RESPONSE__
+        ) {
+          e2eState.__OVERGOAL_E2E_RELEASE_AUTOMATIC_RESPONSE__ = confirm;
+          return;
+        }
+        confirm();
+      }, stagedAutomaticFinish.responseHoldMs);
+      return;
+    }
+
+    if (stagedFailurePresentation) {
+      if (resultReactionScheduledRef.current) return;
+      resultReactionScheduledRef.current = true;
+      setResultReactionVisible(true);
+      setIsResultAnimating(true);
+      terminalFrameTimeoutRef.current = window.setTimeout(() => {
+        terminalFrameTimeoutRef.current = null;
+        setResultReactionVisible(false);
+        setIsResultAnimating(false);
+      }, stagedFailurePresentation.holdMs);
+      return;
+    }
+
+    if (authoritativeContinuationFieldState(stagedKickResult.response)) {
+      terminalFrameTimeoutRef.current = window.setTimeout(() => {
+        terminalFrameTimeoutRef.current = null;
+        liveBallFlightPointRef.current = null;
+        setAnimatedBallFlightPoint(null);
+        setIsResultAnimating(false);
+      }, 100);
+      return;
+    }
+    setIsResultAnimating(false);
+  }, [
+    completedBallPlayback,
+    stagedAutomaticFinish,
+    stagedDecisionResult,
+    stagedFailurePresentation,
+    stagedKickResult,
+  ]);
 
   const startBallPlayback = useCallback(
     (response: BackendMatchResponse, operationId: string | null = null) => {
+      // The command handler and result-playback hydration may observe the same
+      // committed operation in either order. Its authoritative identity makes
+      // trajectory playback idempotent and prevents an in-flight restart.
+      if (operationId && playedOperationIdRef.current === operationId) return;
+
       const feedbackId =
         operationId ??
         `${response.match.id}:${response.match.revision}:${response.prev_time}`;
@@ -1505,21 +2174,33 @@ export default function GameScene({
       if (operationId) playedOperationIdRef.current = operationId;
       ballFlightPlaybackRef.current = null;
       liveBallFlightPointRef.current = null;
+      setResultReactionVisible(false);
+      setAutomaticFinishPhase(null);
+      setCompletedBallPlayback(null);
+      resultReactionScheduledRef.current = false;
       if (terminalFrameTimeoutRef.current) {
         window.clearTimeout(terminalFrameTimeoutRef.current);
         terminalFrameTimeoutRef.current = null;
       }
 
-      const trajectory = authoritativeTrajectoryPlayback(
-        response.decision_result,
-      );
+      const decisionResult = response.decision_result;
+      const automaticFollowUp = decisionResult?.automatic_follow_up;
+      const trajectory = automaticFollowUp
+        ? decisionResult?.flight_path && decisionResult.final_point
+          ? {
+              finalPoint: decisionResult.final_point,
+              path: decisionResult.flight_path,
+            }
+          : null
+        : authoritativeTrajectoryPlayback(decisionResult);
       if (trajectory) {
         const { finalPoint, path: flightPath } = trajectory;
-        const durationMs = Math.max(
-          500,
-          flightPath[flightPath.length - 1].t * 1000,
+        const durationMs = trajectoryPlaybackDurationMs(flightPath);
+        const initialPoint = sampleAuthoritativeFlightPath(
+          flightPath,
+          0,
+          durationMs,
         );
-        const initialPoint = sampleFlightPath(flightPath, 0);
         const playbackId = (ballFlightSequenceRef.current += 1);
         ballFlightPlaybackRef.current = {
           completed: false,
@@ -1527,10 +2208,12 @@ export default function GameScene({
           finalPoint,
           id: playbackId,
           path: flightPath,
+          segment: automaticFollowUp ? "automatic-incoming" : "single",
           startedAt: performance.now(),
         };
         liveBallFlightPointRef.current = initialPoint;
         setAnimatedBallFlightPoint(initialPoint);
+        setAutomaticFinishPhase(automaticFollowUp ? "incoming" : null);
         setIsResultAnimating(true);
         return;
       }
@@ -1578,6 +2261,7 @@ export default function GameScene({
   };
 
   const closeContactDialog = () => {
+    setActiveAimDraft(releasedAimDraft);
     setReleasedAimDraft(null);
     setSubmitError(null);
     setRestoreAimFocus(true);
@@ -1616,10 +2300,7 @@ export default function GameScene({
     }
     const payload = buildCanonicalKickDecision(
       envelope,
-      {
-        x: releasedAimDraft.normalizedDirection.x,
-        y: releasedAimDraft.normalizedDirection.z,
-      },
+      fieldAimForDraft(releasedAimDraft),
       releasedAimDraft.normalizedPower,
       strikeContact,
     );
@@ -1950,46 +2631,64 @@ export default function GameScene({
     }
   };
 
-  const handleNextAction = () => {
-    if (!match?.id || !stagedKickResult) {
-      return;
-    }
-
-    acknowledgeDecisionResult();
-    clearStagedKickResult();
-    navigate(`/match/${match.id}`);
-  };
-
-  const autoContinueResult = useEffectEvent(handleNextAction);
-
-  useEffect(() => {
+  const handleNextAction = useCallback(() => {
     if (
-      !authoritativeRouteReady ||
+      !match?.id ||
       !stagedKickResult ||
       isResultAnimating ||
-      phase === "recoverable_error" ||
-      phase === "unsupported_contract" ||
-      !isFieldInteractionReady ||
-      debugResultContinuation
+      resultContinuationGateRef.current
     ) {
       return;
     }
-    resultTimerRef.current = window.setTimeout(
-      autoContinueResult,
-      RESULT_HOLD_MS,
+
+    resultContinuationGateRef.current = true;
+    setResultContinuing(true);
+    const continueDirectlyToField = shouldContinueResultDirectlyToField({
+      pendingAction: stagedKickResult.response.pending_action,
+      responseMinute: stagedKickResult.response.minute,
+    });
+    const nextSession = acknowledgeDecisionResult();
+    if (
+      nextSession.phase === "result_playback" ||
+      nextSession.phase === "recoverable_error" ||
+      nextSession.phase === "unsupported_contract"
+    ) {
+      resultContinuationGateRef.current = false;
+      setResultContinuing(false);
+      return;
+    }
+    clearStagedKickResult();
+    navigate(
+      continueDirectlyToField ? `/game/${match.id}` : `/match/${match.id}`,
     );
-    return () => {
-      if (resultTimerRef.current) {
-        window.clearTimeout(resultTimerRef.current);
-        resultTimerRef.current = null;
-      }
-    };
   }, [
-    authoritativeRouteReady,
-    debugResultContinuation,
-    isFieldInteractionReady,
+    acknowledgeDecisionResult,
+    clearStagedKickResult,
     isResultAnimating,
-    phase,
+    match?.id,
+    navigate,
+    stagedKickResult,
+  ]);
+
+  useEffect(() => {
+    if (
+      debugResultContinuation ||
+      !stagedKickResult ||
+      fieldVisualPhase !== "resolved" ||
+      isResultAnimating ||
+      resultContinuing
+    ) {
+      return;
+    }
+
+    const timeout = window.setTimeout(handleNextAction, RESULT_HOLD_MS);
+    return () => window.clearTimeout(timeout);
+  }, [
+    debugResultContinuation,
+    fieldVisualPhase,
+    handleNextAction,
+    isResultAnimating,
+    resultContinuing,
     stagedKickResult,
   ]);
 
@@ -2005,13 +2704,11 @@ export default function GameScene({
       ),
     );
   }, [setError]);
-  const hasBlockingSessionError =
-    phase === "recoverable_error" || phase === "unsupported_contract";
   const blockingSessionError = hasBlockingSessionError ? (
     <div
       data-testid="scene-contract-error"
       role="alert"
-      className="absolute inset-4 z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
+      className="absolute top-[calc(var(--overgoal-safe-top)+1rem)] right-[calc(var(--overgoal-safe-right)+1rem)] bottom-[calc(var(--overgoal-safe-bottom)+1rem)] left-[calc(var(--overgoal-safe-left)+1rem)] z-40 m-auto h-fit max-w-md rounded-[2rem] border border-pink-300/35 bg-slate-950/95 p-6 text-white shadow-[0_0_48px_rgba(217,70,239,0.2)]"
     >
       <p className="font-orbitron text-[10px] font-black tracking-[0.28em] text-pink-200 uppercase">
         Recoverable Match Error
@@ -2071,6 +2768,9 @@ export default function GameScene({
         data-testid="game-field"
         data-session-phase={hasBlockingSessionError ? phase : "hydrating"}
         data-interaction-phase="blocked"
+        data-field-visual-phase={
+          hasBlockingSessionError ? "blocked" : "loading"
+        }
         data-render-ready="false"
         className="fixed inset-0 z-40 overflow-hidden bg-[#0a4739]"
       >
@@ -2098,8 +2798,24 @@ export default function GameScene({
   return (
     <div
       data-testid="game-field"
+      data-aim-power={
+        E2E_RENDER_PROBES
+          ? (activeAimDraft ?? releasedAimDraft)?.normalizedPower
+          : undefined
+      }
+      data-aim-direction-x={
+        E2E_RENDER_PROBES
+          ? (activeAimDraft ?? releasedAimDraft)?.normalizedDirection.x
+          : undefined
+      }
+      data-aim-direction-z={
+        E2E_RENDER_PROBES
+          ? (activeAimDraft ?? releasedAimDraft)?.normalizedDirection.z
+          : undefined
+      }
       data-session-phase={phase}
       data-interaction-phase={interactionPhase}
+      data-field-visual-phase={fieldVisualPhase}
       data-player-count={myPlayers.length + opponentPlayers.length}
       data-player-roles={[...myPlayers, ...opponentPlayers]
         .map((player) => player.role)
@@ -2110,6 +2826,7 @@ export default function GameScene({
         .sort()
         .join(",")}
       data-scene-family={displayFieldState?.scene_family ?? ""}
+      data-corner-camera={cornerFieldX === undefined ? "false" : "true"}
       data-ball-x={displayFieldState ? ballFieldPosition.x : ""}
       data-ball-y={displayFieldState ? ballFieldPosition.y : ""}
       data-ball-z={ballCenterHeight}
@@ -2146,8 +2863,21 @@ export default function GameScene({
       data-result-minute={stagedKickResult?.response.prev_time ?? ""}
       data-continuation-minute={stagedKickResult?.response.minute ?? ""}
       data-result-animating={isResultAnimating ? "true" : "false"}
+      data-result-reaction={stagedFailurePresentation?.family ?? "none"}
+      data-result-reaction-visible={resultReactionVisible ? "true" : "false"}
+      data-automatic-finish-outcome={stagedAutomaticFinish?.outcome ?? "none"}
+      data-automatic-finish-phase={automaticFinishPhase ?? "none"}
+      data-automatic-score-confirmed={
+        automaticFinishPhase === "confirmed" ? "true" : "false"
+      }
+      data-automatic-confirmed-my-team-score={
+        automaticFinishPhase === "confirmed"
+          ? (stagedKickResult?.response.match.my_team_score ?? "")
+          : ""
+      }
       data-penalty-nonparticipant-count={penaltyNonparticipantCount ?? ""}
       data-render-ready={isCanvasReady ? "true" : "false"}
+      data-render-scene-key={E2E_RENDER_PROBES ? renderSceneKey : undefined}
       data-kick-contract-supported={kickControlEnvelope ? "true" : "false"}
       className={`fixed inset-0 overflow-hidden bg-[#0a4739] ${
         active ? "z-40 opacity-100" : "pointer-events-none z-0 opacity-[0.001]"
@@ -2156,16 +2886,19 @@ export default function GameScene({
     >
       <FieldBackdrop />
       {!stagedKickResult && !isDribbleScene && !isRandomEventScene && (
-        <div className="absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 text-white">
-          <div className="rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
-            {pendingAction?.title || "Field"}
+        <div
+          data-testid="field-scene-hud"
+          className="field-scene-hud absolute right-0 bottom-0 left-0 z-20 flex flex-col gap-2 p-4 pr-[calc(var(--overgoal-safe-right)+1rem)] pb-[calc(var(--overgoal-safe-bottom)+1rem)] pl-[calc(var(--overgoal-safe-left)+1rem)] text-white"
+        >
+          <div className="field-scene-hud__title rounded-full bg-black/60 px-3 py-1 text-xs font-bold tracking-[0.24em] text-cyan-300 uppercase">
+            {renderPendingAction?.title || "Field"}
           </div>
-          <div className="rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
+          <div className="field-scene-hud__card rounded-xl bg-black/50 px-4 py-2 text-sm text-white/90 backdrop-blur-sm">
             <div className="font-bold">
               {myTeam?.name || "My Team"} vs {opponentTeam?.name || "Opponent"}
             </div>
             <div>
-              {pendingAction?.description || "Waiting for field state."}
+              {renderPendingAction?.description || "Waiting for field state."}
             </div>
           </div>
           {active && !displayFieldState && (
@@ -2194,6 +2927,7 @@ export default function GameScene({
         resetKey={`${routeMatchId ?? "no-match"}:${rehydrationKey}`}
       >
         <Canvas
+          frameloop={active ? "always" : "demand"}
           gl={{
             antialias: true,
             alpha: true,
@@ -2214,7 +2948,7 @@ export default function GameScene({
             right={fieldCameraPose.frustum.right}
             top={fieldCameraPose.frustum.top}
             bottom={fieldCameraPose.frustum.bottom}
-            zoom={1}
+            zoom={fieldCameraPose.zoom}
             near={0.1}
             far={1000}
           />
@@ -2227,6 +2961,16 @@ export default function GameScene({
           <Suspense fallback={null}>
             <Physics gravity={[0, -30, 0]} colliders={"ball"}>
               <Sky sunPosition={[10, 10, 0]} />
+              <hemisphereLight
+                color="#b8f7ff"
+                groundColor="#12392f"
+                intensity={1.15}
+              />
+              <directionalLight
+                color="#dffcff"
+                intensity={1.35}
+                position={[-28, 42, 24]}
+              />
               <ContactShadows
                 frames={1}
                 scale={100}
@@ -2241,8 +2985,9 @@ export default function GameScene({
                 position={[ballX, ballY, ballZ]}
                 interactive={false}
                 renderOnly={true}
+                flightActive={isResultAnimating}
                 aimEnabled={Boolean(canAim && !releasedAimDraft)}
-                aimDraft={activeAimDraft}
+                aimDraft={activeAimDraft ?? releasedAimDraft}
                 kickControlEnvelope={kickControlEnvelope}
                 onAimChange={setActiveAimDraft}
                 onAimRelease={handleAimRelease}
@@ -2250,6 +2995,19 @@ export default function GameScene({
               {E2E_RENDER_PROBES && (
                 <>
                   <FieldCameraAnchorProbe />
+                  <FieldGroundProbe
+                    fieldPosition={{ x: 50, y: 15.71 }}
+                    testId="opponent-penalty-area-bottom-probe"
+                  />
+                  {cornerFieldX !== undefined && displayFieldState && (
+                    <FieldGroundProbe
+                      fieldPosition={{
+                        x: displayFieldState.ball_x < 50 ? 0 : 100,
+                        y: 0,
+                      }}
+                      testId="corner-flag-render-probe"
+                    />
+                  )}
                   <BallRenderProbe
                     fieldPosition={{
                       x: ballFieldPosition.x,
@@ -2267,6 +3025,16 @@ export default function GameScene({
                 playbackRef={ballFlightPlaybackRef}
                 onComplete={completeBallPlayback}
               />
+              <KickOutcomeImpact
+                presentation={stagedFailurePresentation}
+                point={animatedBallFlightPoint}
+                visible={resultReactionVisible}
+              />
+              <AutomaticFinishImpact
+                phase={automaticFinishPhase}
+                point={animatedBallFlightPoint}
+                presentation={stagedAutomaticFinish}
+              />
               {canAim && (
                 <BallAimSurface
                   position={[ballX, ballY, ballZ]}
@@ -2279,9 +3047,18 @@ export default function GameScene({
                 />
               )}
 
-              {myPlayers.map((player) => (
+              {(isDribbleScene
+                ? dribbleLegend
+                  ? [dribbleLegend]
+                  : []
+                : myPlayers
+              ).map((player) => (
                 <BackendPlayerModel
                   key={player.id}
+                  automaticFinish={stagedAutomaticFinish}
+                  automaticFinishPhase={automaticFinishPhase}
+                  automaticResponderPlayerId={automaticResponderPlayerId}
+                  automaticShotTarget={automaticShotTarget}
                   player={player}
                   isTeammate={true}
                   ballFieldPosition={ballFieldPosition}
@@ -2295,11 +3072,28 @@ export default function GameScene({
                       : null
                   }
                   showPlayerLabel={showLegendPlayerLabel}
+                  modelScale={
+                    isDribbleScene
+                      ? DRIBBLE_PLAYER_MODEL_SCALE
+                      : PLAYER_MODEL_REGISTRATION.visualScale
+                  }
+                  resultReaction={stagedFailurePresentation}
+                  resultReactionVisible={resultReactionVisible}
                 />
               ))}
-              {opponentPlayers.map((player) => (
+              {(isDribbleScene
+                ? dribbleDefenders
+                : opponentPlayers.map((player) => ({
+                    active: true,
+                    player,
+                  }))
+              ).map(({ active: playerVisible, player }, index) => (
                 <BackendPlayerModel
                   key={player.id}
+                  automaticFinish={stagedAutomaticFinish}
+                  automaticFinishPhase={automaticFinishPhase}
+                  automaticResponderPlayerId={automaticResponderPlayerId}
+                  automaticShotTarget={automaticShotTarget}
                   player={player}
                   isTeammate={false}
                   ballFieldPosition={ballFieldPosition}
@@ -2308,11 +3102,19 @@ export default function GameScene({
                   isResultAnimating={isResultAnimating}
                   legendPlayerId={displayFieldState?.legend_player_id ?? null}
                   screenAnchorTestId={
-                    isDribbleScene && player.id === dribbleDefenderId
+                    isDribbleScene && index === 0
                       ? "dribble-defender-anchor"
                       : null
                   }
                   showPlayerLabel={showLegendPlayerLabel}
+                  visible={playerVisible}
+                  modelScale={
+                    isDribbleScene
+                      ? DRIBBLE_PLAYER_MODEL_SCALE
+                      : PLAYER_MODEL_REGISTRATION.visualScale
+                  }
+                  resultReaction={stagedFailurePresentation}
+                  resultReactionVisible={resultReactionVisible}
                 />
               ))}
               <Preload all />
@@ -2325,6 +3127,7 @@ export default function GameScene({
           </Suspense>
         </Canvas>
       </FieldCanvasErrorBoundary>
+      <FieldAtmosphere active={isCanvasReady} />
       <FieldLoadingOverlay
         visible={showFieldLoadingOverlay}
         progress={assetsProgress}
@@ -2338,7 +3141,7 @@ export default function GameScene({
         !kickControlEnvelope && (
           <div
             role="alert"
-            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+            className="absolute top-[calc(var(--overgoal-safe-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
           >
             This action uses unsupported kick controls. Refresh the match before
             interacting.
@@ -2350,7 +3153,7 @@ export default function GameScene({
         !stagedKickResult && (
           <div
             role="alert"
-            className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
+            className="absolute top-[calc(var(--overgoal-safe-top)+1rem)] left-1/2 z-30 w-[min(90vw,28rem)] -translate-x-1/2 rounded-2xl border border-red-300/35 bg-red-950/90 px-4 py-3 text-center text-sm text-red-50"
           >
             {parsedDribblePattern.error}
           </div>
@@ -2358,9 +3161,11 @@ export default function GameScene({
       {canDribble && isCanvasReady && pendingAction && dribblePattern && (
         <DribbleControls
           key={pendingAction.id}
+          actionId={pendingAction.id}
           pattern={dribblePattern}
           disabled={isSubmitting}
           onSubmit={handleDribbleDecision}
+          onPresentationChange={setDribblePresentationState}
         />
       )}
       {canResolveRandomEvent && pendingAction && parsedRandomEvent.event && (
@@ -2392,17 +3197,18 @@ export default function GameScene({
             onContactChange={handleStrikeContactChange}
             onClose={closeContactDialog}
             onSubmit={handleKick}
+            showDiagnostics={KICK_DEVELOPMENT_DIAGNOSTICS}
           />
         )}
-      {stagedKickResult && !hasBlockingSessionError && (
+      {stagedKickResult && fieldVisualPhase === "resolved" && (
         <div
           data-testid="kick-result"
           data-outcome-type={
             stagedKickResult.response.decision_result?.outcome_type ?? ""
           }
-          className="absolute inset-x-0 bottom-0 z-30 p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] text-white"
+          className="absolute inset-x-0 bottom-0 z-30 p-4 pr-[max(var(--overgoal-safe-right),1rem)] pb-[calc(var(--overgoal-safe-bottom)+1rem)] pl-[max(var(--overgoal-safe-left),1rem)] text-white"
         >
-          <div className="mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
+          <div className="kick-result-panel mx-auto max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto rounded-[1.8rem] border border-cyan-300/30 bg-slate-950/88 p-4 shadow-[0_0_35px_rgba(34,211,238,0.18)] backdrop-blur-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-bold tracking-[0.28em] text-cyan-200/75 uppercase">
@@ -2413,7 +3219,7 @@ export default function GameScene({
                 </p>
               </div>
               <div className="rounded-full bg-cyan-400/12 px-3 py-1 text-[10px] font-bold tracking-[0.24em] text-cyan-200 uppercase">
-                {isResultAnimating ? "In Motion" : "Resolved"}
+                Resolved
               </div>
             </div>
 
@@ -2430,7 +3236,7 @@ export default function GameScene({
                 type="button"
                 data-testid="next-action"
                 onClick={handleNextAction}
-                disabled={isResultAnimating}
+                disabled={fieldVisualPhase !== "resolved"}
                 className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 Next Action
@@ -2439,7 +3245,7 @@ export default function GameScene({
               <button
                 type="button"
                 onClick={handleNextAction}
-                disabled={isResultAnimating}
+                disabled={fieldVisualPhase !== "resolved"}
                 className="mt-4 w-full rounded-2xl border border-cyan-300/35 bg-cyan-400/10 px-4 py-3 text-center text-sm font-black tracking-[0.2em] text-cyan-100 uppercase transition hover:bg-cyan-400/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-200 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 Tap to continue

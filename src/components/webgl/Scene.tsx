@@ -80,9 +80,10 @@ function SceneContent({
 
 interface SceneProps {
   onLoadComplete?: () => void;
+  onLoadError?: (error: Error) => void;
 }
 
-const Scene = ({ onLoadComplete }: SceneProps) => {
+const Scene = ({ onLoadComplete, onLoadError }: SceneProps) => {
   const [player, setPlayer] = useState<PlayerData | null>(null);
   const isMobile = useMemo(
     () => typeof window !== "undefined" && window.innerWidth < 768,
@@ -155,11 +156,16 @@ const Scene = ({ onLoadComplete }: SceneProps) => {
         }
       } catch (error) {
         console.error("Failed to fetch player data:", error);
+        onLoadError?.(
+          error instanceof Error
+            ? error
+            : new Error("Unable to prepare the home player scene."),
+        );
       }
     };
 
     fetchData();
-  }, []);
+  }, [onLoadError]);
 
   return (
     <Canvas

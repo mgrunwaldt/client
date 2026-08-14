@@ -1291,7 +1291,11 @@ test("hydrates authoritative halftime and full-time routes rather than fabricati
   const timeline = page.getByTestId("timeline-screen");
   await expect(page.getByTestId("halftime-panel")).toBeVisible();
   await expect(timeline).toHaveAttribute("data-session-phase", "halftime");
-  await expect(page.getByTestId("game-field")).toHaveCount(0);
+  const residentField = page.getByTestId("game-field");
+  await expect(residentField).toHaveAttribute("aria-hidden", "true");
+  await expect(residentField).toHaveAttribute("data-player-count", "0");
+  await expect(residentField).toHaveAttribute("data-scene-family", "");
+  await expect(residentField).toHaveClass(/pointer-events-none/u);
   await page.reload();
   await expect(page.getByTestId("halftime-panel")).toBeVisible();
   await expect(timeline).toHaveAttribute("data-session-phase", "halftime");
@@ -1300,10 +1304,14 @@ test("hydrates authoritative halftime and full-time routes rather than fabricati
   await expect(page).toHaveURL(new RegExp(`/match-result/${fulltimeId}$`, "u"));
   const result = page.getByTestId("match-result-screen");
   await expect(result).toHaveAttribute("data-session-phase", "finished");
-  await expect(page.getByText(/Match report|Full time/i).first()).toBeVisible();
+  await expect(page.getByTestId("match-result-screen")).toContainText(
+    /WIN|DRAW|LOSS|NO CONTEST/i,
+  );
   await page.reload();
   await expect(result).toHaveAttribute("data-session-phase", "finished");
-  await expect(page.getByText(/Match report|Full time/i).first()).toBeVisible();
+  await expect(page.getByTestId("match-result-screen")).toContainText(
+    /WIN|DRAW|LOSS|NO CONTEST/i,
+  );
   const reconnectBaseline = fulltimeHydrations;
   await page.evaluate(() => {
     window.dispatchEvent(new Event("online"));
